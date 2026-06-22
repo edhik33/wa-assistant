@@ -70,8 +70,11 @@ Teks sumber:
 		return
 	}
 
+	aid, ok := resolveAgent(c)
+	if !ok {
+		return
+	}
 	var created []models.Knowledge
-	aid := currentAgentID(c)
 	for _, item := range items {
 		k := models.Knowledge{AgentID: aid, Question: item.Question, Answer: item.Answer, Tags: item.Tags}
 		database.DB.Create(&k)
@@ -89,7 +92,10 @@ func intToStr(n int) string {
 // ImportKnowledge mengimpor banyak Q&A sekaligus (format JSON) ke knowledge agent,
 // lalu menghitung embedding-nya. Upsert berdasarkan (agent_id, question).
 func ImportKnowledge(c *gin.Context) {
-	aid := currentAgentID(c)
+	aid, ok := resolveAgent(c)
+	if !ok {
+		return
+	}
 	var req struct {
 		Items []struct {
 			Question string `json:"question"`

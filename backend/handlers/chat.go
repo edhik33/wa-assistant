@@ -47,13 +47,17 @@ func ListKnowledge(c *gin.Context) {
 }
 
 func CreateKnowledge(c *gin.Context) {
+	aid, ok := resolveAgent(c)
+	if !ok {
+		return
+	}
 	var req struct {
 		Question string `json:"question"`
 		Answer   string `json:"answer"`
 		Tags     string `json:"tags"`
 	}
 	c.ShouldBindJSON(&req)
-	k := models.Knowledge{AgentID: currentAgentID(c), Question: req.Question, Answer: req.Answer, Tags: req.Tags}
+	k := models.Knowledge{AgentID: aid, Question: req.Question, Answer: req.Answer, Tags: req.Tags}
 	database.DB.Create(&k)
 	services.IndexKnowledge(&k)
 	c.JSON(201, gin.H{"data": k})

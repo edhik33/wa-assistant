@@ -243,6 +243,24 @@ func (w *waInstance) Logout() error {
 	return nil
 }
 
+// SendText mengirim pesan ke nomor bare (mis "628123") tanpa pemanggil perlu menyusun JID.
+func (w *waInstance) SendText(toNumber, message string) error {
+	return w.SendMessage(types.NewJID(toNumber, types.DefaultUserServer), message)
+}
+
+// Suspend memutus socket WA tanpa menghapus sesi (device tetap tersimpan di store).
+// Dipakai saat langganan tenant tidak aktif; cukup Connect() lagi untuk menyambung tanpa scan QR.
+func (w *waInstance) Suspend() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.client != nil {
+		w.client.Disconnect()
+		w.client = nil
+	}
+	w.qrCode = ""
+	w.status = "disconnected"
+}
+
 func (w *waInstance) SendMessage(to types.JID, message string) error {
 	w.mu.Lock()
 	client := w.client

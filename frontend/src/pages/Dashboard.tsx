@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Box, Card, CardContent, Typography, Button, Chip, CircularProgress, TextField,
   Stack, Avatar, IconButton, Paper, Grid, Select, MenuItem, FormControl, InputLabel, Divider,
+  Switch, FormControlLabel,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AddIcon from '@mui/icons-material/Add';
@@ -11,6 +12,11 @@ import { QRCodeSVG } from 'qrcode.react';
 import api from '../services/api';
 import SettingsIcon from '@mui/icons-material/Settings';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import UsageCard from '../components/UsageCard';
+import BillingPanel from '../components/BillingPanel';
+import InboxPanel from '../components/InboxPanel';
+import TestChatPanel from '../components/TestChatPanel';
+import AnalyticsPanel from '../components/AnalyticsPanel';
 
 const TONES = [
   { value: 'ramah', label: '😊 Ramah' },
@@ -34,6 +40,12 @@ export default function Dashboard() {
   const [prompt, setPrompt] = useState('');
   const [tone, setTone] = useState('ramah');
   const [saved, setSaved] = useState(false);
+  const [greetEnabled, setGreetEnabled] = useState(false);
+  const [greetMsg, setGreetMsg] = useState('');
+  const [bhEnabled, setBhEnabled] = useState(false);
+  const [bhStart, setBhStart] = useState('08:00');
+  const [bhEnd, setBhEnd] = useState('21:00');
+  const [awayMsg, setAwayMsg] = useState('');
   const [knowledge, setKnowledge] = useState<any[]>([]);
   const [newQ, setNewQ] = useState('');
   const [newA, setNewA] = useState('');
@@ -92,7 +104,12 @@ export default function Dashboard() {
     if (!agentId) return;
     loadData(agentId);
     const a = agents.find(x => x.id === agentId);
-    if (a) { setAgentName(a.name || ''); setPrompt(a.system_prompt || ''); setTone(a.tone || 'ramah'); }
+    if (a) {
+      setAgentName(a.name || ''); setPrompt(a.system_prompt || ''); setTone(a.tone || 'ramah');
+      setGreetEnabled(!!a.greeting_enabled); setGreetMsg(a.greeting_message || '');
+      setBhEnabled(!!a.business_hours_enabled); setBhStart(a.business_start || '08:00');
+      setBhEnd(a.business_end || '21:00'); setAwayMsg(a.away_message || '');
+    }
     const i = setInterval(() => loadData(agentId), 3000);
     return () => clearInterval(i);
   }, [agentId, agents]);
@@ -113,7 +130,11 @@ export default function Dashboard() {
   };
 
   const saveAgent = async () => {
-    await api.put(`/agents/${agentId}`, { name: agentName, system_prompt: prompt, tone });
+    await api.put(`/agents/${agentId}`, {
+      name: agentName, system_prompt: prompt, tone,
+      greeting_enabled: greetEnabled, greeting_message: greetMsg,
+      business_hours_enabled: bhEnabled, business_start: bhStart, business_end: bhEnd, away_message: awayMsg,
+    });
     setSaved(true); setTimeout(() => setSaved(false), 2000);
     loadAgents(agentId);
   };
@@ -157,7 +178,7 @@ export default function Dashboard() {
   const dotColor = (s?: string) => (s === 'connected' ? '#25D366' : s === 'qr' ? '#ffa726' : '#bdbdbd');
 
   const logout = () => { localStorage.clear(); window.location.href = '/login'; };
-  const tabs = ['Dashboard', 'Knowledge Base', 'Settings'];
+  const tabs = ['Dashboard', 'Inbox', 'Coba Chat', 'Knowledge Base', 'Analitik', 'Settings', 'Langganan'];
   const sc = status === 'connected' ? 'success' : status === 'qr' ? 'warning' : 'error';
   const sl = status === 'connected' ? 'Online' : status === 'qr' ? 'Scan QR' : 'Offline';
   const currentAgent = agents.find(a => a.id === agentId);
@@ -204,6 +225,7 @@ export default function Dashboard() {
             <Typography variant="h5" sx={{ fontWeight: 800, mb: 3 }}>
               Dashboard {currentAgent && <Typography component="span" color="text.secondary">· {currentAgent.name}</Typography>}
             </Typography>
+            <UsageCard />
             <Card sx={{ mb: 2 }}>
               <CardContent sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { xs: 'flex-start', md: 'center' }, justifyContent: 'space-between', gap: 2 }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.75, textAlign: 'left' }}>
@@ -269,7 +291,7 @@ export default function Dashboard() {
           </Box>
         )}
 
-        {tab === 1 && (
+        {tab === 3 && (
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 800, mb: 3 }}>
               Knowledge Base {currentAgent && <Typography component="span" color="text.secondary">· {currentAgent.name}</Typography>}
@@ -330,7 +352,7 @@ export default function Dashboard() {
           </Box>
         )}
 
-        {tab === 2 && (
+        {tab === 5 && (
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 800, mb: 3 }}>
               <SettingsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />Pengaturan {currentAgent && <Typography component="span" color="text.secondary">· {currentAgent.name}</Typography>}
@@ -358,6 +380,39 @@ export default function Dashboard() {
                 <Button variant="contained" onClick={saveAgent} sx={{ mt: 1 }}>{saved ? 'Tersimpan ✓' : 'Simpan'}</Button>
               </CardContent>
             </Card>
+
+            <Card sx={{ mb: 2 }}>
+              <CardContent>
+                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Sapaan Otomatis</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                  Pesan pembuka yang dikirim sekali saat kontak baru pertama kali chat.
+                </Typography>
+                <FormControlLabel control={<Switch checked={greetEnabled} onChange={e => setGreetEnabled(e.target.checked)} />} label="Aktifkan sapaan" />
+                <TextField fullWidth multiline rows={2} size="small" label="Pesan sapaan" value={greetMsg}
+                  onChange={e => setGreetMsg(e.target.value)} disabled={!greetEnabled} sx={{ mt: 1 }}
+                  placeholder="Halo kak! Terima kasih sudah menghubungi kami 😊 Ada yang bisa dibantu?" />
+
+                <Divider sx={{ my: 2 }} />
+
+                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Jam Kerja</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                  Di luar jam ini bot tidak menjawab otomatis, hanya mengirim pesan di luar jam kerja.
+                </Typography>
+                <FormControlLabel control={<Switch checked={bhEnabled} onChange={e => setBhEnabled(e.target.checked)} />} label="Batasi jam kerja" />
+                <Stack direction="row" spacing={2} sx={{ my: 1 }}>
+                  <TextField type="time" label="Mulai" size="small" value={bhStart} onChange={e => setBhStart(e.target.value)}
+                    disabled={!bhEnabled} slotProps={{ inputLabel: { shrink: true } }} />
+                  <TextField type="time" label="Selesai" size="small" value={bhEnd} onChange={e => setBhEnd(e.target.value)}
+                    disabled={!bhEnabled} slotProps={{ inputLabel: { shrink: true } }} />
+                </Stack>
+                <TextField fullWidth multiline rows={2} size="small" label="Pesan di luar jam kerja" value={awayMsg}
+                  onChange={e => setAwayMsg(e.target.value)} disabled={!bhEnabled}
+                  placeholder="Mohon maaf, kami sedang di luar jam operasional. Pesan kakak akan kami balas pada jam kerja ya 🙏" />
+
+                <Button variant="contained" onClick={saveAgent} sx={{ mt: 2 }}>{saved ? 'Tersimpan ✓' : 'Simpan'}</Button>
+              </CardContent>
+            </Card>
+
             <Card sx={{ border: '1px solid #f5c2c7' }}>
               <CardContent>
                 <Typography variant="subtitle2" color="error" sx={{ mb: 1 }}>Zona Berbahaya</Typography>
@@ -366,6 +421,11 @@ export default function Dashboard() {
             </Card>
           </Box>
         )}
+
+        {tab === 6 && <BillingPanel />}
+        {tab === 1 && <InboxPanel agentId={agentId} />}
+        {tab === 2 && <TestChatPanel agentId={agentId} />}
+        {tab === 4 && <AnalyticsPanel agentId={agentId} />}
       </Box>
     </Box>
   );

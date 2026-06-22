@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"time"
 	"wa-assistant/backend/config"
 	"wa-assistant/backend/database"
 	"wa-assistant/backend/handlers"
@@ -24,16 +25,38 @@ func main() {
 	// Sambungkan ulang semua agent yang sudah ter-link.
 	go handlers.StartAgents()
 
+	// Cek langganan tiap jam: expire yang habis & suspend sesi WA tenant non-aktif.
+	handlers.StartSubscriptionSweep(time.Hour)
+
 	r := gin.Default()
 	r.Use(handlers.CORS())
 
 	api := r.Group("/api")
 	{
 		api.POST("/login", handlers.Login)
+		api.POST("/register", handlers.Register)
+		api.GET("/plans", handlers.PublicPlans)
+		api.POST("/billing/tripay/callback", handlers.TripayCallback) // webhook Tripay (signature diverifikasi)
 		api.GET("/me", handlers.AuthMiddleware(), handlers.Me)
+
+		// Panel operator platform (super admin).
+		admin := api.Group("/admin", handlers.AuthMiddleware(), handlers.AdminOnly())
+		{
+			admin.GET("/stats", handlers.AdminStats)
+			admin.GET("/tenants", handlers.AdminTenants)
+			admin.PUT("/tenants/:id", handlers.AdminUpdateTenant)
+			admin.GET("/plans", handlers.AdminPlans)
+			admin.POST("/plans", handlers.AdminCreatePlan)
+			admin.PUT("/plans/:id", handlers.AdminUpdatePlan)
+			admin.DELETE("/plans/:id", handlers.AdminDeletePlan)
+		}
 
 		auth := api.Group("", handlers.AuthMiddleware())
 		{
+			auth.GET("/usage", handlers.TenantUsage)
+			auth.GET("/billing/channels", handlers.BillingChannels)
+			auth.POST("/billing/checkout", handlers.Checkout)
+			auth.GET("/billing/invoices", handlers.Invoices)
 			// Endpoint lama (back-compat) -> beroperasi pada agent default (id 1).
 			auth.GET("/wa/status", handlers.GetNumberStatus)
 			auth.POST("/wa/connect", handlers.ConnectNumber)
@@ -70,6 +93,13 @@ func main() {
 			auth.POST("/agents/:id/knowledge/import", handlers.ImportKnowledge)
 			auth.PUT("/agents/:id/knowledge/:kid", handlers.UpdateKnowledge)
 			auth.DELETE("/agents/:id/knowledge/:kid", handlers.DeleteKnowledge)
+
+			// Fitur jualan: simulator, analitik, inbox.
+			auth.POST("/agents/:id/test-chat", handlers.TestChat)
+			auth.GET("/agents/:id/analytics", handlers.AgentAnalytics)
+			auth.GET("/agents/:id/contacts", handlers.InboxContacts)
+			auth.GET("/agents/:id/conversation", handlers.InboxConversation)
+			auth.POST("/agents/:id/send", handlers.InboxSend)
 		}
 	}
 

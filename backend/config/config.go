@@ -1,8 +1,9 @@
 package config
 
 import (
-	"os"
 	"log"
+	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -25,4 +26,13 @@ func EnvRequired(key string) string {
 		log.Fatalf("ERROR: %s harus diset di .env", key)
 	}
 	return v
+}
+
+func EnvInt(key string, defaultVal int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return defaultVal
 }

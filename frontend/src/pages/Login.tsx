@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, Card, CardContent, TextField, Button, Typography, Alert, Backdrop, CircularProgress } from '@mui/material';
+import { Box, Card, CardContent, TextField, Button, Typography, Alert, Backdrop, CircularProgress, Link } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
@@ -18,7 +18,7 @@ export default function Login() {
       const res = await api.post('/login', { username, password });
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
-      navigate('/');
+      navigate(res.data.user?.is_super_admin ? '/admin' : '/app');
     } catch {
       setError('Username atau password salah');
       setLoading(false);
@@ -44,6 +44,9 @@ export default function Login() {
             sx={{ py: 1.5, fontWeight: 700 }}>
             {loading ? 'Masuk…' : 'Login'}
           </Button>
+          <Typography variant="body2" sx={{ mt: 2, textAlign: 'center' }}>
+            Belum punya akun? <Link href="/daftar" underline="hover">Daftar gratis</Link>
+          </Typography>
         </CardContent>
       </Card>
       <Backdrop open={loading} sx={{ color: '#fff', zIndex: (t) => t.zIndex.drawer + 1 }}>
