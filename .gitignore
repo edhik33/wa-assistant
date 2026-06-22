@@ -1,0 +1,18 @@
+# Binary
+wa-server
+wa-assistant
+
+# Environment
+.env
+!.env.example
+
+# Database
+*.db
+
+# Frontend
+frontend/node_modules
+frontend/dist
+
+# OS
+.DS_Store
+*.log

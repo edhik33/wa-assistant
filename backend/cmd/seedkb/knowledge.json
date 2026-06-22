@@ -1,0 +1,72 @@
+[
+  {
+    "question": "Apa itu Sedekah Bekas?",
+    "answer": "Sedekah Bekas adalah platform yang mengubah barang bekas jadi sedekah jariyah. Barang bekas dari donatur kami terima lalu dijual, dan hasilnya digunakan untuk kegiatan dakwah—jadi pahalanya terus mengalir.",
+    "tags": "sedekah bekas,tentang,apa itu,profil,jariyah"
+  },
+  {
+    "question": "Bagaimana cara kerja Sedekah Bekas?",
+    "answer": "Alurnya: kakak isi formulir donasi di website, niatkan sedekah dengan ikhlas, lalu tim kami ambil/terima barangnya. Barang kami jual dan hasilnya disalurkan untuk kegiatan dakwah.",
+    "tags": "cara kerja,alur,proses,mekanisme,langkah"
+  },
+  {
+    "question": "Barang apa saja yang bisa disedekahkan?",
+    "answer": "Kami menerima pakaian, sepatu, tas, buku, perabotan, elektronik, kendaraan, dan lainnya. Kalau jenisnya tidak ada di pilihan, pilih \"Lainnya\" lalu tulis di kolom catatan ya kak.",
+    "tags": "barang,kategori,jenis,diterima,pakaian,elektronik,perabotan,sepatu,tas,buku,kendaraan"
+  },
+  {
+    "question": "Apakah barang harus dalam kondisi bagus?",
+    "answer": "Sebaiknya barang masih layak pakai/jual supaya manfaatnya lebih besar. Kalau ragu dengan kondisi barang, boleh konfirmasi dulu ke admin lewat WhatsApp sebelum dikirim.",
+    "tags": "kondisi,layak,rusak,syarat barang,kualitas"
+  },
+  {
+    "question": "Apakah ada biaya untuk berdonasi?",
+    "answer": "Tidak ada biaya kak, ini murni sedekah. Kakak cukup menyiapkan barang bekasnya dan mengisi formulir donasi.",
+    "tags": "biaya,gratis,bayar,ongkos"
+  },
+  {
+    "question": "Bagaimana cara mendonasikan barang?",
+    "answer": "Mudah kok: buka formulir di sedekahbekas.com, lalu isi nama lengkap, nomor WhatsApp, alamat lengkap, kategori barang, dan jumlahnya. Setelah itu tim kami akan menindaklanjuti.",
+    "tags": "cara donasi,daftar,formulir,form,mendonasikan,isi data"
+  },
+  {
+    "question": "Data apa yang perlu disiapkan saat mengisi formulir?",
+    "answer": "Siapkan nama lengkap, nomor WhatsApp aktif, alamat lengkap, kategori barang, dan jumlah barang. Ada juga kolom catatan opsional kalau ada keterangan tambahan.",
+    "tags": "data,formulir,field,isian,syarat,nama,alamat,whatsapp"
+  },
+  {
+    "question": "Berapa jumlah barang minimal untuk donasi?",
+    "answer": "Di formulir tersedia pilihan jumlah 3 dus, 4 dus, 5 dus, atau Lainnya. Kalau jumlah kakak berbeda, pilih \"Lainnya\" lalu tulis perkiraannya di kolom catatan.",
+    "tags": "jumlah,minimal,dus,berapa,kuantitas"
+  },
+  {
+    "question": "Apakah barang dijemput atau harus diantar?",
+    "answer": "Setelah formulir masuk, tim kami yang akan mengambil/menerima barangnya. Untuk teknis penjemputan menyesuaikan alamat, jadi pastikan alamat di formulir lengkap ya kak.",
+    "tags": "jemput,penjemputan,antar,pickup,ambil barang,pengambilan"
+  },
+  {
+    "question": "Sedekah Bekas ada di kota mana?",
+    "answer": "Basis kami di Yogyakarta, tepatnya di Noyokerten No.20, Mojokerten, Sendangtirto, Berbah, Sleman. Untuk donasi dari luar area, silakan konfirmasi dulu ke admin via WhatsApp.",
+    "tags": "lokasi,alamat,kota,area,yogyakarta,jogja,sleman,jangkauan"
+  },
+  {
+    "question": "Hasil sedekah barang digunakan untuk apa?",
+    "answer": "Barang yang terkumpul kami jual, dan hasilnya dialokasikan untuk kegiatan dakwah serta operasional, sehingga menjadi sedekah jariyah yang manfaatnya berkelanjutan.",
+    "tags": "hasil,penggunaan,dana,dakwah,untuk apa,manfaat,jariyah"
+  },
+  {
+    "question": "Apa itu sedekah jariyah?",
+    "answer": "Sedekah jariyah adalah amal yang pahalanya terus mengalir meski kita sudah tidak aktif memberi. Dengan menyedekahkan barang bekas, manfaatnya berlanjut lewat kegiatan dakwah yang didanai.",
+    "tags": "jariyah,pahala,amal,pengertian,makna"
+  },
+  {
+    "question": "Bagaimana cara menghubungi admin Sedekah Bekas?",
+    "answer": "Kakak bisa hubungi kami lewat WhatsApp di mauorder.online/sedekah-bekas, atau DM Instagram @sedekahbekasid dan Facebook Amal Jariyah Peduli.",
+    "tags": "kontak,admin,whatsapp,wa,instagram,facebook,hubungi,cs"
+  },
+  {
+    "question": "Apakah bisa donasi dari luar Yogyakarta?",
+    "answer": "Untuk donasi dari luar Yogyakarta, sebaiknya konfirmasi dulu ke admin lewat WhatsApp agar kami bantu cek opsi pengiriman/penjemputannya ya kak.",
+    "tags": "luar kota,luar jogja,kirim,pengiriman,jangkauan,daerah lain"
+  }
+]
