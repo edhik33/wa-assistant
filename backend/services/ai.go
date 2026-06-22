@@ -26,14 +26,16 @@ func InitAI() {
 	AIClient = openai.NewClientWithConfig(cfg)
 }
 
-func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history []models.ChatHistory) (string, error) {
+func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history []models.ChatHistory) (string, bool, error) {
 	relevant := searchKnowledge(agentID, userMsg)
 
 	enhancedPrompt := systemPrompt +
 		"\n\nGAYA JAWABAN: Balas seperti chat WhatsApp yang natural dan manusiawi—mengalir, tidak kaku, jangan seperti template. " +
 		"Ringkas dan langsung menjawab, idealnya 1-3 kalimat, jangan mengulang pertanyaan, dan selesaikan kalimat terakhir dengan utuh. " +
-		"PENTING: jangan mengarang detail spesifik (angka, persen, syarat, jam, harga, kebijakan) yang tidak ada di basis pengetahuan; " +
-		"kalau tidak yakin atau informasinya tidak tersedia, arahkan untuk menghubungi admin." +
+		"PENTING: jangan mengarang detail spesifik (angka, persen, syarat, jam, harga, kebijakan) yang tidak ada di basis pengetahuan. " +
+		"Untuk sapaan/obrolan umum, jawab normal & ramah. " +
+		"TAPI jika pelanggan menanyakan informasi SPESIFIK yang tidak ada di basis pengetahuan dan kamu tidak yakin jawabannya, " +
+		"JANGAN menebak dan JANGAN menyuruh menghubungi admin—cukup balas PERSIS dengan token ini saja tanpa teks lain: [[ESCALATE]]" +
 		toneInstruction(tone)
 
 	if len(relevant) > 0 {
@@ -67,20 +69,24 @@ func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history
 		Temperature: 0.7, // lebih luwes/natural seperti ngobrol
 	})
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if len(resp.Choices) == 0 {
-		return "Maaf, saya tidak bisa menjawab.", nil
+		return "Maaf, saya tidak bisa menjawab.", false, nil
 	}
 	if string(resp.Choices[0].FinishReason) == "length" {
 		log.Printf("WARN: jawaban kemungkinan terpotong (finish_reason=length) — pertimbangkan naikkan MaxTokens. Pesan: %q", userMsg)
 	}
 	reply := strings.TrimSpace(resp.Choices[0].Message.Content)
+	// Model menandai dirinya tidak bisa menjawab pertanyaan spesifik -> eskalasi ke manusia.
+	if strings.Contains(reply, "[[ESCALATE]]") {
+		return "", true, nil
+	}
 	if reply == "" {
 		// Model sesekali balas kosong; jangan kirim pesan kosong ke WhatsApp.
-		return "Maaf kak, boleh diulang pertanyaannya?", nil
+		return "Maaf kak, boleh diulang pertanyaannya?", false, nil
 	}
-	return reply, nil
+	return reply, false, nil
 }
 
 // searchKnowledge mencari knowledge paling relevan dengan pesan user.

@@ -11,7 +11,6 @@ import { QRCodeSVG } from 'qrcode.react';
 import api from '../services/api';
 import SettingsIcon from '@mui/icons-material/Settings';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import HistoryIcon from '@mui/icons-material/History';
 
 const TONES = [
   { value: 'ramah', label: '😊 Ramah' },
@@ -45,6 +44,7 @@ export default function Dashboard() {
   const [statusMap, setStatusMap] = useState<{ [k: string]: string }>({});
   const [importText, setImportText] = useState('');
   const [importing, setImporting] = useState(false);
+  const [handoffs, setHandoffs] = useState<any[]>([]);
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
   const loadAgents = async (selectId?: number) => {
@@ -61,15 +61,17 @@ export default function Dashboard() {
   const loadData = async (id = agentId) => {
     if (!id) return;
     try {
-      const [s, h, k] = await Promise.all([
+      const [s, h, k, ho] = await Promise.all([
         api.get(`/agents/${id}/wa/status`),
         api.get(`/agents/${id}/chat-history`),
         api.get(`/agents/${id}/knowledge`),
+        api.get(`/agents/${id}/handoffs`),
       ]);
       setStatus(s.data.status); setQr(s.data.qr || '');
       setWaNumber(s.data.number || ''); setWaName(s.data.name || '');
       setHistory(h.data.data || []);
       setKnowledge(k.data.data || []);
+      setHandoffs(ho.data.data || []);
     } catch {}
   };
 
@@ -94,6 +96,19 @@ export default function Dashboard() {
   }, [agentId, agents]);
 
   const connect = async () => { setLoading(true); await api.post(`/agents/${agentId}/wa/connect`); await loadData(agentId); setLoading(false); };
+
+  const disconnectWA = async () => {
+    if (!window.confirm('Putuskan WhatsApp dari nomor ini? Perlu scan QR lagi untuk menyambung kembali.')) return;
+    setLoading(true);
+    try { await api.post(`/agents/${agentId}/wa/logout`); } catch {}
+    await loadData(agentId);
+    setLoading(false);
+  };
+
+  const resumeHandoff = async (sender: string) => {
+    await api.delete(`/agents/${agentId}/handoffs/${sender}`);
+    loadData(agentId);
+  };
 
   const saveAgent = async () => {
     await api.put(`/agents/${agentId}`, { name: agentName, system_prompt: prompt, tone });
@@ -161,15 +176,15 @@ export default function Dashboard() {
   const currentAgent = agents.find(a => a.id === agentId);
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f0f2f5' }}>
-      <Paper sx={{ width: 240, borderRadius: 0, p: 2, display: 'flex', flexDirection: 'column' }}>
-        <Box sx={{ mb: 2, textAlign: 'center' }}>
-          <Avatar sx={{ width: 56, height: 56, mx: 'auto', mb: 1, bgcolor: '#25D366' }}>W</Avatar>
-          <Typography sx={{ fontWeight: 700 }}>WA Assistant</Typography>
-          <Typography variant="caption" color="text.secondary">{user.name || user.username}</Typography>
+    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, minHeight: '100vh', bgcolor: '#f0f2f5' }}>
+      <Paper sx={{ width: { xs: '100%', md: 240 }, borderRadius: 0, p: 2, display: 'flex', flexDirection: { xs: 'row', md: 'column' }, flexWrap: 'wrap', alignItems: { xs: 'center', md: 'stretch' }, gap: { xs: 1, md: 0 }, position: { xs: 'sticky', md: 'static' }, top: 0, zIndex: 10 }}>
+        <Box sx={{ mb: { xs: 0, md: 2 }, mr: { xs: 1, md: 0 }, textAlign: 'center' }}>
+          <Avatar sx={{ width: 40, height: 40, mx: 'auto', mb: 0.5, bgcolor: '#25D366', display: { xs: 'none', sm: 'flex' } }}>W</Avatar>
+          <Typography sx={{ fontWeight: 700, fontSize: { xs: 14, md: 16 } }}>WA Assistant</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', md: 'block' } }}>{user.name || user.username}</Typography>
         </Box>
 
-        <FormControl fullWidth size="small" sx={{ mb: 1 }}>
+        <FormControl size="small" sx={{ mb: { xs: 0, md: 1 }, width: { xs: 150, md: '100%' }, flexShrink: 0 }}>
           <InputLabel>CS / Nomor</InputLabel>
           <Select value={agents.length ? agentId : ''} label="CS / Nomor"
             onChange={e => setAgentId(Number(e.target.value))}>
@@ -181,29 +196,29 @@ export default function Dashboard() {
             ))}
           </Select>
         </FormControl>
-        <Button size="small" startIcon={<AddIcon />} onClick={createAgent} sx={{ mb: 2, textTransform: 'none' }}>
+        <Button size="small" startIcon={<AddIcon />} onClick={createAgent} sx={{ mb: { xs: 0, md: 2 }, textTransform: 'none' }}>
           Tambah CS
         </Button>
-        <Divider sx={{ mb: 1 }} />
+        <Divider sx={{ mb: 1, width: '100%', display: { xs: 'none', md: 'block' } }} />
 
         {tabs.map((t, i) => (
           <Button key={i} variant={tab === i ? 'contained' : 'text'}
-            onClick={() => setTab(i)} sx={{ mb: 0.5, justifyContent: 'flex-start', textTransform: 'none' }}>
+            onClick={() => setTab(i)} sx={{ mb: 0.5, justifyContent: { xs: 'center', md: 'flex-start' }, textTransform: 'none' }}>
             {t}
           </Button>
         ))}
-        <Box sx={{ flex: 1 }} />
-        <Button startIcon={<LogoutIcon />} onClick={logout} color="error" sx={{ textTransform: 'none' }}>Logout</Button>
+        <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
+        <Button startIcon={<LogoutIcon />} onClick={logout} color="error" sx={{ textTransform: 'none', ml: { xs: 'auto', md: 0 } }}>Logout</Button>
       </Paper>
 
-      <Box sx={{ flex: 1, p: 3, overflow: 'auto' }}>
+      <Box sx={{ flex: 1, p: { xs: 2, md: 3 }, overflow: 'auto', width: '100%', boxSizing: 'border-box' }}>
         {tab === 0 && (
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 800, mb: 3 }}>
               Dashboard {currentAgent && <Typography component="span" color="text.secondary">· {currentAgent.name}</Typography>}
             </Typography>
             <Card sx={{ mb: 2 }}>
-              <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <CardContent sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { xs: 'flex-start', md: 'center' }, justifyContent: 'space-between', gap: 2 }}>
                 <Box>
                   <Chip label={sl} color={sc} />
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Status WhatsApp</Typography>
@@ -214,10 +229,18 @@ export default function Dashboard() {
                     </Box>
                   )}
                 </Box>
-                <Button variant="contained" onClick={connect} disabled={loading}
-                  startIcon={loading ? <CircularProgress size={16} /> : <QrCodeIcon />}>
-                  {status === 'connected' ? 'Reconnect' : 'Connect WA'}
-                </Button>
+                <Stack direction="row" spacing={1}>
+                  <Button variant="contained" onClick={connect} disabled={loading}
+                    startIcon={loading ? <CircularProgress size={16} /> : <QrCodeIcon />}>
+                    {status === 'connected' ? 'Reconnect' : 'Connect WA'}
+                  </Button>
+                  {status === 'connected' && (
+                    <Button variant="outlined" color="error" onClick={disconnectWA} disabled={loading}
+                      startIcon={<LogoutIcon />}>
+                      Putuskan
+                    </Button>
+                  )}
+                </Stack>
               </CardContent>
             </Card>
             {qr && (
@@ -236,18 +259,26 @@ export default function Dashboard() {
               <Grid size={4}><Card><CardContent><Typography variant="h4" sx={{ fontWeight: 800 }}>{knowledge.length}</Typography><Typography variant="caption">Knowledge</Typography></CardContent></Card></Grid>
               <Grid size={4}><Card><CardContent><Typography variant="h4" sx={{ fontWeight: 800 }}>{agents.length}</Typography><Typography variant="caption">Total CS</Typography></CardContent></Card></Grid>
             </Grid>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}><HistoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />Chat Terbaru</Typography>
-                {history.slice(0, 10).map((h, i) => (
-                  <Box key={i} sx={{ p: 1.5, mb: 1, bgcolor: '#fff', borderRadius: 1, border: '1px solid #eee' }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>{h.sender}</Typography>
-                    <Typography variant="body2" sx={{ color: '#666' }}>💬 {h.message}</Typography>
-                    <Typography variant="body2" sx={{ color: '#25D366', fontWeight: 500 }}>🤖 {h.reply}</Typography>
-                  </Box>
-                ))}
-              </CardContent>
-            </Card>
+
+            {handoffs.length > 0 && (
+              <Card sx={{ mt: 2, border: '2px solid #ffa726' }}>
+                <CardContent>
+                  <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>🙋 Butuh Dibalas Manusia ({handoffs.length})</Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block' }}>
+                    Bot menunda jawaban untuk kontak ini. Balas mereka langsung dari WhatsApp HP-mu, lalu klik "Aktifkan bot" kalau sudah selesai.
+                  </Typography>
+                  {handoffs.map(h => (
+                    <Box key={h.id} sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 1, p: 1.5, mb: 1, bgcolor: '#fff', borderRadius: 1, border: '1px solid #eee' }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>+{h.sender}</Typography>
+                        <Typography variant="caption" color="text.secondary">"{h.last_msg}"</Typography>
+                      </Box>
+                      <Button size="small" variant="outlined" onClick={() => resumeHandoff(h.sender)} sx={{ flexShrink: 0 }}>Aktifkan bot</Button>
+                    </Box>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
           </Box>
         )}
 

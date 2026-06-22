@@ -1,14 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import { ThemeProvider, CssBaseline } from '@mui/material';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-
-const theme = createTheme({
-  palette: {
-    primary: { main: '#25D366' },
-  },
-  typography: { fontFamily: '"Inter", "Helvetica Neue", Arial, sans-serif' },
-});
+import theme from './theme';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('token');

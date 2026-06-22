@@ -25,3 +25,17 @@ func ConnectNumber(c *gin.Context) {
 	}
 	c.JSON(200, gin.H{"status": status})
 }
+
+// LogoutNumber memutus & menghapus sesi WhatsApp agent, lalu mengosongkan device tersimpan
+// supaya tidak auto-reconnect ke sesi lama. Untuk menyambung lagi perlu scan QR.
+func LogoutNumber(c *gin.Context) {
+	id := currentAgentID(c)
+	_ = services.WA(id).Logout()
+	var a models.Agent
+	if database.DB.First(&a, id).Error == nil {
+		a.DeviceJID = ""
+		a.Number = ""
+		database.DB.Save(&a)
+	}
+	c.JSON(200, gin.H{"status": "disconnected"})
+}

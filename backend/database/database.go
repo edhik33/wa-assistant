@@ -35,7 +35,7 @@ func Init() {
 	if err != nil {
 		log.Fatal("DB error (MySQL): ", err)
 	}
-	DB.AutoMigrate(&models.User{}, &models.Agent{}, &models.ChatHistory{}, &models.Setting{}, &models.Knowledge{})
+	DB.AutoMigrate(&models.User{}, &models.Agent{}, &models.ChatHistory{}, &models.Setting{}, &models.Knowledge{}, &models.Handoff{})
 
 	// Migrasi ke multi-agent: pastikan ada agent default (CS pertama).
 	var agentCount int64

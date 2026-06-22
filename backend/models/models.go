@@ -31,6 +31,15 @@ type ChatHistory struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Handoff = kontak yang sedang "diambil alih manusia" (bot berhenti auto-reply ke nomor ini).
+type Handoff struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	AgentID   uint      `gorm:"index" json:"agent_id"`
+	Sender    string    `gorm:"index" json:"sender"`
+	LastMsg   string    `gorm:"type:text" json:"last_msg"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Setting struct {
 	ID           uint   `gorm:"primaryKey" json:"id"`
 	SystemPrompt string `gorm:"type:text" json:"system_prompt"`

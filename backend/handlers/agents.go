@@ -23,8 +23,19 @@ func currentAgentID(c *gin.Context) uint {
 	return 1
 }
 
+// deferMessage = balasan saat bot ragu (eskalasi). Konsisten sebagai admin, bukan oper ke orang lain.
+const deferMessage = "Mohon maaf kak, untuk yang ini saya cek dulu ya biar infonya pasti — sebentar lagi kami kabari 🙏"
+
 // OnWAMessage dipanggil saat ada pesan masuk untuk agent tertentu.
 func OnWAMessage(agentID uint, sender types.JID, msg string) {
+	num := sender.User
+
+	// Kalau kontak ini sedang diambil alih manusia (handoff aktif), bot diam total.
+	var ho models.Handoff
+	if database.DB.Where("agent_id = ? AND sender = ?", agentID, num).First(&ho).Error == nil {
+		return
+	}
+
 	var agent models.Agent
 	prompt := "Kamu adalah asisten AI yang ramah. Jawab dalam bahasa Indonesia."
 	tone := "ramah"
@@ -39,29 +50,50 @@ func OnWAMessage(agentID uint, sender types.JID, msg string) {
 
 	// Ambil 5 percakapan terakhir agent+nomor ini sebagai memori (urutkan kronologis).
 	var history []models.ChatHistory
-	database.DB.Where("agent_id = ? AND sender = ?", agentID, sender.User).
+	database.DB.Where("agent_id = ? AND sender = ?", agentID, num).
 		Order("created_at desc").Limit(5).Find(&history)
 	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
 		history[i], history[j] = history[j], history[i]
 	}
 
-	reply, err := services.ChatWithKnowledge(agentID, prompt, tone, msg, history)
+	reply, escalate, err := services.ChatWithKnowledge(agentID, prompt, tone, msg, history)
 	if err != nil {
-		log.Printf("AI error (agent %d) dari %s: %v", agentID, sender.User, err)
+		log.Printf("AI error (agent %d) dari %s: %v", agentID, num, err)
 		reply = "Maaf, ada kendala teknis."
+		escalate = false
+	}
+
+	if escalate {
+		// Bot tidak yakin -> balas menunda + tandai kontak butuh manusia + bot berhenti utk kontak ini.
+		reply = deferMessage
+		database.DB.Create(&models.Handoff{AgentID: agentID, Sender: num, LastMsg: msg})
+		log.Printf("Eskalasi (agent %d) dari %s: %q", agentID, num, msg)
 	}
 
 	if err := services.WA(agentID).SendMessage(sender, reply); err != nil {
-		log.Printf("Gagal kirim (agent %d) ke %s: %v", agentID, sender.User, err)
+		log.Printf("Gagal kirim (agent %d) ke %s: %v", agentID, num, err)
 		return
 	}
 
 	database.DB.Create(&models.ChatHistory{
 		AgentID: agentID,
-		Sender:  sender.User,
+		Sender:  num,
 		Message: msg,
 		Reply:   reply,
 	})
+}
+
+// ListHandoffs: daftar kontak yang sedang butuh ditangani manusia (bot pause).
+func ListHandoffs(c *gin.Context) {
+	var hs []models.Handoff
+	database.DB.Where("agent_id = ?", currentAgentID(c)).Order("created_at desc").Find(&hs)
+	c.JSON(200, gin.H{"data": hs})
+}
+
+// ResumeHandoff: hapus handoff -> bot lanjut auto-reply ke kontak itu lagi.
+func ResumeHandoff(c *gin.Context) {
+	database.DB.Where("agent_id = ? AND sender = ?", currentAgentID(c), c.Param("sender")).Delete(&models.Handoff{})
+	c.JSON(200, gin.H{"message": "resumed"})
 }
 
 // OnDeviceLinked menyimpan device JID & nomor saat agent berhasil login via QR.
