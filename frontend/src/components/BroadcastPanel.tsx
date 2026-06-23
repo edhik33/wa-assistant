@@ -8,9 +8,8 @@ import SendIcon from '@mui/icons-material/Send';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ForumIcon from '@mui/icons-material/ForumOutlined';
-import ContactsIcon from '@mui/icons-material/ContactsOutlined';
-import { useCheckNumbers, useCreateBroadcast, useBroadcasts, useChatContacts, useWAContacts } from '../hooks';
+import { useCheckNumbers, useCreateBroadcast, useBroadcasts } from '../hooks';
+import RecipientField from './RecipientField';
 import type { NumberCheck } from '../types';
 
 function normalizePhone(s: string): string {
@@ -38,8 +37,6 @@ export default function BroadcastPanel({ agentId }: { agentId: number }) {
 
   const checkNumbers = useCheckNumbers(agentId);
   const createBroadcast = useCreateBroadcast(agentId);
-  const chatContacts = useChatContacts(agentId);
-  const waContacts = useWAContacts(agentId);
   const { data: bpage } = useBroadcasts(agentId, page);
   const broadcasts = bpage?.data || [];
   const totalPages = Math.max(1, Math.ceil((bpage?.total || 0) / (bpage?.limit || 10)));
@@ -53,15 +50,6 @@ export default function BroadcastPanel({ agentId }: { agentId: number }) {
   parsed.forEach(p => { nameMap[p.number] = p.name; });
 
   const registered = (checked || []).filter(c => c.registered);
-
-  // Gabungkan kontak hasil import ke daftar nomor (dedupe per nomor).
-  const importContacts = (list: { number: string; name: string }[]) => {
-    const map = new Map<string, string>();
-    [...parsed, ...list.map(c => ({ number: normalizePhone(c.number), name: c.name || '' }))]
-      .forEach(c => { if (c.number && !map.has(c.number)) map.set(c.number, c.name); });
-    setRecipientsText(Array.from(map.entries()).map(([num, name]) => (name ? `${num},${name}` : num)).join('\n'));
-    setChecked(null);
-  };
 
   const openModal = () => {
     setInfo('');
@@ -113,26 +101,11 @@ export default function BroadcastPanel({ agentId }: { agentId: number }) {
 
           <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Daftar Nomor</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-            Satu nomor per baris. Bisa juga format <code>nomor,nama</code> untuk personalisasi.
+            Satu nomor per baris (format <code>nomor,nama</code> untuk personalisasi), atau impor dari sumber di bawah.
           </Typography>
-          <TextField fullWidth multiline rows={5} value={recipientsText}
-            onChange={e => { setRecipientsText(e.target.value); setChecked(null); }}
-            placeholder={'08123456789,Budi\n08987654321,Sinta'} sx={{ mb: 1 }} />
-
-          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, mb: 0.5 }}>
-            <Button size="small" variant="text" disabled={chatContacts.isPending}
-              startIcon={chatContacts.isPending ? <CircularProgress size={14} /> : <ForumIcon />}
-              onClick={async () => { const l = await chatContacts.mutateAsync(); importContacts(l); setInfo(`${l.length} kontak yang pernah chat ditambahkan.`); }}>
-              Kontak yang pernah chat
-            </Button>
-            <Button size="small" variant="text" color="warning" disabled={waContacts.isPending}
-              startIcon={waContacts.isPending ? <CircularProgress size={14} /> : <ContactsIcon />}
-              onClick={async () => { const l = await waContacts.mutateAsync(); importContacts(l); setInfo(`${l.length} kontak WhatsApp ditambahkan.`); }}>
-              Sinkron kontak WhatsApp
-            </Button>
-          </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
-            Disarankan pakai <b>"Kontak yang pernah chat"</b> (sudah hangat, aman). Sinkron seluruh kontak WhatsApp lebih berisiko karena banyak yang belum tentu mengizinkan.
+          <RecipientField agentId={agentId} value={recipientsText} onChange={v => { setRecipientsText(v); setChecked(null); }} />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, mb: 2, display: 'block' }}>
+            Disarankan pakai <b>"Pernah chat"</b> (hangat, aman). Sinkron WA / anggota grup lebih berisiko.
           </Typography>
 
           <Stack direction="row" spacing={2} sx={{ mb: 2 }}>

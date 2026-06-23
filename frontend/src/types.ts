@@ -113,6 +113,37 @@ export interface Broadcast {
   created_at: string;
 }
 
+export interface WAGroup {
+  jid: string;
+  name: string;
+  participants: number;
+}
+
+export interface LabelInfo {
+  label_id: string;
+  name: string;
+  color: number;
+  count: number;
+}
+
+export interface ScheduledMessage {
+  id: number;
+  run_at: string;
+  message: string;
+  recipient_count: number;
+  media_type: string;
+  file_name: string;
+  status: string; // scheduled, done, cancelled, interrupted
+}
+
+export function normalizePhone(s: string): string {
+  const d = (s.match(/\d/g) || []).join('');
+  if (!d) return '';
+  if (d.startsWith('0')) return '62' + d.slice(1);
+  if (d.startsWith('8')) return '62' + d;
+  return d;
+}
+
 export interface User {
   id: number;
   name: string;

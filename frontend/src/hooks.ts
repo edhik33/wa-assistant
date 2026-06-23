@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from './services/api';
-import type { Plan, TenantRow, Usage, AdminStats, Invoice, PaymentChannel, Analytics, Contact, ChatMsg, NumberCheck, Broadcast } from './types';
+import type { Plan, TenantRow, Usage, AdminStats, Invoice, PaymentChannel, Analytics, Contact, ChatMsg, NumberCheck, Broadcast, WAGroup, LabelInfo, ScheduledMessage } from './types';
+
+type ContactList = { number: string; name: string }[];
 
 // ---- Tenant ----
 
@@ -188,7 +190,50 @@ export function useChatContacts(agentId: number) {
 
 export function useWAContacts(agentId: number) {
   return useMutation({
-    mutationFn: async () => (await api.get(`/agents/${agentId}/wa-contacts`)).data.data as { number: string; name: string }[],
+    mutationFn: async () => (await api.get(`/agents/${agentId}/wa-contacts`)).data.data as ContactList,
+  });
+}
+
+export function useGroups(agentId: number) {
+  return useMutation({ mutationFn: async () => (await api.get(`/agents/${agentId}/groups`)).data.data as WAGroup[] });
+}
+
+export function useGroupMembers(agentId: number) {
+  return useMutation({ mutationFn: async (jid: string) => (await api.get(`/agents/${agentId}/group-members`, { params: { jid } })).data.data as ContactList });
+}
+
+export function useLabels(agentId: number) {
+  return useMutation({ mutationFn: async () => (await api.get(`/agents/${agentId}/labels`)).data.data as LabelInfo[] });
+}
+
+export function useLabelContacts(agentId: number) {
+  return useMutation({ mutationFn: async (labelId: string) => (await api.get(`/agents/${agentId}/label-contacts`, { params: { label_id: labelId } })).data.data as ContactList });
+}
+
+// ---- Jadwal (kalender) ----
+
+export function useSchedules(agentId: number) {
+  return useQuery<ScheduledMessage[]>({
+    queryKey: ['schedules', agentId],
+    queryFn: async () => (await api.get(`/agents/${agentId}/schedules`)).data.data,
+    enabled: !!agentId,
+    refetchInterval: 10000,
+  });
+}
+
+export function useCreateSchedule(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (fd: FormData) => (await api.post(`/agents/${agentId}/schedule`, fd)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules', agentId] }),
+  });
+}
+
+export function useCancelSchedule(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (sid: number) => (await api.delete(`/agents/${agentId}/schedule/${sid}`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules', agentId] }),
   });
 }
 

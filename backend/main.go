@@ -21,12 +21,18 @@ func main() {
 	go services.BackfillEmbeddings()
 	services.InitWA(config.Env("DB_PATH", "./wa-assistant.db"))
 	services.SetHandlers(handlers.OnWAMessage, handlers.OnDeviceLinked)
+	services.SetLabelHandlers(handlers.OnLabelEdit, handlers.OnLabelAssoc)
 
 	// Sambungkan ulang semua agent yang sudah ter-link.
 	go handlers.StartAgents()
 
-	// Tandai broadcast yang nyangkut "running" (server mati saat broadcast berjalan) sebagai interrupted.
+	// Tandai broadcast/jadwal yang nyangkut "running" (server mati saat berjalan) sebagai interrupted.
 	handlers.CleanupStuckBroadcasts()
+	handlers.CleanupStuckSchedules()
+
+	// Scheduler pesan terjadwal + pembersihan media lama.
+	handlers.StartScheduler()
+	handlers.StartMediaCleanup(config.EnvInt("MEDIA_RETENTION_DAYS", 30))
 
 	// Cek langganan tiap jam: expire yang habis & suspend sesi WA tenant non-aktif.
 	handlers.StartSubscriptionSweep(time.Hour)
@@ -110,6 +116,13 @@ func main() {
 			auth.GET("/agents/:id/broadcasts", handlers.ListBroadcasts)
 			auth.GET("/agents/:id/chat-contacts", handlers.ChatContacts)
 			auth.GET("/agents/:id/wa-contacts", handlers.WAContacts)
+			auth.GET("/agents/:id/groups", handlers.Groups)
+			auth.GET("/agents/:id/group-members", handlers.GroupMembers)
+			auth.GET("/agents/:id/labels", handlers.Labels)
+			auth.GET("/agents/:id/label-contacts", handlers.LabelContacts)
+			auth.POST("/agents/:id/schedule", handlers.CreateSchedule)
+			auth.GET("/agents/:id/schedules", handlers.ListSchedules)
+			auth.DELETE("/agents/:id/schedule/:sid", handlers.CancelSchedule)
 		}
 	}
 

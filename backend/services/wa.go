@@ -64,6 +64,20 @@ func SetHandlers(msg MessageHandler, linked DeviceLinkedHandler) {
 	onLinked = linked
 }
 
+// Handler event label WhatsApp (Business).
+type LabelEditHandler func(agentID uint, labelID, name string, color int, deleted bool)
+type LabelAssocHandler func(agentID uint, sender, labelID string, labeled bool)
+
+var (
+	onLabelEdit  LabelEditHandler
+	onLabelAssoc LabelAssocHandler
+)
+
+func SetLabelHandlers(edit LabelEditHandler, assoc LabelAssocHandler) {
+	onLabelEdit = edit
+	onLabelAssoc = assoc
+}
+
 // WA mengembalikan instance WhatsApp untuk satu agent, membuatnya jika belum ada.
 func WA(agentID uint) *waInstance {
 	globalMu.Lock()
@@ -194,6 +208,16 @@ func (w *waInstance) handleEvent(evt interface{}) {
 		w.mu.Unlock()
 		log.Printf("WA agent %d: LOGGED OUT (reason=%v) — perlu scan QR ulang", w.agentID, v.Reason)
 
+	case *events.LabelEdit:
+		if onLabelEdit != nil && v.Action != nil {
+			onLabelEdit(w.agentID, v.LabelID, v.Action.GetName(), int(v.Action.GetColor()), v.Action.GetDeleted())
+		}
+
+	case *events.LabelAssociationChat:
+		if onLabelAssoc != nil && v.Action != nil {
+			onLabelAssoc(w.agentID, v.JID.User, v.LabelID, v.Action.GetLabeled())
+		}
+
 	case *events.Message:
 		// Lewati pesan grup & pesan yang kita kirim sendiri (cegah balas ke diri sendiri / loop).
 		if v.Info.IsGroup || v.Info.IsFromMe {
@@ -279,6 +303,64 @@ func NormalizePhone(s string) string {
 	default:
 		return d
 	}
+}
+
+// WAGroup = grup yang diikuti akun WhatsApp tertaut.
+type WAGroup struct {
+	JID          string `json:"jid"`
+	Name         string `json:"name"`
+	Participants int    `json:"participants"`
+}
+
+// GetGroups mengambil daftar grup yang diikuti.
+func (w *waInstance) GetGroups() ([]WAGroup, error) {
+	w.mu.Lock()
+	client := w.client
+	w.mu.Unlock()
+	if client == nil || !client.IsConnected() {
+		return nil, fmt.Errorf("client WA tidak terhubung")
+	}
+	groups, err := client.GetJoinedGroups(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WAGroup, 0, len(groups))
+	for _, g := range groups {
+		out = append(out, WAGroup{JID: g.JID.String(), Name: g.Name, Participants: len(g.Participants)})
+	}
+	return out, nil
+}
+
+// GetGroupMembers mengambil nomor anggota sebuah grup (untuk dijadikan penerima).
+func (w *waInstance) GetGroupMembers(jidStr string) ([]WAContact, error) {
+	w.mu.Lock()
+	client := w.client
+	w.mu.Unlock()
+	if client == nil || !client.IsConnected() {
+		return nil, fmt.Errorf("client WA tidak terhubung")
+	}
+	jid, err := types.ParseJID(jidStr)
+	if err != nil {
+		return nil, err
+	}
+	gi, err := client.GetGroupInfo(context.Background(), jid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WAContact, 0, len(gi.Participants))
+	for _, p := range gi.Participants {
+		num := ""
+		if p.PhoneNumber.User != "" {
+			num = p.PhoneNumber.User
+		} else if p.JID.Server == types.DefaultUserServer {
+			num = p.JID.User
+		}
+		if num == "" {
+			continue
+		}
+		out = append(out, WAContact{Number: num, Name: p.DisplayName})
+	}
+	return out, nil
 }
 
 // WAContact = satu kontak dari buku alamat akun WhatsApp yang tertaut.
