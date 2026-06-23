@@ -217,11 +217,12 @@ export default function Dashboard() {
   const currentAgent = agents.find(a => a.id === agentId);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, minHeight: '100vh', bgcolor: 'background.default' }}>
+    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, minHeight: '100vh', height: { md: '100vh' }, overflow: { md: 'hidden' }, bgcolor: 'background.default' }}>
       <Paper
         component="aside"
         sx={{
           width: { xs: '100%', md: 224 },
+          flexShrink: 0,
           borderRadius: 0,
           p: { xs: 1, md: 1.25 },
           display: 'flex',
@@ -230,6 +231,8 @@ export default function Dashboard() {
           position: { xs: 'sticky', md: 'static' },
           top: 0,
           zIndex: 10,
+          height: { md: '100vh' },
+          overflowY: { md: 'auto' },
           borderRight: { md: '1px solid' },
           borderBottom: { xs: '1px solid', md: 0 },
           borderColor: 'divider',
@@ -306,7 +309,7 @@ export default function Dashboard() {
         </Button>
       </Paper>
 
-      <Box component="main" sx={{ flex: 1, p: { xs: 1.25, md: 2 }, overflow: 'auto', width: '100%', minWidth: 0 }}>
+      <Box component="main" sx={{ flex: 1, p: { xs: 1.25, md: 2 }, overflowY: 'auto', height: { md: '100vh' }, minHeight: 0, width: '100%', minWidth: 0 }}>
         {tab === 0 && (
           <Box>
             <PageHeader title={<>Dashboard {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>} />
