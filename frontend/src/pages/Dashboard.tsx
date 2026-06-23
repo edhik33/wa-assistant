@@ -135,6 +135,7 @@ export default function Dashboard() {
   const QR_TTL = 20; // perkiraan masa berlaku satu QR (detik); WhatsApp memutar otomatis
   const [qrSeconds, setQrSeconds] = useState(QR_TTL);
   const [riskAck, setRiskAck] = useState(true); // disclaimer risiko banned, default tercentang
+  const [qrError, setQrError] = useState('');
 
   // ---- Pilih CS pertama secara otomatis jika belum ada ----
 
@@ -182,7 +183,11 @@ export default function Dashboard() {
 
   // ---- Handlers ----
 
-  const connect = () => { setQrModalOpen(true); connectMut.mutateAsync().catch(() => {}); };
+  const connect = () => {
+    setQrError('');
+    setQrModalOpen(true);
+    connectMut.mutateAsync().catch((err: any) => setQrError(err?.response?.data?.error || 'Gagal memulai koneksi. Coba lagi.'));
+  };
 
   const disconnectWA = async () => {
     if (!await swalConfirm('Putuskan WhatsApp?', 'Perlu scan QR lagi untuk menyambung kembali.')) return;
@@ -706,6 +711,11 @@ export default function Dashboard() {
                 }
               />
             </>
+          ) : qrError ? (
+            <Box sx={{ py: 4, px: 2 }}>
+              <Typography variant="body2" color="error" sx={{ fontWeight: 600, mb: 0.5 }}>Gagal menyiapkan QR</Typography>
+              <Typography variant="caption" color="text.secondary">{qrError}</Typography>
+            </Box>
           ) : (
             <Box sx={{ py: 4 }}>
               <CircularProgress />

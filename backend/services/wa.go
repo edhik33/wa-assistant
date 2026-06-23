@@ -159,10 +159,17 @@ func (w *waInstance) Connect(_ string) (string, error) {
 	defer w.mu.Unlock()
 
 	if w.client != nil {
-		if !w.client.IsConnected() {
-			_ = w.client.Connect()
+		// Masih ter-pair → cukup sambung ulang tanpa QR.
+		if w.client.Store.ID != nil {
+			if !w.client.IsConnected() {
+				_ = w.client.Connect()
+			}
+			return w.status, nil
 		}
-		return w.status, nil
+		// Client lama tapi sesi sudah tidak ter-pair (mis. setelah logout/dicabut) →
+		// buang supaya jalur pembuatan QR di bawah berjalan.
+		w.client.Disconnect()
+		w.client = nil
 	}
 
 	ctx := context.Background()
@@ -245,11 +252,19 @@ func (w *waInstance) handleEvent(evt interface{}) {
 
 	case *events.LoggedOut:
 		// Sesi dicabut/di-logout dari HP atau di-banned — TIDAK bisa auto-recover, perlu scan ulang.
+		// Hapus sesi basi & buang client supaya Connect berikutnya bisa membuat QR baru.
 		w.mu.Lock()
+		if w.client != nil {
+			if w.client.Store != nil && w.client.Store.ID != nil {
+				_ = w.client.Store.Delete(context.Background())
+			}
+			w.client.Disconnect()
+			w.client = nil
+		}
 		w.status = "disconnected"
 		w.qrCode = ""
 		w.mu.Unlock()
-		log.Printf("WA agent %d: LOGGED OUT (reason=%v) — perlu scan QR ulang", w.agentID, v.Reason)
+		log.Printf("WA agent %d: LOGGED OUT (reason=%v) — sesi dibersihkan, perlu scan QR ulang", w.agentID, v.Reason)
 
 	case *events.LabelEdit:
 		if onLabelEdit != nil && v.Action != nil {
