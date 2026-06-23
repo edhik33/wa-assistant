@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from './services/api';
-import type { Plan, TenantRow, Usage, AdminStats, Invoice, PaymentChannel, Analytics, Contact, ChatMsg, NumberCheck, Broadcast, BroadcastRecipient, WAGroup, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff } from './types';
+import type { Plan, TenantRow, Usage, AdminStats, Invoice, PaymentChannel, Analytics, Contact, ChatMsg, CheckResult, Broadcast, BroadcastRecipient, WAGroup, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff } from './types';
 
 type ContactList = { number: string; name: string }[];
 
@@ -169,7 +169,7 @@ export function useResumeBot(agentId: number) {
 export function useCheckNumbers(agentId: number) {
   return useMutation({
     mutationFn: async (numbers: string[]) =>
-      (await api.post(`/agents/${agentId}/check-numbers`, { numbers })).data.data as NumberCheck[],
+      (await api.post(`/agents/${agentId}/check-numbers`, { numbers })).data as CheckResult,
   });
 }
 

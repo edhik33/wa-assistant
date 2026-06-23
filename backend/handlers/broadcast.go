@@ -40,7 +40,32 @@ func CheckNumbers(c *gin.Context) {
 		c.JSON(502, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(200, gin.H{"data": res})
+	// Tandai kontak "hangat" = pernah chat dengan agent ini (basis penilaian risiko).
+	nums := make([]string, 0, len(res))
+	for _, r := range res {
+		nums = append(nums, r.Number)
+	}
+	warmSet := map[string]bool{}
+	if len(nums) > 0 {
+		var warm []string
+		database.DB.Model(&models.ChatHistory{}).
+			Where("agent_id = ? AND sender IN ?", id, nums).
+			Distinct().Pluck("sender", &warm)
+		for _, w := range warm {
+			warmSet[w] = true
+		}
+	}
+	data := make([]gin.H, 0, len(res))
+	for _, r := range res {
+		data = append(data, gin.H{"input": r.Input, "number": r.Number, "registered": r.Registered, "warm": warmSet[r.Number]})
+	}
+	c.JSON(200, gin.H{
+		"data": data,
+		"summary": gin.H{
+			"sent_today": dailySentCount(id),
+			"daily_cap":  config.EnvInt("BROADCAST_DAILY_CAP", 200),
+		},
+	})
 }
 
 // CreateBroadcast membuat kampanye broadcast (multipart: bisa dengan lampiran) & menjalankannya di background.

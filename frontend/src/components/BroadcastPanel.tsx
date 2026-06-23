@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import {
-  Box, Typography, Card, CardContent, TextField, Button, Stack, Alert, Chip,
-  Table, TableBody, TableCell, TableHead, TableRow, LinearProgress, CircularProgress, Divider,
-  Dialog, DialogTitle, DialogContent, DialogActions,
+  Box, Typography, Card, CardContent, TextField, Button, Stack, Alert, AlertTitle, Chip,
+  Table, TableBody, TableCell, TableHead, TableRow, LinearProgress, CircularProgress,
+  Dialog, DialogTitle, DialogContent, DialogActions, Checkbox, FormControlLabel,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
@@ -13,7 +13,7 @@ import RecipientField from './RecipientField';
 import WhatsAppEditor from './WhatsAppEditor';
 import TemplatePicker from './TemplatePicker';
 import PageHeader from './PageHeader';
-import type { NumberCheck } from '../types';
+import type { NumberCheck, CheckResult } from '../types';
 
 function normalizePhone(s: string): string {
   const d = (s.match(/\d/g) || []).join('');
@@ -42,6 +42,8 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [checked, setChecked] = useState<NumberCheck[] | null>(null);
+  const [summary, setSummary] = useState<CheckResult['summary'] | null>(null);
+  const [ackRisk, setAckRisk] = useState(false);
   const [page, setPage] = useState(1);
 
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -74,8 +76,22 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
     setErrors(e);
     if (Object.keys(e).length > 0) return;
     setChecked(null);
+    setSummary(null);
+    setAckRisk(false);
     setModalOpen(true);
-    checkNumbers.mutateAsync(parsed.map(p => p.number)).then(setChecked).catch(() => setChecked([]));
+    checkNumbers.mutateAsync(parsed.map(p => p.number))
+      .then(res => { setChecked(res.data); setSummary(res.summary); })
+      .catch(() => { setChecked([]); setSummary(null); });
+  };
+
+  // Buang nomor tak terdaftar dari daftar & hasil cek (user yang putuskan, bukan otomatis).
+  const dropUnregistered = () => {
+    if (!checked) return;
+    const regNums = new Set(checked.filter(c => c.registered).map(c => c.number));
+    const kept = recipientsText.split('\n').map(l => l.trim()).filter(Boolean)
+      .filter(line => regNums.has(normalizePhone(line.split(',')[0])));
+    setRecipientsText(kept.join('\n'));
+    setChecked(checked.filter(c => c.registered));
   };
 
   const doSend = async () => {
@@ -88,6 +104,45 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   };
 
   const checking = checkNumbers.isPending || checked === null;
+
+  // ---- Penilaian kesiapan kirim (gerbang anti-banned) ----
+  const total = checked?.length || 0;
+  const unreg = total - registered.length;
+  const warmCount = registered.filter(c => c.warm).length;
+  const coldCount = registered.length - warmCount;
+  const batch = registered.length;
+  const cap = summary?.daily_cap ?? 200;
+  const remaining = Math.max(0, cap - (summary?.sent_today ?? 0));
+  const coldRatio = batch ? coldCount / batch : 0;
+  const unregRatio = total ? unreg / total : 0;
+  const pct = (r: number) => `${Math.round(r * 100)}%`;
+
+  type Finding = { sev: 'red' | 'yellow'; msg: string; tip?: string };
+  const findings: Finding[] = [];
+  if (unregRatio > 0.3) findings.push({ sev: 'red', msg: `${unreg} nomor tidak terdaftar WhatsApp (${pct(unregRatio)})`, tip: 'Buang nomor tak terdaftar dulu — nomor mati menaikkan sinyal spam.' });
+  else if (unreg > 0) findings.push({ sev: 'yellow', msg: `${unreg} nomor tak terdaftar akan dilewati`, tip: 'Sebaiknya dibuang biar daftar bersih.' });
+  if (coldRatio > 0.7 && batch > 100) findings.push({ sev: 'red', msg: `${coldCount} nomor (${pct(coldRatio)}) belum pernah chat denganmu`, tip: 'Utamakan kontak yang pernah chat, atau pecah jadi beberapa hari.' });
+  else if (coldRatio > 0.4) findings.push({ sev: 'yellow', msg: `${coldCount} nomor (${pct(coldRatio)}) belum pernah chat`, tip: 'Lebih aman kirim ke yang pernah chat dulu.' });
+  if (batch > remaining) findings.push({ sev: 'red', msg: `Batch ${batch} melebihi sisa jatah hari ini (${remaining})`, tip: `Kurangi jadi ≤ ${remaining} atau lanjut besok.` });
+  else if (remaining > 0 && batch > remaining * 0.5) findings.push({ sev: 'yellow', msg: `Batch ini memakai sebagian besar jatah harian (sisa ${remaining})` });
+
+  const level: 'green' | 'yellow' | 'red' =
+    findings.some(f => f.sev === 'red') ? 'red' : findings.some(f => f.sev === 'yellow') ? 'yellow' : 'green';
+
+  // ---- Lint pesan ----
+  const lint: string[] = [];
+  if (batch > 10 && !/\{nama\}/.test(message)) lint.push('Belum pakai {nama} — semua pesan identik, lebih mudah terdeteksi spam. Tambahkan {nama}.');
+  if (/(https?:\/\/|www\.)/i.test(message)) lint.push('Pesan mengandung link — bisa menaikkan risiko. Pastikan domain tepercaya & relevan.');
+  const letters = message.replace(/[^a-zA-Z]/g, '');
+  if (letters.length >= 10 && letters === letters.toUpperCase()) lint.push('Pesan HURUF BESAR semua — terkesan berteriak/spam.');
+  if (message.length > 700) lint.push('Pesan sangat panjang (>700 karakter) — pertimbangkan dipersingkat.');
+
+  const VERDICT = {
+    green: { sev: 'success' as const, title: '🟢 Aman dikirim' },
+    yellow: { sev: 'warning' as const, title: '🟡 Hati-hati' },
+    red: { sev: 'error' as const, title: '🔴 Tahan dulu' },
+  }[level];
+  const sendBlocked = level === 'red' && !ackRisk;
 
   return (
     <Box>
@@ -250,9 +305,9 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
         </DialogActions>
       </Dialog>
 
-      {/* Modal: cek nomor lalu kirim */}
+      {/* Modal: gerbang kesiapan kirim */}
       <Dialog open={modalOpen} onClose={() => !createBroadcast.isPending && setModalOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Cek Nomor sebelum Kirim</DialogTitle>
+        <DialogTitle>Kesiapan Kirim</DialogTitle>
         <DialogContent dividers>
           {checking ? (
             <Box sx={{ py: 2, textAlign: 'center' }}>
@@ -261,27 +316,61 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
             </Box>
           ) : (
             <>
-              <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-                <Chip icon={<CheckCircleIcon />} label={`${registered.length} terdaftar`} color="success" />
-                <Chip label={`${(checked?.length || 0) - registered.length} tidak terdaftar`} />
+              <Alert severity={VERDICT.sev} sx={{ mb: 1.5 }}>
+                <AlertTitle sx={{ fontWeight: 700, mb: findings.length ? 0.5 : 0 }}>{VERDICT.title}</AlertTitle>
+                {findings.length === 0 ? (
+                  <Typography variant="body2">Daftar terlihat sehat. Tetap kirim dengan jeda & secukupnya ya.</Typography>
+                ) : (
+                  <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                    {findings.map((f, i) => (
+                      <li key={i}>
+                        <Typography variant="body2">{f.msg}{f.tip && <Box component="span" sx={{ display: 'block', opacity: 0.85 }}>↳ {f.tip}</Box>}</Typography>
+                      </li>
+                    ))}
+                  </Box>
+                )}
+              </Alert>
+
+              <Stack direction="row" spacing={0.75} sx={{ mb: 1.25, flexWrap: 'wrap', gap: 0.75 }}>
+                <Chip size="small" icon={<CheckCircleIcon />} label={`${registered.length} terdaftar`} color="success" />
+                {unreg > 0 && <Chip size="small" label={`${unreg} tak terdaftar`} color="default" variant="outlined" />}
+                <Chip size="small" label={`${warmCount} hangat`} color="success" variant="outlined" />
+                <Chip size="small" label={`${coldCount} dingin`} color={coldCount ? 'warning' : 'default'} variant="outlined" />
+                <Chip size="small" label={`Sisa jatah hari ini ${remaining}/${cap}`} variant="outlined" />
               </Stack>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Hanya nomor terdaftar yang akan dikirimi. {file && <>Dengan lampiran <b>{file.name}</b>. </>}Jeda {minDelay}–{maxDelay} detik antar pesan.
+
+              {unreg > 0 && (
+                <Button size="small" variant="outlined" onClick={dropUnregistered} sx={{ mb: 1.25 }}>
+                  Buang {unreg} nomor tak terdaftar
+                </Button>
+              )}
+
+              {lint.length > 0 && (
+                <Alert severity="info" icon={false} sx={{ mb: 1.25 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5 }}>Saran pesan</Typography>
+                  <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                    {lint.map((l, i) => <li key={i}><Typography variant="caption">{l}</Typography></li>)}
+                  </Box>
+                </Alert>
+              )}
+
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Hanya nomor terdaftar yang dikirimi. {file && <>Dengan lampiran <b>{file.name}</b>. </>}Jeda {minDelay}–{maxDelay} detik antar pesan.
+                Penilaian ini menurunkan risiko, bukan jaminan — jalur ini tetap tidak resmi.
               </Typography>
-              <Divider sx={{ mb: 1 }} />
-              <Box sx={{ maxHeight: 220, overflowY: 'auto' }}>
-                {checked?.map((c, i) => (
-                  <Chip key={i} size="small" label={c.number} color={c.registered ? 'success' : 'default'}
-                    variant={c.registered ? 'filled' : 'outlined'} sx={{ m: 0.25 }} />
-                ))}
-              </Box>
+
+              {level === 'red' && (
+                <FormControlLabel
+                  control={<Checkbox checked={ackRisk} onChange={e => setAckRisk(e.target.checked)} color="error" />}
+                  label={<Typography variant="body2">Saya paham risikonya dan tetap mau mengirim</Typography>} />
+              )}
             </>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setModalOpen(false)} disabled={createBroadcast.isPending}>Batal</Button>
-          <Button variant="contained" onClick={doSend}
-            disabled={checking || registered.length === 0 || createBroadcast.isPending}
+          <Button variant="contained" color={level === 'red' ? 'error' : 'primary'} onClick={doSend}
+            disabled={checking || registered.length === 0 || sendBlocked || createBroadcast.isPending}
             startIcon={createBroadcast.isPending ? <CircularProgress size={16} /> : <SendIcon />}>
             Kirim ke {registered.length} nomor
           </Button>

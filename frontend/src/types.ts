@@ -101,6 +101,12 @@ export interface NumberCheck {
   input: string;
   number: string;
   registered: boolean;
+  warm?: boolean; // pernah chat dengan agent ini
+}
+
+export interface CheckResult {
+  data: NumberCheck[];
+  summary: { sent_today: number; daily_cap: number };
 }
 
 export interface Broadcast {
