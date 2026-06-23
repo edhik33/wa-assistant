@@ -108,6 +108,8 @@ func main() {
 			auth.POST("/agents/:id/check-numbers", handlers.CheckNumbers)
 			auth.POST("/agents/:id/broadcast", handlers.CreateBroadcast)
 			auth.GET("/agents/:id/broadcasts", handlers.ListBroadcasts)
+			auth.GET("/agents/:id/chat-contacts", handlers.ChatContacts)
+			auth.GET("/agents/:id/wa-contacts", handlers.WAContacts)
 		}
 	}
 

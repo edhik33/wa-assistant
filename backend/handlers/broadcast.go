@@ -234,15 +234,78 @@ func personalize(tmpl, name string) string {
 	return strings.ReplaceAll(tmpl, "{nama}", n)
 }
 
-// ListBroadcasts mengembalikan riwayat broadcast agent (dengan progres terkini).
+// ListBroadcasts mengembalikan riwayat broadcast agent (dipaginate).
 func ListBroadcasts(c *gin.Context) {
 	id, ok := resolveAgent(c)
 	if !ok {
 		return
 	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	const limit = 10
+	var total int64
+	database.DB.Model(&models.Broadcast{}).Where("agent_id = ?", id).Count(&total)
 	var bs []models.Broadcast
-	database.DB.Where("agent_id = ?", id).Order("created_at desc").Limit(50).Find(&bs)
-	c.JSON(200, gin.H{"data": bs})
+	database.DB.Where("agent_id = ?", id).Order("created_at desc").
+		Offset((page - 1) * limit).Limit(limit).Find(&bs)
+	c.JSON(200, gin.H{"data": bs, "total": total, "page": page, "limit": limit})
+}
+
+// optedOutSet mengembalikan himpunan nomor yang sudah opt-out untuk agent ini.
+func optedOutSet(agentID uint) map[string]bool {
+	var nums []string
+	database.DB.Model(&models.OptOut{}).Where("agent_id = ?", agentID).Pluck("sender", &nums)
+	set := make(map[string]bool, len(nums))
+	for _, n := range nums {
+		set[n] = true
+	}
+	return set
+}
+
+// ChatContacts = kontak yang PERNAH chat agent ini (sumber broadcast paling aman). Tanpa yang opt-out.
+func ChatContacts(c *gin.Context) {
+	id, ok := resolveAgent(c)
+	if !ok {
+		return
+	}
+	var senders []string
+	database.DB.Model(&models.ChatHistory{}).Where("agent_id = ? AND sender <> ''", id).
+		Distinct().Pluck("sender", &senders)
+	out := optedOutSet(id)
+	res := make([]gin.H, 0, len(senders))
+	for _, s := range senders {
+		if !out[s] {
+			res = append(res, gin.H{"number": s, "name": ""})
+		}
+	}
+	c.JSON(200, gin.H{"data": res})
+}
+
+// WAContacts = buku alamat akun WhatsApp yang tertaut (lebih berisiko, banyak yang belum tentu opt-in).
+func WAContacts(c *gin.Context) {
+	id, ok := resolveAgent(c)
+	if !ok {
+		return
+	}
+	if services.WA(id).GetStatus() != "connected" {
+		c.JSON(400, gin.H{"error": "WhatsApp belum tersambung"})
+		return
+	}
+	contacts, err := services.WA(id).GetContacts()
+	if err != nil {
+		c.JSON(502, gin.H{"error": err.Error()})
+		return
+	}
+	out := optedOutSet(id)
+	res := make([]services.WAContact, 0, len(contacts))
+	for _, ct := range contacts {
+		if !out[ct.Number] {
+			res = append(res, ct)
+		}
+	}
+	c.JSON(200, gin.H{"data": res})
 }
 
 // isOptOutKeyword mendeteksi permintaan berhenti (STOP/BERHENTI).

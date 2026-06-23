@@ -171,12 +171,24 @@ export function useCheckNumbers(agentId: number) {
   });
 }
 
-export function useBroadcasts(agentId: number) {
-  return useQuery<Broadcast[]>({
-    queryKey: ['broadcasts', agentId],
-    queryFn: async () => (await api.get(`/agents/${agentId}/broadcasts`)).data.data,
+export function useBroadcasts(agentId: number, page: number) {
+  return useQuery<{ data: Broadcast[]; total: number; page: number; limit: number }>({
+    queryKey: ['broadcasts', agentId, page],
+    queryFn: async () => (await api.get(`/agents/${agentId}/broadcasts`, { params: { page } })).data,
     enabled: !!agentId,
     refetchInterval: 4000,
+  });
+}
+
+export function useChatContacts(agentId: number) {
+  return useMutation({
+    mutationFn: async () => (await api.get(`/agents/${agentId}/chat-contacts`)).data.data as { number: string; name: string }[],
+  });
+}
+
+export function useWAContacts(agentId: number) {
+  return useMutation({
+    mutationFn: async () => (await api.get(`/agents/${agentId}/wa-contacts`)).data.data as { number: string; name: string }[],
   });
 }
 

@@ -281,6 +281,40 @@ func NormalizePhone(s string) string {
 	}
 }
 
+// WAContact = satu kontak dari buku alamat akun WhatsApp yang tertaut.
+type WAContact struct {
+	Number string `json:"number"`
+	Name   string `json:"name"`
+}
+
+// GetContacts mengambil daftar kontak (buku alamat) dari akun WhatsApp yang tertaut.
+func (w *waInstance) GetContacts() ([]WAContact, error) {
+	w.mu.Lock()
+	client := w.client
+	w.mu.Unlock()
+	if client == nil || !client.IsConnected() {
+		return nil, fmt.Errorf("client WA tidak terhubung")
+	}
+	all, err := client.Store.Contacts.GetAllContacts(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WAContact, 0, len(all))
+	for jid, info := range all {
+		if jid.Server != types.DefaultUserServer || jid.User == "" {
+			continue // hanya nomor telepon (bukan LID/grup)
+		}
+		name := info.FullName
+		for _, alt := range []string{info.FirstName, info.PushName, info.BusinessName} {
+			if name == "" {
+				name = alt
+			}
+		}
+		out = append(out, WAContact{Number: jid.User, Name: name})
+	}
+	return out, nil
+}
+
 // NumberCheck = hasil pengecekan satu nomor di WhatsApp.
 type NumberCheck struct {
 	Input      string `json:"input"`
