@@ -11,6 +11,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useCheckNumbers, useCreateBroadcast, useBroadcasts, useBroadcastDetail } from '../hooks';
 import RecipientField from './RecipientField';
 import WhatsAppEditor from './WhatsAppEditor';
+import TemplatePicker from './TemplatePicker';
 import PageHeader from './PageHeader';
 import type { NumberCheck } from '../types';
 
@@ -99,7 +100,10 @@ export default function BroadcastPanel({ agentId }: { agentId: number }) {
 
       <Card sx={{ mb: 2 }}>
         <CardContent>
-          <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Pesan</Typography>
+          <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+            <Typography variant="subtitle2">Pesan</Typography>
+            <TemplatePicker agentId={agentId} onPick={b => { setMessage(m => m ? m + '\n' + b : b); if (errors.message) setErrors(p => ({...p, message: ''})); }} />
+          </Stack>
           <Box sx={{ mb: 1.25 }}>
             <WhatsAppEditor value={message} onChange={v => { setMessage(v); if (errors.message) setErrors(p => ({...p, message: ''})); }}
               placeholder="Halo {nama}, ada promo spesial untuk kamu hari ini…" error={!!errors.message} helperText={errors.message} />

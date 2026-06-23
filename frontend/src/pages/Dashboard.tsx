@@ -15,6 +15,7 @@ import KnowledgeIcon from '@mui/icons-material/MenuBookOutlined';
 import CampaignIcon from '@mui/icons-material/CampaignOutlined';
 import CalendarIcon from '@mui/icons-material/CalendarMonthOutlined';
 import RuleIcon from '@mui/icons-material/RuleOutlined';
+import TemplateIcon from '@mui/icons-material/TextSnippetOutlined';
 import CreditCardIcon from '@mui/icons-material/CreditCardOutlined';
 import { QRCodeSVG } from 'qrcode.react';
 import logo from '../assets/logo-chatloop-1.png';
@@ -29,6 +30,7 @@ import TestChatPanel from '../components/TestChatPanel';
 import BroadcastPanel from '../components/BroadcastPanel';
 import CalendarPanel from '../components/CalendarPanel';
 import AutoReplyPanel from '../components/AutoReplyPanel';
+import TemplatePanel from '../components/TemplatePanel';
 import PageHeader from '../components/PageHeader';
 import {
   useAgents, useAgentStatuses, useAgentStatus, useAgentKnowledge,
@@ -52,6 +54,7 @@ const NAV_ITEMS = [
   { label: 'Broadcast', icon: <CampaignIcon fontSize="small" /> },
   { label: 'Kalender', icon: <CalendarIcon fontSize="small" /> },
   { label: 'Auto-Reply', icon: <RuleIcon fontSize="small" /> },
+  { label: 'Template', icon: <TemplateIcon fontSize="small" /> },
   { label: 'Settings', icon: <SettingsIcon fontSize="small" /> },
   { label: 'Langganan', icon: <CreditCardIcon fontSize="small" /> },
 ];
@@ -487,7 +490,7 @@ export default function Dashboard() {
           </Box>
         )}
 
-        {tab === 7 && (
+        {tab === 8 && (
           <Box>
             <PageHeader title={<><SettingsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />Pengaturan {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>} />
             <Card sx={{ mb: 1.5 }}>
@@ -579,12 +582,13 @@ export default function Dashboard() {
           </Box>
         )}
 
-        {tab === 8 && <BillingPanel />}
+        {tab === 9 && <BillingPanel />}
         {tab === 1 && <InboxPanel agentId={agentId} />}
         {tab === 2 && <TestChatPanel agentId={agentId} />}
         {tab === 4 && <BroadcastPanel agentId={agentId} />}
         {tab === 5 && <CalendarPanel agentId={agentId} />}
         {tab === 6 && <AutoReplyPanel agentId={agentId} />}
+        {tab === 7 && <TemplatePanel agentId={agentId} />}
       </Box>
     </Box>
   );

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from './services/api';
-import type { Plan, TenantRow, Usage, AdminStats, Invoice, PaymentChannel, Analytics, Contact, ChatMsg, NumberCheck, Broadcast, BroadcastRecipient, WAGroup, LabelInfo, ScheduledMessage, AutoReply, Agent, KnowledgeItem, Handoff } from './types';
+import type { Plan, TenantRow, Usage, AdminStats, Invoice, PaymentChannel, Analytics, Contact, ChatMsg, NumberCheck, Broadcast, BroadcastRecipient, WAGroup, LabelInfo, ScheduledMessage, AutoReply, Template, Agent, KnowledgeItem, Handoff } from './types';
 
 type ContactList = { number: string; name: string }[];
 
@@ -236,6 +236,35 @@ export function useDeleteAutoReply(agentId: number) {
   return useMutation({
     mutationFn: async (rid: number) => (await api.delete(`/agents/${agentId}/auto-replies/${rid}`)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['autoreplies', agentId] }),
+  });
+}
+
+// ---- Template pesan (quick reply) ----
+
+export function useTemplates(agentId: number) {
+  return useQuery<Template[]>({
+    queryKey: ['templates', agentId],
+    queryFn: async () => (await api.get(`/agents/${agentId}/templates`)).data.data,
+    enabled: !!agentId,
+  });
+}
+
+export function useSaveTemplate(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (t: Partial<Template>) =>
+      t.id
+        ? (await api.put(`/agents/${agentId}/templates/${t.id}`, t)).data
+        : (await api.post(`/agents/${agentId}/templates`, t)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['templates', agentId] }),
+  });
+}
+
+export function useDeleteTemplate(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (tid: number) => (await api.delete(`/agents/${agentId}/templates/${tid}`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['templates', agentId] }),
   });
 }
 

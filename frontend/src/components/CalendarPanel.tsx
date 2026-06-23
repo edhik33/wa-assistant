@@ -14,6 +14,7 @@ import VisibilityIcon from '@mui/icons-material/VisibilityOutlined';
 import { useSchedules, useCreateSchedule, useCancelSchedule, useBroadcastDetail } from '../hooks';
 import RecipientField from './RecipientField';
 import WhatsAppEditor from './WhatsAppEditor';
+import TemplatePicker from './TemplatePicker';
 import PageHeader from './PageHeader';
 import { swalConfirm } from '../services/swal';
 import type { ScheduledMessage } from '../types';
@@ -274,7 +275,10 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
           <TextField type="time" label="Jam" size="small" value={time} onChange={e => setTime(e.target.value)}
             slotProps={{ inputLabel: { shrink: true } }} sx={{ mb: 1.5 }} />
           <Box sx={{ mb: 1.25 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>Pesan</Typography>
+            <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+              <Typography variant="caption" color="text.secondary">Pesan</Typography>
+              <TemplatePicker agentId={agentId} onPick={b => { setMessage(m => m ? m + '\n' + b : b); if (errors.message) setErrors(p => ({...p, message: ''})); }} />
+            </Stack>
             <WhatsAppEditor value={message} onChange={v => { setMessage(v); if (errors.message) setErrors(p => ({...p, message: ''})); }}
               placeholder="Halo {nama}, ..." rows={3} error={!!errors.message} helperText={errors.message} />
           </Box>

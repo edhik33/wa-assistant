@@ -9,6 +9,7 @@ import AttachFileIcon from '@mui/icons-material/AttachFile';
 import CloseIcon from '@mui/icons-material/Close';
 import { useContacts, useConversation, useSendMessage, useSendMedia, useResumeBot } from '../hooks';
 import PageHeader from './PageHeader';
+import TemplatePicker from './TemplatePicker';
 import type { ChatMsg } from '../types';
 
 function MediaView({ agentId, m, token }: { agentId: number; m: ChatMsg; token: string }) {
@@ -138,6 +139,8 @@ export default function InboxPanel({ agentId }: { agentId: number }) {
               <Stack direction="row" spacing={1} sx={{ p: 1.25, alignItems: 'center' }}>
                 <input ref={fileInput} type="file" hidden onChange={e => setFile(e.target.files?.[0] || null)} />
                 <IconButton onClick={() => fileInput.current?.click()}><AttachFileIcon /></IconButton>
+                <TemplatePicker agentId={agentId} variant="text"
+                  onPick={b => { const filled = b.replace(/\{nama\}/g, selectedName || 'kak'); setText(t => t ? t + ' ' + filled : filled); }} />
                 <TextField fullWidth size="small" placeholder={file ? 'Caption (opsional)…' : 'Balas pelanggan…'} value={text}
                   onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} />
                 <IconButton color="primary" onClick={send} disabled={busy}>

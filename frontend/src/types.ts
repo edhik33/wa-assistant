@@ -134,6 +134,13 @@ export interface AutoReply {
   sort_order: number;
 }
 
+export interface Template {
+  id: number;
+  title: string;
+  body: string;
+  sort_order: number;
+}
+
 export interface WAGroup {
   jid: string;
   name: string;
