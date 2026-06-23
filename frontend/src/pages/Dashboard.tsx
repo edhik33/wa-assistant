@@ -2,7 +2,7 @@ import { useState, useEffect, Fragment } from 'react';
 import {
   Box, Card, CardContent, Typography, Button, Chip, CircularProgress, TextField,
   Stack, IconButton, Paper, Grid, Select, MenuItem, FormControl, InputLabel, Divider,
-  Switch, FormControlLabel,
+  Switch, FormControlLabel, Dialog, DialogTitle, DialogContent, DialogActions, LinearProgress,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AddIcon from '@mui/icons-material/Add';
@@ -25,6 +25,7 @@ import { swalConfirm, swalPrompt, swalAlert, swalToast } from '../services/swal'
 import SettingsIcon from '@mui/icons-material/Settings';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import SmartToyIcon from '@mui/icons-material/SmartToyOutlined';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import UsageCard from '../components/UsageCard';
 import BillingPanel from '../components/BillingPanel';
 import InboxPanel from '../components/InboxPanel';
@@ -129,6 +130,11 @@ export default function Dashboard() {
   const deleteKnowledgeMut = useDeleteKnowledge(agentId);
   const generateKnowledgeMut = useGenerateKnowledge(agentId);
 
+  // ---- QR modal (sambung WhatsApp) ----
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const QR_TTL = 20; // perkiraan masa berlaku satu QR (detik); WhatsApp memutar otomatis
+  const [qrSeconds, setQrSeconds] = useState(QR_TTL);
+
   // ---- Pilih CS pertama secara otomatis jika belum ada ----
 
   useEffect(() => {
@@ -157,9 +163,25 @@ export default function Dashboard() {
   useEffect(() => { localStorage.setItem('wai_tab', tab); }, [tab]);
   useEffect(() => { if (agentId) localStorage.setItem('wai_agent', String(agentId)); }, [agentId]);
 
+  // ---- QR: auto-tutup saat tersambung, dan hitung mundur masa berlaku QR ----
+  useEffect(() => {
+    if (qrModalOpen && status === 'connected') {
+      const t = setTimeout(() => setQrModalOpen(false), 1400); // tampilkan sukses sejenak lalu tutup
+      return () => clearTimeout(t);
+    }
+  }, [qrModalOpen, status]);
+
+  useEffect(() => { setQrSeconds(QR_TTL); }, [qr]); // reset saat QR baru muncul (WhatsApp memutar otomatis)
+
+  useEffect(() => {
+    if (!qrModalOpen || !qr) return;
+    const t = setInterval(() => setQrSeconds(s => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [qrModalOpen, qr]);
+
   // ---- Handlers ----
 
-  const connect = () => connectMut.mutateAsync();
+  const connect = () => { setQrModalOpen(true); connectMut.mutateAsync().catch(() => {}); };
 
   const disconnectWA = async () => {
     if (!await swalConfirm('Putuskan WhatsApp?', 'Perlu scan QR lagi untuk menyambung kembali.')) return;
@@ -193,9 +215,17 @@ export default function Dashboard() {
   const createAgent = async () => {
     const name = await swalPrompt('Nama CS baru', 'mis. Toko HP');
     if (!name) return;
-    const r = await createAgentMut.mutateAsync({ name, tone: 'ramah' });
-    setAgentId(r.data.id);
-    setTab('dashboard');
+    try {
+      const r = await createAgentMut.mutateAsync({ name, tone: 'ramah' });
+      setAgentId(r.data.id);
+      setTab('dashboard');
+    } catch (err: any) {
+      if (err?.response?.status === 403) {
+        if (await swalConfirm('Jumlah CS sudah mencapai batas paketmu.', 'Mau lihat pilihan paket untuk menambah CS?')) setTab('langganan');
+      } else {
+        await swalAlert(err?.response?.data?.error || 'Gagal menambah CS.', 'error');
+      }
+    }
   };
 
   const deleteAgent = async () => {
@@ -423,17 +453,6 @@ export default function Dashboard() {
                 </Grid>
               </CardContent>
             </Card>
-            {qr && (
-              <Card sx={{ mb: 1.5, bgcolor: '#fff', textAlign: 'center' }}>
-                <CardContent>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>Scan QR Code di WhatsApp</Typography>
-                  <QRCodeSVG value={qr} size={168} level="L" includeMargin />
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    Buka WhatsApp → Linked Devices → Scan
-                  </Typography>
-                </CardContent>
-              </Card>
-            )}
           </Box>
         )}
 
@@ -635,6 +654,52 @@ export default function Dashboard() {
             onOpenChat={(number) => { setSeed({ kind: 'inbox', value: number, n: Date.now() }); setTab('inbox'); }} />
         )}
       </Box>
+
+      {/* Modal sambung WhatsApp via QR */}
+      <Dialog open={qrModalOpen} onClose={() => setQrModalOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ textAlign: 'center', pb: 0.5 }}>
+          {status === 'connected' ? 'WhatsApp Tersambung' : 'Sambungkan WhatsApp'}
+        </DialogTitle>
+        <DialogContent sx={{ textAlign: 'center' }}>
+          {status === 'connected' ? (
+            <Box sx={{ py: 3 }}>
+              <CheckCircleIcon sx={{ fontSize: 64, color: 'success.main' }} />
+              <Typography sx={{ mt: 1, fontWeight: 600 }}>{waName || 'Tersambung'}{waNumber ? ` · +${waNumber}` : ''}</Typography>
+              <Typography variant="caption" color="text.secondary">Berhasil tersambung. Menutup otomatis…</Typography>
+            </Box>
+          ) : qr ? (
+            <>
+              <Box sx={{ bgcolor: '#fff', p: 1.5, borderRadius: 2, display: 'inline-block', mt: 1, boxShadow: '0 1px 6px rgba(0,0,0,0.1)' }}>
+                <QRCodeSVG value={qr} size={220} level="L" includeMargin />
+              </Box>
+              <Box sx={{ mt: 1.5, px: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.25 }}>Buka WhatsApp di HP</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Setelan → Perangkat Tertaut → Tautkan Perangkat, lalu arahkan kamera ke QR ini.
+                </Typography>
+              </Box>
+              <Box sx={{ mt: 1.5 }}>
+                <LinearProgress variant="determinate" value={(qrSeconds / QR_TTL) * 100}
+                  color={qrSeconds > 5 ? 'primary' : 'warning'} sx={{ height: 6, borderRadius: 3 }} />
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {qrSeconds > 0 ? `QR menyegar dalam ${qrSeconds} detik` : 'Menyegarkan QR…'}
+                </Typography>
+              </Box>
+            </>
+          ) : (
+            <Box sx={{ py: 4 }}>
+              <CircularProgress />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>Menyiapkan QR…</Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'center', pb: 2 }}>
+          <Button onClick={() => setQrModalOpen(false)}>{status === 'connected' ? 'Selesai' : 'Tutup'}</Button>
+          {status !== 'connected' && (
+            <Button onClick={connect} disabled={connectMut.isPending} startIcon={<QrCodeIcon />}>Muat ulang QR</Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
