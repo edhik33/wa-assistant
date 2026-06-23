@@ -40,6 +40,9 @@ export default function BroadcastPanel({ agentId }: { agentId: number }) {
   const [page, setPage] = useState(1);
 
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [detailFilter, setDetailFilter] = useState<'all' | 'sent' | 'failed' | 'skipped'>('all');
+  const [detailSearch, setDetailSearch] = useState('');
+  const closeDetail = () => { setDetailId(null); setDetailFilter('all'); setDetailSearch(''); };
 
   const checkNumbers = useCheckNumbers(agentId);
   const createBroadcast = useCreateBroadcast(agentId);
@@ -169,49 +172,68 @@ export default function BroadcastPanel({ agentId }: { agentId: number }) {
       )}
 
       {/* Detail broadcast: status per penerima */}
-      <Dialog open={!!detailId} onClose={() => setDetailId(null)} fullWidth maxWidth="sm">
+      <Dialog open={!!detailId} onClose={closeDetail} fullWidth maxWidth="sm">
         <DialogTitle>Detail Broadcast</DialogTitle>
         <DialogContent dividers>
-          {detail ? (
-            <>
-              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>{detail.broadcast.message}</Typography>
-              {detail.broadcast.media_type && (
-                <Chip size="small" label={`📎 ${detail.broadcast.file_name || detail.broadcast.media_type}`} sx={{ mb: 1.5 }} />
-              )}
-              <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
-                <Chip size="small" color="success" label={`${detail.broadcast.sent} terkirim`} />
-                <Chip size="small" color="error" label={`${detail.broadcast.failed} gagal`} />
-                <Chip size="small" label={`${detail.broadcast.skipped} dilewati`} />
-                <Chip size="small" variant="outlined" label={`total ${detail.broadcast.total}`} />
-              </Stack>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Nomor</TableCell>
-                    <TableCell>Nama</TableCell>
-                    <TableCell align="right">Status</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {detail.recipients.map(r => (
-                    <TableRow key={r.id}>
-                      <TableCell>+{r.number}</TableCell>
-                      <TableCell>{r.name || '-'}</TableCell>
-                      <TableCell align="right">
-                        <Chip size="small" label={r.status} color={RCP_COLOR[r.status] ?? 'default'} />
-                        {r.error && <Typography variant="caption" color="error" sx={{ display: 'block' }}>{r.error}</Typography>}
-                      </TableCell>
-                    </TableRow>
+          {detail ? (() => {
+            const recs = detail.recipients;
+            const q = detailSearch.replace(/\D/g, '');
+            const shown = recs.filter(r =>
+              (detailFilter === 'all' || r.status === detailFilter) && (!q || r.number.includes(q)));
+            const FILTERS = [
+              { k: 'all' as const, label: `Semua ${recs.length}` },
+              { k: 'sent' as const, label: `Terkirim ${detail.broadcast.sent}` },
+              { k: 'failed' as const, label: `Gagal ${detail.broadcast.failed}` },
+              { k: 'skipped' as const, label: `Dilewati ${detail.broadcast.skipped}` },
+            ];
+            return (
+              <>
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>{detail.broadcast.message}</Typography>
+                {detail.broadcast.media_type && (
+                  <Chip size="small" label={`📎 ${detail.broadcast.file_name || detail.broadcast.media_type}`} sx={{ mb: 1.5 }} />
+                )}
+                <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
+                  {FILTERS.map(f => (
+                    <Chip key={f.k} size="small" label={f.label} onClick={() => setDetailFilter(f.k)}
+                      color={detailFilter === f.k ? 'primary' : 'default'} variant={detailFilter === f.k ? 'filled' : 'outlined'} />
                   ))}
-                </TableBody>
-              </Table>
-            </>
-          ) : (
+                </Stack>
+                <TextField size="small" fullWidth placeholder="Cari nomor…" value={detailSearch}
+                  onChange={e => setDetailSearch(e.target.value)} sx={{ mb: 1 }} />
+                <Box sx={{ maxHeight: 360, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Nomor</TableCell>
+                        <TableCell>Nama</TableCell>
+                        <TableCell align="right">Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {shown.map(r => (
+                        <TableRow key={r.id}>
+                          <TableCell>+{r.number}</TableCell>
+                          <TableCell>{r.name || '-'}</TableCell>
+                          <TableCell align="right">
+                            <Chip size="small" label={r.status} color={RCP_COLOR[r.status] ?? 'default'} />
+                            {r.error && <Typography variant="caption" color="error" sx={{ display: 'block' }}>{r.error}</Typography>}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Box>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  Menampilkan {shown.length} dari {recs.length} penerima
+                </Typography>
+              </>
+            );
+          })() : (
             <Box sx={{ textAlign: 'center', py: 3 }}><CircularProgress /></Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDetailId(null)}>Tutup</Button>
+          <Button onClick={closeDetail}>Tutup</Button>
         </DialogActions>
       </Dialog>
 
