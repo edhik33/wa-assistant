@@ -1,6 +1,7 @@
 import { Box, Card, CardContent, Typography, Grid, CircularProgress } from '@mui/material';
 import { useAdminStats } from '../../hooks';
 import { rupiah } from '../../types';
+import PageHeader from '../../components/PageHeader';
 
 function StatCard({ label, value, color }: { label: string; value: string | number; color?: string }) {
   return (
@@ -20,7 +21,7 @@ export default function AdminOverview() {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 800, mb: 3 }}>Ringkasan Platform</Typography>
+      <PageHeader title="Ringkasan Platform" subtitle="Pantauan singkat tenant, langganan, dan pemakaian AI." />
       <Grid container spacing={2}>
         <Grid size={{ xs: 6, md: 3 }}><StatCard label="Total Tenant" value={data?.total_tenants ?? 0} /></Grid>
         <Grid size={{ xs: 6, md: 3 }}><StatCard label="Aktif (berbayar)" value={data?.active_tenants ?? 0} color="#2e7d32" /></Grid>

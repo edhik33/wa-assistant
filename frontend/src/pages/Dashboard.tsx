@@ -19,6 +19,7 @@ import TestChatPanel from '../components/TestChatPanel';
 import AnalyticsPanel from '../components/AnalyticsPanel';
 import BroadcastPanel from '../components/BroadcastPanel';
 import CalendarPanel from '../components/CalendarPanel';
+import PageHeader from '../components/PageHeader';
 
 const TONES = [
   { value: 'ramah', label: '😊 Ramah' },
@@ -224,9 +225,7 @@ export default function Dashboard() {
       <Box sx={{ flex: 1, p: { xs: 2, md: 3 }, overflow: 'auto', width: '100%', boxSizing: 'border-box' }}>
         {tab === 0 && (
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 800, mb: 3 }}>
-              Dashboard {currentAgent && <Typography component="span" color="text.secondary">· {currentAgent.name}</Typography>}
-            </Typography>
+            <PageHeader title={<>Dashboard {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>} />
             <UsageCard />
             <Card sx={{ mb: 2 }}>
               <CardContent sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { xs: 'flex-start', md: 'center' }, justifyContent: 'space-between', gap: 2 }}>
@@ -295,9 +294,7 @@ export default function Dashboard() {
 
         {tab === 3 && (
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 800, mb: 3 }}>
-              Knowledge Base {currentAgent && <Typography component="span" color="text.secondary">· {currentAgent.name}</Typography>}
-            </Typography>
+            <PageHeader title={<>Knowledge Base {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>} />
 
             {/* AI Generate */}
             <Card sx={{ mb: 2, border: '2px solid #25D366' }}>
@@ -356,9 +353,7 @@ export default function Dashboard() {
 
         {tab === 7 && (
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 800, mb: 3 }}>
-              <SettingsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />Pengaturan {currentAgent && <Typography component="span" color="text.secondary">· {currentAgent.name}</Typography>}
-            </Typography>
+            <PageHeader title={<><SettingsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />Pengaturan {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>} />
             <Card sx={{ mb: 2 }}>
               <CardContent>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>Nama CS</Typography>

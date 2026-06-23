@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Box, Typography, Card, CardContent, TextField, IconButton, Stack, Chip, CircularProgress } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import { useTestChat } from '../hooks';
+import PageHeader from './PageHeader';
 
 type Msg = { role: 'user' | 'bot'; text: string; escalate?: boolean };
 
@@ -25,10 +26,8 @@ export default function TestChatPanel({ agentId }: { agentId: number }) {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>Coba Chat</Typography>
-      <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Uji jawaban AI di sini tanpa perlu konek WhatsApp. Sempurnakan persona & knowledge dulu sebelum pelanggan asli datang.
-      </Typography>
+      <PageHeader title="Coba Chat"
+        subtitle="Uji jawaban AI di sini tanpa perlu konek WhatsApp. Sempurnakan persona & knowledge dulu sebelum pelanggan asli datang." />
       <Card>
         <CardContent>
           <Box sx={{ minHeight: 320, maxHeight: 460, overflowY: 'auto', mb: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>

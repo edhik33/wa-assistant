@@ -10,6 +10,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useSchedules, useCreateSchedule, useCancelSchedule } from '../hooks';
 import RecipientField from './RecipientField';
+import PageHeader from './PageHeader';
 import type { ScheduledMessage } from '../types';
 
 const DOW = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
@@ -87,10 +88,8 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>Kalender</Typography>
-      <Typography color="text.secondary" sx={{ mb: 2 }}>
-        Klik tanggal untuk menjadwalkan broadcast. Pesan otomatis terkirim saat waktunya tiba (lewat mesin broadcast yang sama: cek opt-out + jeda aman).
-      </Typography>
+      <PageHeader title="Kalender"
+        subtitle="Klik tanggal untuk menjadwalkan broadcast. Pesan otomatis terkirim saat waktunya tiba (lewat mesin broadcast yang sama: cek opt-out + jeda aman)." />
 
       <Card>
         <CardContent>

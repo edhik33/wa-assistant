@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Box, Typography, Button, Card, CardContent, Table, TableBody, TableCell, TableHead, TableRow,
+  Box, Button, Card, CardContent, Table, TableBody, TableCell, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, FormControlLabel, Switch, Chip,
   IconButton, Stack, CircularProgress,
 } from '@mui/material';
@@ -10,6 +10,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { useAdminPlans, useSavePlan, useDeletePlan } from '../../hooks';
 import type { Plan } from '../../types';
 import { rupiah } from '../../types';
+import PageHeader from '../../components/PageHeader';
 
 const EMPTY: Partial<Plan> = {
   code: '', name: '', description: '', price: 0, billing_period: 'monthly',
@@ -37,10 +38,8 @@ export default function AdminPlans() {
 
   return (
     <Box>
-      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" sx={{ fontWeight: 800 }}>Plans</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>Tambah Plan</Button>
-      </Stack>
+      <PageHeader title="Plans"
+        action={<Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>Tambah Plan</Button>} />
 
       <Card>
         <CardContent sx={{ overflowX: 'auto' }}>

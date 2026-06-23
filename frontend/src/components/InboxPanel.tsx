@@ -8,6 +8,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import CloseIcon from '@mui/icons-material/Close';
 import { useContacts, useConversation, useSendMessage, useSendMedia, useResumeBot } from '../hooks';
+import PageHeader from './PageHeader';
 import type { ChatMsg } from '../types';
 
 function MediaView({ agentId, m }: { agentId: number; m: ChatMsg }) {
@@ -69,10 +70,8 @@ export default function InboxPanel({ agentId }: { agentId: number }) {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>Inbox</Typography>
-      <Typography color="text.secondary" sx={{ mb: 2 }}>
-        Baca dan balas pelanggan langsung dari sini. Saat kamu mengetik balasan, bot otomatis berhenti untuk kontak itu.
-      </Typography>
+      <PageHeader title="Inbox"
+        subtitle="Baca dan balas pelanggan langsung dari sini. Saat kamu mengetik balasan, bot otomatis berhenti untuk kontak itu." />
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ height: { md: 560 } }}>
         <Card sx={{ width: { xs: '100%', md: 300 }, flexShrink: 0, overflowY: 'auto' }}>

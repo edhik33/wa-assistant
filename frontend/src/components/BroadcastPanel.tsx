@@ -10,6 +10,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useCheckNumbers, useCreateBroadcast, useBroadcasts } from '../hooks';
 import RecipientField from './RecipientField';
+import PageHeader from './PageHeader';
 import type { NumberCheck } from '../types';
 
 function normalizePhone(s: string): string {
@@ -73,10 +74,8 @@ export default function BroadcastPanel({ agentId }: { agentId: number }) {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>Broadcast</Typography>
-      <Typography color="text.secondary" sx={{ mb: 2 }}>
-        Kirim pesan (bisa dengan gambar/file) ke banyak kontak dengan jeda aman. Nomor dicek dulu sebelum dikirim.
-      </Typography>
+      <PageHeader title="Broadcast"
+        subtitle="Kirim pesan (bisa dengan gambar/file) ke banyak kontak dengan jeda aman. Nomor dicek dulu sebelum dikirim." />
 
       <Alert severity="warning" sx={{ mb: 3 }}>
         <b>Biar nomor tidak diblokir WhatsApp:</b> kirim hanya ke kontak yang sudah pernah berinteraksi,

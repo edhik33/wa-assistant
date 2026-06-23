@@ -1,5 +1,6 @@
 import { Box, Typography, Card, CardContent, Grid, CircularProgress, Stack, LinearProgress } from '@mui/material';
 import { useAgentAnalytics } from '../hooks';
+import PageHeader from './PageHeader';
 
 function Stat({ label, value, color }: { label: string; value: string | number; color?: string }) {
   return (
@@ -20,7 +21,7 @@ export default function AnalyticsPanel({ agentId }: { agentId: number }) {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 800, mb: 3 }}>Analitik</Typography>
+      <PageHeader title="Analitik" subtitle="Ringkasan performa CS ini: pesan masuk, porsi yang ditangani AI, dan tren mingguan." />
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid size={{ xs: 6, md: 3 }}><Stat label="Pesan masuk" value={data.total_incoming} /></Grid>
         <Grid size={{ xs: 6, md: 3 }}><Stat label="Dijawab AI" value={data.ai_replies} color="#1F8A50" /></Grid>

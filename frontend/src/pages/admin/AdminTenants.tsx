@@ -4,6 +4,7 @@ import {
 } from '@mui/material';
 import { useAdminTenants, useAdminPlans, useUpdateTenant } from '../../hooks';
 import type { TenantRow } from '../../types';
+import PageHeader from '../../components/PageHeader';
 
 const STATUS_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
   active: 'success', trial: 'warning', suspended: 'error', expired: 'default',
@@ -18,7 +19,7 @@ export default function AdminTenants() {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 800, mb: 3 }}>Tenant ({tenants?.length ?? 0})</Typography>
+      <PageHeader title={`Tenant (${tenants?.length ?? 0})`} subtitle="Kelola status & plan tiap pelanggan." />
       <Card>
         <CardContent sx={{ overflowX: 'auto' }}>
           <Table size="small">
