@@ -32,8 +32,8 @@ echo "$OLD_SERVICE active=$old_active enabled=$old_enabled"
 if [ "$old_active" = "active" ]; then
   fail "$OLD_SERVICE is still running"
 fi
-if [ "$old_enabled" != "masked" ]; then
-  fail "$OLD_SERVICE must be masked to avoid duplicate backend"
+if [ "$old_enabled" != "masked" ] && [ "$old_enabled" != "not-found" ]; then
+  fail "$OLD_SERVICE must be masked or removed to avoid duplicate backend"
 fi
 
 echo "== process/listener =="
