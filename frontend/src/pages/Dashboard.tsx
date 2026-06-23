@@ -2,7 +2,7 @@ import { useState, useEffect, Fragment } from 'react';
 import {
   Box, Card, CardContent, Typography, Button, Chip, CircularProgress, TextField,
   Stack, IconButton, Paper, Grid, Select, MenuItem, FormControl, InputLabel, Divider,
-  Switch, FormControlLabel, Dialog, DialogTitle, DialogContent, DialogActions, LinearProgress,
+  Switch, FormControlLabel, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions, LinearProgress,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AddIcon from '@mui/icons-material/Add';
@@ -134,6 +134,7 @@ export default function Dashboard() {
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const QR_TTL = 20; // perkiraan masa berlaku satu QR (detik); WhatsApp memutar otomatis
   const [qrSeconds, setQrSeconds] = useState(QR_TTL);
+  const [riskAck, setRiskAck] = useState(true); // disclaimer risiko banned, default tercentang
 
   // ---- Pilih CS pertama secara otomatis jika belum ada ----
 
@@ -685,6 +686,15 @@ export default function Dashboard() {
                   {qrSeconds > 0 ? `QR menyegar dalam ${qrSeconds} detik` : 'Menyegarkan QR…'}
                 </Typography>
               </Box>
+              <FormControlLabel
+                sx={{ mt: 1, alignItems: 'flex-start', mx: 0 }}
+                control={<Checkbox checked={riskAck} onChange={e => setRiskAck(e.target.checked)} size="small" sx={{ py: 0, pl: 0 }} />}
+                label={
+                  <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'left', display: 'block', lineHeight: 1.4 }}>
+                    Saya paham WhatsApp saya berisiko diblokir dan ChatLoop tidak bertanggung jawab atas hal itu.
+                  </Typography>
+                }
+              />
             </>
           ) : (
             <Box sx={{ py: 4 }}>
