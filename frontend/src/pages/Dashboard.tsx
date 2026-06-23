@@ -670,27 +670,37 @@ export default function Dashboard() {
             </Box>
           ) : qr ? (
             <>
-              <Box sx={{ bgcolor: '#fff', p: 1.5, borderRadius: 2, display: 'inline-block', mt: 1, boxShadow: '0 1px 6px rgba(0,0,0,0.1)' }}>
-                <QRCodeSVG value={qr} size={220} level="L" includeMargin />
-              </Box>
-              <Box sx={{ mt: 1.5, px: 1 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.25 }}>Buka WhatsApp di HP</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Setelan → Perangkat Tertaut → Tautkan Perangkat, lalu arahkan kamera ke QR ini.
-                </Typography>
-              </Box>
-              <Box sx={{ mt: 1.5 }}>
-                <LinearProgress variant="determinate" value={(qrSeconds / QR_TTL) * 100}
-                  color={qrSeconds > 5 ? 'primary' : 'warning'} sx={{ height: 6, borderRadius: 3 }} />
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                  {qrSeconds > 0 ? `QR menyegar dalam ${qrSeconds} detik` : 'Menyegarkan QR…'}
-                </Typography>
-              </Box>
+              {riskAck ? (
+                <>
+                  <Box sx={{ bgcolor: '#fff', p: 1.5, borderRadius: 2, display: 'inline-block', mt: 1, boxShadow: '0 1px 6px rgba(0,0,0,0.1)' }}>
+                    <QRCodeSVG value={qr} size={220} level="L" includeMargin />
+                  </Box>
+                  <Box sx={{ mt: 1.5, px: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.25 }}>Buka WhatsApp di HP</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Setelan → Perangkat Tertaut → Tautkan Perangkat, lalu arahkan kamera ke QR ini.
+                    </Typography>
+                  </Box>
+                  <Box sx={{ mt: 1.5 }}>
+                    <LinearProgress variant="determinate" value={(qrSeconds / QR_TTL) * 100}
+                      color={qrSeconds > 5 ? 'primary' : 'warning'} sx={{ height: 6, borderRadius: 3 }} />
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                      {qrSeconds > 0 ? `QR menyegar dalam ${qrSeconds} detik` : 'Menyegarkan QR…'}
+                    </Typography>
+                  </Box>
+                </>
+              ) : (
+                <Box sx={{ py: 5, px: 2 }}>
+                  <Typography variant="body2" color="error" sx={{ fontWeight: 600 }}>
+                    Centang persetujuan di bawah untuk menampilkan QR.
+                  </Typography>
+                </Box>
+              )}
               <FormControlLabel
                 sx={{ mt: 1, alignItems: 'flex-start', mx: 0 }}
-                control={<Checkbox checked={riskAck} onChange={e => setRiskAck(e.target.checked)} size="small" sx={{ py: 0, pl: 0 }} />}
+                control={<Checkbox checked={riskAck} onChange={e => setRiskAck(e.target.checked)} size="small" color={riskAck ? 'primary' : 'error'} sx={{ py: 0, pl: 0 }} />}
                 label={
-                  <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'left', display: 'block', lineHeight: 1.4 }}>
+                  <Typography variant="caption" color={riskAck ? 'text.secondary' : 'error'} sx={{ textAlign: 'left', display: 'block', lineHeight: 1.4 }}>
                     Saya paham WhatsApp saya berisiko diblokir dan ChatLoop tidak bertanggung jawab atas hal itu.
                   </Typography>
                 }
@@ -706,7 +716,7 @@ export default function Dashboard() {
         <DialogActions sx={{ justifyContent: 'center', pb: 2 }}>
           <Button onClick={() => setQrModalOpen(false)}>{status === 'connected' ? 'Selesai' : 'Tutup'}</Button>
           {status !== 'connected' && (
-            <Button onClick={connect} disabled={connectMut.isPending} startIcon={<QrCodeIcon />}>Muat ulang QR</Button>
+            <Button onClick={connect} disabled={connectMut.isPending || !riskAck} startIcon={<QrCodeIcon />}>Muat ulang QR</Button>
           )}
         </DialogActions>
       </Dialog>
