@@ -18,7 +18,10 @@ import type { ScheduledMessage } from '../types';
 const DOW = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 const STATUS_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
-  scheduled: 'warning', done: 'success', cancelled: 'default', interrupted: 'error',
+  scheduled: 'warning', running: 'warning', done: 'success', failed: 'error', cancelled: 'default', interrupted: 'error',
+};
+const STATUS_LABEL: Record<string, string> = {
+  scheduled: 'Terjadwal', running: 'Mengirim…', done: 'Terkirim', failed: 'Gagal', interrupted: 'Tertunda', cancelled: 'Dibatalkan',
 };
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -150,7 +153,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
                     </Typography>
                   </Box>
                   <Stack direction="row" sx={{ alignItems: 'center', gap: 0.5 }}>
-                    <Chip size="small" label={s.status} color={STATUS_COLOR[s.status] ?? 'default'} />
+                    <Chip size="small" label={STATUS_LABEL[s.status] ?? s.status} color={STATUS_COLOR[s.status] ?? 'default'} />
                     {s.status === 'scheduled' && (
                       <IconButton size="small" color="error" onClick={async () => { if (await swalConfirm('Batalkan jadwal ini?')) cancelSchedule.mutate(s.id); }}><DeleteIcon fontSize="small" /></IconButton>
                     )}

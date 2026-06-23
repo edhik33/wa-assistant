@@ -138,6 +138,9 @@ func processDueSchedules() {
 		if !tenantWAActive(s.TenantID) {
 			continue // tenant tidak aktif -> tunda (tetap scheduled)
 		}
+		if !services.WA(s.AgentID).IsConnected() {
+			continue // WA belum tersambung -> tunda, coba lagi menit berikutnya (jangan kirim ke ruang hampa)
+		}
 		database.DB.Model(&models.ScheduledMessage{}).Where("id = ?", s.ID).Update("status", "running")
 		fireScheduled(s)
 	}
@@ -164,8 +167,8 @@ func fireScheduled(s models.ScheduledMessage) {
 	if len(recipients) > 0 {
 		database.DB.Create(&recipients)
 	}
-	database.DB.Model(&models.ScheduledMessage{}).Where("id = ?", s.ID).
-		Updates(map[string]any{"status": "done", "broadcast_id": b.ID})
+	// Status jadwal tetap "running"; disinkronkan ke hasil akhir broadcast oleh finishBroadcast.
+	database.DB.Model(&models.ScheduledMessage{}).Where("id = ?", s.ID).Update("broadcast_id", b.ID)
 
 	go runBroadcast(b.ID, s.AgentID, s.MinDelay, s.MaxDelay)
 }

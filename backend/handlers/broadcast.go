@@ -185,8 +185,7 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 		// JEDA broadcast (status interrupted) — sisa penerima tetap "pending" agar bisa dilanjutkan,
 		// bukan ditandai gagal massal yang menyesatkan.
 		if !waitConnected(agentID, 60*time.Second) {
-			database.DB.Model(&models.Broadcast{}).Where("id = ?", broadcastID).
-				Updates(map[string]any{"status": "interrupted", "sent": sent, "failed": failed, "skipped": skipped})
+			finishBroadcast(broadcastID, "interrupted", sent, failed, skipped)
 			log.Printf("Broadcast %d dijeda: WA agent %d terputus (%d terkirim, sisa tetap pending)", broadcastID, agentID, sent)
 			return
 		}
@@ -223,8 +222,7 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 			// Error karena koneksi putus saat kirim -> jeda broadcast, JANGAN tandai gagal
 			// (penerima tetap pending agar bisa dilanjutkan saat WA tersambung lagi).
 			if strings.Contains(sendErr.Error(), "tidak terhubung") {
-				database.DB.Model(&models.Broadcast{}).Where("id = ?", broadcastID).
-					Updates(map[string]any{"status": "interrupted", "sent": sent, "failed": failed, "skipped": skipped})
+				finishBroadcast(broadcastID, "interrupted", sent, failed, skipped)
 				log.Printf("Broadcast %d dijeda saat kirim ke %s: WA terputus", broadcastID, r.Number)
 				return
 			}
@@ -254,9 +252,16 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 	if sent == 0 && failed > 0 {
 		finalStatus = "failed"
 	}
-	database.DB.Model(&models.Broadcast{}).Where("id = ?", broadcastID).
-		Updates(map[string]any{"status": finalStatus, "sent": sent, "failed": failed, "skipped": skipped})
+	finishBroadcast(broadcastID, finalStatus, sent, failed, skipped)
 	log.Printf("Broadcast %d %s: %d terkirim, %d gagal, %d dilewati", broadcastID, finalStatus, sent, failed, skipped)
+}
+
+// finishBroadcast menyetel status akhir broadcast sekaligus menyinkronkan jadwal pemicunya
+// (kalau broadcast ini berasal dari scheduled message) agar status di kalender tidak menipu.
+func finishBroadcast(broadcastID uint, status string, sent, failed, skipped int) {
+	database.DB.Model(&models.Broadcast{}).Where("id = ?", broadcastID).
+		Updates(map[string]any{"status": status, "sent": sent, "failed": failed, "skipped": skipped})
+	database.DB.Model(&models.ScheduledMessage{}).Where("broadcast_id = ?", broadcastID).Update("status", status)
 }
 
 // waitConnected menunggu socket WA agent benar-benar tersambung hingga max durasi (poll tiap 3 detik).
