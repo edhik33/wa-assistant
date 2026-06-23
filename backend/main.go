@@ -26,6 +26,8 @@ func main() {
 
 	// Sambungkan ulang semua agent yang sudah ter-link.
 	go handlers.StartAgents()
+	// Watchdog: pantau & sambungkan ulang sesi WA yang terputus diam-diam (tiap 90 detik).
+	services.StartReconnectWatchdog(90 * time.Second)
 
 	// Lanjutkan broadcast yang sempat terhenti saat server mati; tandai jadwal yang nyangkut.
 	go handlers.ResumeBroadcasts()

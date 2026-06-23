@@ -52,11 +52,20 @@ var (
 	legacyDBPath = "./wa-assistant.db"
 	onMessage    MessageHandler
 	onLinked     DeviceLinkedHandler
+	waLogger     waLog.Logger = waLog.Noop // logger whatsmeow (default senyap; diaktifkan via WA_LOG_LEVEL)
 )
 
 func InitWA(dbPath string) {
 	if dbPath != "" {
 		legacyDBPath = dbPath
+	}
+	// Aktifkan log whatsmeow (disconnect/stream-error/reconnect) untuk diagnosa koneksi.
+	// WA_LOG_LEVEL: WARN (default), INFO untuk lebih detail, atau NONE/OFF untuk senyap.
+	if lvl := strings.ToUpper(strings.TrimSpace(os.Getenv("WA_LOG_LEVEL"))); lvl == "" || (lvl != "NONE" && lvl != "OFF") {
+		if lvl == "" {
+			lvl = "WARN"
+		}
+		waLogger = waLog.Stdout("WA", lvl, false)
 	}
 }
 
@@ -166,7 +175,7 @@ func (w *waInstance) Connect(_ string) (string, error) {
 		return "", fmt.Errorf("gagal ambil device: %w", err)
 	}
 
-	w.client = whatsmeow.NewClient(device, waLog.Noop)
+	w.client = whatsmeow.NewClient(device, waLogger)
 	w.client.AddEventHandler(w.handleEvent)
 
 	if w.client.Store.ID == nil {
@@ -297,6 +306,41 @@ func (w *waInstance) IsConnected() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.client != nil && w.client.IsConnected() && w.client.IsLoggedIn()
+}
+
+// reconnectIfNeeded menyambung ulang bila sesi SEHARUSNYA tersambung (intent status "connected",
+// device sudah login) tapi socket-nya terputus. Aman: sesi yang di-suspend/logout punya status
+// "disconnected" + client nil, jadi dilewati (watchdog tidak melawan disconnect yang disengaja).
+func (w *waInstance) reconnectIfNeeded() {
+	w.mu.Lock()
+	client, intend := w.client, w.status == "connected"
+	w.mu.Unlock()
+	if !intend || client == nil || client.Store.ID == nil || client.IsConnected() {
+		return
+	}
+	log.Printf("Watchdog: WA agent %d terputus — mencoba menyambung ulang", w.agentID)
+	if err := client.Connect(); err != nil {
+		log.Printf("Watchdog: reconnect agent %d gagal: %v", w.agentID, err)
+	}
+}
+
+// StartReconnectWatchdog memantau semua sesi WA tiap interval & menyambung ulang yang terputus
+// tanpa perlu restart server (menutup celah "bot diam-diam offline").
+func StartReconnectWatchdog(interval time.Duration) {
+	go func() {
+		t := time.NewTicker(interval)
+		for range t.C {
+			globalMu.Lock()
+			list := make([]*waInstance, 0, len(instances))
+			for _, w := range instances {
+				list = append(list, w)
+			}
+			globalMu.Unlock()
+			for _, w := range list {
+				w.reconnectIfNeeded()
+			}
+		}
+	}()
 }
 
 // GetInfo mengembalikan nomor & nama profil WhatsApp yang sedang terhubung.
