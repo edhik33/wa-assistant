@@ -544,6 +544,22 @@ func (w *waInstance) LIDForPN(phone string) string {
 	return lid.User
 }
 
+// PNForLID mengembalikan nomor telepon untuk sebuah LID (kebalikan LIDForPN).
+// Dipakai merapikan data lama yang menyimpan pengirim sebagai LID.
+func (w *waInstance) PNForLID(lid string) string {
+	w.mu.Lock()
+	client := w.client
+	w.mu.Unlock()
+	if client == nil || client.Store == nil {
+		return ""
+	}
+	pn, err := client.Store.LIDs.GetPNForLID(context.Background(), types.NewJID(lid, types.HiddenUserServer))
+	if err != nil || pn.IsEmpty() {
+		return ""
+	}
+	return pn.User
+}
+
 // extractIncoming mengubah pesan WA jadi IncomingMessage (teks atau media yang sudah di-download).
 func (w *waInstance) extractIncoming(v *events.Message) (IncomingMessage, bool) {
 	m := v.Message

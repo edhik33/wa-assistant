@@ -431,6 +431,8 @@ func OnAgentConnected(agentID uint) {
 		database.DB.CreateInBatches(fresh, 200)
 		log.Printf("Backfill kontak (agent %d): %d nama dari buku alamat WhatsApp", agentID, len(fresh))
 	}
+	// Rapikan data lama yang menyimpan pengirim sebagai LID -> nomor telepon.
+	migrateLIDSenders(agentID)
 }
 
 // ChatContacts = kontak yang PERNAH chat agent ini (sumber broadcast paling aman). Tanpa yang opt-out.

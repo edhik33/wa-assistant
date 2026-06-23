@@ -180,7 +180,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
             Satu nomor per baris (format <code>nomor,nama</code> untuk personalisasi), atau impor dari sumber di bawah.
           </Typography>
           <RecipientField agentId={agentId} value={recipientsText} onChange={v => { setRecipientsText(v); setChecked(null); if (errors.recipients) setErrors(p => ({...p, recipients: ''})); }} error={errors.recipients} />
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, mb: 1.5, display: 'block' }}>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, mb: 3, display: 'block' }}>
             Disarankan pakai <b>"Pernah chat"</b> (hangat, aman). Sinkron WA / anggota grup lebih berisiko.
           </Typography>
 
@@ -355,8 +355,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
               )}
 
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                Hanya nomor terdaftar yang dikirimi. {file && <>Dengan lampiran <b>{file.name}</b>. </>}Jeda {minDelay}–{maxDelay} detik antar pesan.
-                Penilaian ini menurunkan risiko, bukan jaminan — jalur ini tetap tidak resmi.
+                Yang dikirimi cuma nomor terdaftar. {file && <>Ada lampiran <b>{file.name}</b>. </>}Antar pesan dikasih jeda {minDelay} sampai {maxDelay} detik biar lebih aman. Penilaian ini bantu menurunkan risiko, bukan jaminan ya.
               </Typography>
 
               {level === 'red' && (
