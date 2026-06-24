@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,9 +14,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
-var jwtSecret = []byte(config.Env("JWT_SECRET", "wa-assistant-secret-change-me"))
+var jwtSecret = mustJWTSecret()
 
 const (
 	loginMaxPairFailures = 5
@@ -43,10 +46,22 @@ type loginThrottleKey struct {
 	max int
 }
 
+func mustJWTSecret() []byte {
+	secret := strings.TrimSpace(config.EnvRequired("JWT_SECRET"))
+	lower := strings.ToLower(secret)
+	if len(secret) < 32 || lower == "wa-assistant-secret-change-me" || lower == "ganti_dengan_string_acak_min_32_char" || lower == "changeme" || lower == "change-me" || lower == "secret" {
+		log.Fatal("ERROR: JWT_SECRET tidak aman; set minimal 32 karakter random dan jangan gunakan default")
+	}
+	return []byte(secret)
+}
+
 // CORS membatasi origin lewat env CORS_ALLOWED_ORIGINS (daftar dipisah koma).
-// Default "*" (longgar) untuk dev; di produksi set ke origin asli, mis. "http://103.181.143.107:8080".
+// Default "*" hanya untuk development; di production wajib set origin asli.
 func CORS() gin.HandlerFunc {
 	allowed := config.Env("CORS_ALLOWED_ORIGINS", "*")
+	if strings.EqualFold(config.Env("APP_ENV", "development"), "production") && allowed == "*" {
+		log.Fatal("ERROR: CORS_ALLOWED_ORIGINS tidak boleh '*' saat APP_ENV=production")
+	}
 	var origins []string
 	if allowed != "*" {
 		for _, o := range strings.Split(allowed, ",") {
@@ -90,17 +105,29 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.AbortWithStatusJSON(401, gin.H{"error": "Invalid token"})
 			return
 		}
-		claims := token.Claims.(jwt.MapClaims)
-		c.Set("user_id", uint(claims["user_id"].(float64)))
-		if tid, ok := claims["tenant_id"].(float64); ok && tid > 0 {
-			c.Set("tenant_id", uint(tid))
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.AbortWithStatusJSON(401, gin.H{"error": "Invalid token claims"})
+			return
 		}
-		if r, ok := claims["role"].(string); ok {
-			c.Set("role", r)
+		uidFloat, ok := claims["user_id"].(float64)
+		if !ok || uidFloat <= 0 {
+			c.AbortWithStatusJSON(401, gin.H{"error": "Invalid token claims"})
+			return
 		}
-		if sa, ok := claims["is_super_admin"].(bool); ok {
-			c.Set("is_super_admin", sa)
+
+		var user models.User
+		if err := database.DB.First(&user, uint(uidFloat)).Error; err != nil {
+			c.AbortWithStatusJSON(401, gin.H{"error": "User tidak valid"})
+			return
 		}
+
+		c.Set("user_id", user.ID)
+		if user.TenantID != nil && *user.TenantID > 0 {
+			c.Set("tenant_id", *user.TenantID)
+		}
+		c.Set("role", user.Role)
+		c.Set("is_super_admin", user.IsSuperAdmin)
 		c.Next()
 	}
 }
@@ -160,7 +187,11 @@ func issueToken(u models.User) string {
 	if u.TenantID != nil {
 		claims["tenant_id"] = *u.TenantID
 	}
-	token, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(jwtSecret)
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(jwtSecret)
+	if err != nil {
+		log.Printf("JWT issue token error: %v", err)
+		return ""
+	}
 	return token
 }
 
@@ -172,7 +203,11 @@ func issueMediaToken(tenantID uint) string {
 		"scope":     "media",
 		"exp":       time.Now().Add(time.Duration(config.EnvInt("MEDIA_TOKEN_TTL_MIN", 30)) * time.Minute).Unix(),
 	}
-	token, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(jwtSecret)
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(jwtSecret)
+	if err != nil {
+		log.Printf("JWT issue media token error: %v", err)
+		return ""
+	}
 	return token
 }
 
@@ -301,9 +336,14 @@ func Login(c *gin.Context) {
 
 	var user models.User
 	passwordHash := dummyLoginHash
-	foundUser := database.DB.Where("username = ?", req.Username).First(&user).Error == nil
-	if foundUser {
+	foundUser := false
+	if err := database.DB.Where("username = ?", req.Username).First(&user).Error; err == nil {
+		foundUser = true
 		passwordHash = []byte(user.Password)
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.Printf("Login DB lookup error: %v", err)
+		c.JSON(500, gin.H{"error": loginGenericError})
+		return
 	}
 	passwordOK := bcrypt.CompareHashAndPassword(passwordHash, []byte(req.Password)) == nil
 	if !foundUser || !passwordOK {
@@ -335,40 +375,63 @@ func Register(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Username dan password wajib diisi"})
 		return
 	}
+	if len(req.Password) < 8 {
+		c.JSON(400, gin.H{"error": "Password minimal 8 karakter"})
+		return
+	}
 	var exists int64
-	database.DB.Model(&models.User{}).Where("username = ? OR (email <> '' AND email = ?)", req.Username, req.Email).Count(&exists)
+	if err := database.DB.Model(&models.User{}).Where("username = ? OR (email <> '' AND email = ?)", req.Username, req.Email).Count(&exists).Error; err != nil {
+		log.Printf("Register duplicate check DB error: %v", err)
+		c.JSON(500, gin.H{"error": "Gagal membuat akun"})
+		return
+	}
 	if exists > 0 {
 		c.JSON(409, gin.H{"error": "Username atau email sudah terdaftar"})
 		return
 	}
 
 	trialEnds := time.Now().Add(time.Duration(config.EnvInt("TRIAL_DAYS", 7)) * 24 * time.Hour)
-	tenant := models.Tenant{
-		Name:        firstNonEmpty(req.BusinessName, req.Name, req.Username),
-		Status:      models.TenantTrial,
-		TrialEndsAt: &trialEnds,
-	}
-	if err := database.DB.Create(&tenant).Error; err != nil {
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("Register password hash error: %v", err)
 		c.JSON(500, gin.H{"error": "Gagal membuat akun"})
 		return
 	}
 
-	hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	user := models.User{
-		TenantID: &tenant.ID,
-		Name:     firstNonEmpty(req.Name, req.Username),
-		Username: req.Username,
-		Email:    req.Email,
-		Password: string(hash),
-		Role:     "owner",
-	}
-	if err := database.DB.Create(&user).Error; err != nil {
-		c.JSON(500, gin.H{"error": "Gagal membuat user"})
+	var user models.User
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		tenant := models.Tenant{
+			Name:        firstNonEmpty(req.BusinessName, req.Name, req.Username),
+			Status:      models.TenantTrial,
+			TrialEndsAt: &trialEnds,
+		}
+		if err := tx.Create(&tenant).Error; err != nil {
+			return err
+		}
+
+		user = models.User{
+			TenantID: &tenant.ID,
+			Name:     firstNonEmpty(req.Name, req.Username),
+			Username: req.Username,
+			Email:    req.Email,
+			Password: string(passwordHash),
+			Role:     "owner",
+		}
+		if err := tx.Create(&user).Error; err != nil {
+			return err
+		}
+
+		// Agent default supaya pelanggan langsung bisa scan QR saat trial.
+		if err := tx.Create(&models.Agent{TenantID: tenant.ID, Name: "CS Utama", Tone: "ramah"}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		log.Printf("Register transaction error: %v", err)
+		c.JSON(500, gin.H{"error": "Gagal membuat akun"})
 		return
 	}
-
-	// Agent default supaya pelanggan langsung bisa scan QR saat trial.
-	database.DB.Create(&models.Agent{TenantID: tenant.ID, Name: "CS Utama", Tone: "ramah"})
 
 	c.JSON(201, gin.H{"token": issueToken(user), "user": userResponse(user)})
 }
