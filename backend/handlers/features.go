@@ -168,12 +168,19 @@ func InboxSend(c *gin.Context) {
 	var req struct {
 		To      string `json:"to"`
 		Message string `json:"message"`
+		ReplyTo string `json:"reply_to"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.To == "" || strings.TrimSpace(req.Message) == "" {
 		c.JSON(400, gin.H{"error": "Nomor & pesan wajib diisi"})
 		return
 	}
-	if err := services.WA(id).SendText(req.To, req.Message); err != nil {
+	var err error
+	if req.ReplyTo != "" {
+		err = services.WA(id).SendReply(req.To, req.Message, req.ReplyTo)
+	} else {
+		err = services.WA(id).SendText(req.To, req.Message)
+	}
+	if err != nil {
 		c.JSON(502, gin.H{"error": err.Error()})
 		return
 	}
@@ -185,6 +192,22 @@ func InboxSend(c *gin.Context) {
 	if cnt == 0 {
 		database.DB.Create(&models.Handoff{AgentID: id, Sender: req.To, LastMsg: req.Message})
 	}
+	c.JSON(200, gin.H{"ok": true})
+}
+
+// ChatPresence mengirim indikator "mengetik" ke kontak (dipanggil dari Inbox saat CS mengetik).
+func ChatPresence(c *gin.Context) {
+	id, ok := resolveAgent(c)
+	if !ok { return }
+	var req struct {
+		To     string `json:"to"`
+		Active bool   `json:"active"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.To == "" {
+		c.JSON(400, gin.H{"error": "to wajib"})
+		return
+	}
+	_ = services.WA(id).Typing(req.To, req.Active)
 	c.JSON(200, gin.H{"ok": true})
 }
 

@@ -403,6 +403,27 @@ func (w *waInstance) Logout() error {
 	return nil
 }
 
+// SendReply mengirim balasan yang mengutip pesan tertentu (reply-to).
+func (w *waInstance) SendReply(toNumber, message, replyToID string) error {
+	return w.SendMessage(types.NewJID(toNumber, types.DefaultUserServer), message, replyToID)
+}
+
+// Typing mengirim indikator "mengetik" ke kontak.
+func (w *waInstance) Typing(toNumber string, composing bool) error {
+	w.mu.Lock()
+	client := w.client
+	w.mu.Unlock()
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("client WA tidak terhubung")
+	}
+	jid := types.NewJID(toNumber, types.DefaultUserServer)
+	state := types.ChatPresenceComposing
+	if !composing {
+		state = types.ChatPresencePaused
+	}
+	return client.SendChatPresence(context.Background(), jid, state, types.ChatPresenceMediaText)
+}
+
 // SendText mengirim pesan ke nomor bare (mis "628123") tanpa pemanggil perlu menyusun JID.
 func (w *waInstance) SendText(toNumber, message string) error {
 	return w.SendMessage(types.NewJID(toNumber, types.DefaultUserServer), message)
@@ -717,7 +738,7 @@ func (w *waInstance) Suspend() {
 	w.status = "disconnected"
 }
 
-func (w *waInstance) SendMessage(to types.JID, message string) error {
+func (w *waInstance) SendMessage(to types.JID, message string, replyToID ...string) error {
 	w.mu.Lock()
 	client := w.client
 	w.mu.Unlock()
@@ -732,9 +753,17 @@ func (w *waInstance) SendMessage(to types.JID, message string) error {
 	time.Sleep(humanDelay(message))
 	_ = client.SendChatPresence(ctx, to, types.ChatPresencePaused, types.ChatPresenceMediaText)
 
-	_, err := client.SendMessage(ctx, to, &waProto.Message{
+	msg := &waProto.Message{
 		Conversation: proto.String(message),
-	})
+	}
+	if len(replyToID) > 0 && replyToID[0] != "" {
+		msg.ContextInfo = &waProto.ContextInfo{
+			StanzaId:      proto.String(replyToID[0]),
+			Participant:   proto.String(to.String()),
+			QuotedMessage: &waProto.Message{Conversation: proto.String(message)},
+		}
+	}
+	_, err := client.SendMessage(ctx, to, msg)
 	return err
 }
 
