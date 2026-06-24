@@ -3,11 +3,13 @@ import {
   Box, Card, CardContent, Typography, Button, Chip, CircularProgress, TextField,
   Stack, IconButton, Paper, Grid, Select, MenuItem, FormControl, InputLabel, Divider,
   Switch, FormControlLabel, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions,
+  Badge,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import QrCodeIcon from '@mui/icons-material/QrCode';
+import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import DashboardIcon from '@mui/icons-material/DashboardOutlined';
 import InboxIcon from '@mui/icons-material/InboxOutlined';
 import ChatIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
@@ -41,6 +43,7 @@ import {
   useAgents, useAgentStatuses, useAgentStatus, useAgentKnowledge,
   useCreateAgent, useDeleteAgent, useSaveAgent, useAgentConnect, useAgentDisconnect,
   useAddKnowledge, useDeleteKnowledge, useGenerateKnowledge,
+  useAgentHandoffs, useResumeHandoff,
 } from '../hooks';
 
 const TONES = [
@@ -58,6 +61,7 @@ const NAV_GROUPS = [
   { section: 'Percakapan', items: [
     { id: 'inbox', label: 'Inbox', icon: <InboxIcon fontSize="small" /> },
     { id: 'kontak', label: 'Kontak', icon: <ContactsIcon fontSize="small" /> },
+    { id: 'handoff', label: 'Butuh CS', icon: <SupportAgentIcon fontSize="small" /> },
   ] },
   { section: 'AI & Otomasi', items: [
     { id: 'knowledge', label: 'Knowledge', icon: <KnowledgeIcon fontSize="small" /> },
@@ -113,6 +117,8 @@ export default function Dashboard() {
   const { data: statusMap = {} } = useAgentStatuses();
   const { data: statusData } = useAgentStatus(agentId);
   const { data: knowledge = [] } = useAgentKnowledge(agentId);
+  const { data: handoffs = [] } = useAgentHandoffs(agentId);
+  const resumeHandoff = useResumeHandoff(agentId);
 
   const status = statusData?.status || '';
   const qr = statusData?.qr || '';
@@ -375,7 +381,13 @@ export default function Dashboard() {
                     '& .MuiButton-startIcon': { mr: 0.75 },
                   }}
                 >
-                  {item.label}
+                  {item.id === 'handoff' && handoffs.length > 0 ? (
+                    <Badge badgeContent={handoffs.length} color="error" sx={{ mr: 1 }}>
+                      {item.label}
+                    </Badge>
+                  ) : (
+                    item.label
+                  )}
                 </Button>
               ))}
             </Fragment>
@@ -647,6 +659,38 @@ export default function Dashboard() {
         )}
 
         {tab === 'langganan' && <BillingPanel />}
+        {tab === 'handoff' && (
+          <Box>
+            <Typography variant="h6" sx={{ mb: 1 }}>Butuh CS ({handoffs.length})</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Kontak yang mengirim media atau pertanyaan yang tidak bisa dijawab AI. Segera ditangani manual oleh CS.
+            </Typography>
+            {handoffs.length === 0 ? (
+              <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
+                <Typography color="text.secondary">✅ Tidak ada antrian. Semua sudah ditangani.</Typography>
+              </Paper>
+            ) : (
+              <Stack spacing={1.5}>
+                {handoffs.map((h) => (
+                  <Paper key={h.id} variant="outlined" sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Box>
+                      <Typography sx={{ fontWeight: 700 }}>{h.sender}</Typography>
+                      <Typography variant="body2" color="text.secondary">"{h.last_msg}"</Typography>
+                    </Box>
+                    <Stack direction="row" spacing={1}>
+                      <Button size="small" variant="outlined" onClick={() => { setSeed({ kind: 'inbox', value: h.sender, n: Date.now() }); setTab('inbox'); }}>
+                        Balas
+                      </Button>
+                      <Button size="small" color="success" variant="contained" onClick={() => resumeHandoff.mutate(h.sender)}>
+                        Selesai
+                      </Button>
+                    </Stack>
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+          </Box>
+        )}
         {tab === 'inbox' && <InboxPanel agentId={agentId} seed={seed?.kind === 'inbox' ? seed : null} />}
         {tab === 'coba-chat' && <TestChatPanel agentId={agentId} />}
         {tab === 'broadcast' && <BroadcastPanel agentId={agentId} seed={seed?.kind === 'broadcast' ? seed : null} />}
