@@ -77,7 +77,7 @@ Teks sumber:
 	var created []models.Knowledge
 	for _, item := range items {
 		k := models.Knowledge{AgentID: aid, Question: item.Question, Answer: item.Answer, Tags: item.Tags}
-		database.DB.Create(&k)
+		_ = database.DB.Create(&k).Error
 		services.IndexKnowledge(&k)
 		created = append(created, k)
 	}
@@ -117,12 +117,12 @@ func ImportKnowledge(c *gin.Context) {
 		if database.DB.Where("agent_id = ? AND question = ?", aid, it.Question).First(&k).Error == nil {
 			k.Answer = it.Answer
 			k.Tags = it.Tags
-			database.DB.Save(&k)
+			_ = database.DB.Save(&k).Error
 			services.IndexKnowledge(&k)
 			updated++
 		} else {
 			k = models.Knowledge{AgentID: aid, Question: it.Question, Answer: it.Answer, Tags: it.Tags}
-			database.DB.Create(&k)
+			_ = database.DB.Create(&k).Error
 			services.IndexKnowledge(&k)
 			created++
 		}

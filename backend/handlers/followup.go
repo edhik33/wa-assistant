@@ -87,7 +87,7 @@ func CreateFollowUp(c *gin.Context) {
 		stop = *req.StopOnReply
 	}
 	fu := models.FollowUp{TenantID: tid, AgentID: id, Name: req.Name, Enabled: true, StopOnReply: stop}
-	database.DB.Create(&fu)
+	if err := database.DB.Create(&fu).Error; err != nil { c.JSON(500, gin.H{"error": "Gagal membuat follow-up"}); return }
 	saveSteps(fu.ID, req.Steps)
 	c.JSON(201, gin.H{"data": followUpResponse(fu)})
 }
@@ -121,7 +121,7 @@ func UpdateFollowUp(c *gin.Context) {
 	if req.StopOnReply != nil {
 		fu.StopOnReply = *req.StopOnReply
 	}
-	database.DB.Save(&fu)
+	_ = database.DB.Save(&fu).Error
 	if req.Steps != nil {
 		saveSteps(fu.ID, *req.Steps)
 	}
@@ -138,9 +138,9 @@ func DeleteFollowUp(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "Urutan tidak ditemukan"})
 		return
 	}
-	database.DB.Where("follow_up_id = ?", fu.ID).Delete(&models.FollowUpStep{})
-	database.DB.Where("follow_up_id = ?", fu.ID).Delete(&models.FollowUpEnrollment{})
-	database.DB.Delete(&fu)
+	_ = database.DB.Where("follow_up_id = ?", fu.ID).Delete(&models.FollowUpStep{}).Error
+	_ = database.DB.Where("follow_up_id = ?", fu.ID).Delete(&models.FollowUpEnrollment{}).Error
+	_ = database.DB.Delete(&fu).Error
 	c.JSON(200, gin.H{"message": "Deleted"})
 }
 
@@ -186,7 +186,7 @@ func EnrollFollowUp(c *gin.Context) {
 				continue
 			}
 			// daftar ulang: reset enrollment lama.
-			database.DB.Model(&existing).Updates(map[string]any{
+			_ = database.DB.Model(&existing).Updates(map[string]any{
 				"name": r.Name, "enrolled_at": now, "next_step": 0,
 				"status": "active", "stopped_reason": "", "last_sent_at": nil,
 			})

@@ -75,7 +75,7 @@ func CreateAutoReply(c *gin.Context) {
 		mt = "contains"
 	}
 	r := models.AutoReply{AgentID: id, Keywords: req.Keywords, MatchType: mt, Reply: req.Reply, Enabled: true, SortOrder: req.SortOrder}
-	database.DB.Create(&r)
+	if err := database.DB.Create(&r).Error; err != nil { c.JSON(500, gin.H{"error": "Gagal"}); return }
 	c.JSON(201, gin.H{"data": r})
 }
 
@@ -115,7 +115,7 @@ func UpdateAutoReply(c *gin.Context) {
 	if req.SortOrder != nil {
 		r.SortOrder = *req.SortOrder
 	}
-	database.DB.Save(&r)
+	_ = database.DB.Save(&r).Error
 	c.JSON(200, gin.H{"data": r})
 }
 
@@ -124,6 +124,6 @@ func DeleteAutoReply(c *gin.Context) {
 	if !ok {
 		return
 	}
-	database.DB.Where("agent_id = ?", id).Delete(&models.AutoReply{}, c.Param("rid"))
+	_ = database.DB.Where("agent_id = ?", id).Delete(&models.AutoReply{}, c.Param("rid")).Error
 	c.JSON(200, gin.H{"message": "Deleted"})
 }

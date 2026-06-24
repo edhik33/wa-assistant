@@ -163,7 +163,7 @@ func CreateSavedContact(c *gin.Context) {
 		return
 	}
 	ct := models.Contact{AgentID: id, Number: num, Name: strings.TrimSpace(req.Name), Notes: req.Notes, Tags: normalizeTags(req.Tags)}
-	database.DB.Create(&ct)
+	if err := database.DB.Create(&ct).Error; err != nil { c.JSON(500, gin.H{"error": "Gagal"}); return }
 	c.JSON(201, gin.H{"data": ct})
 }
 
@@ -197,7 +197,7 @@ func UpdateSavedContact(c *gin.Context) {
 	if req.Tags != nil {
 		ct.Tags = normalizeTags(*req.Tags)
 	}
-	database.DB.Save(&ct)
+	_ = database.DB.Save(&ct).Error
 	c.JSON(200, gin.H{"data": ct})
 }
 
@@ -206,6 +206,6 @@ func DeleteSavedContact(c *gin.Context) {
 	if !ok {
 		return
 	}
-	database.DB.Where("agent_id = ?", id).Delete(&models.Contact{}, c.Param("cid"))
+	_ = database.DB.Where("agent_id = ?", id).Delete(&models.Contact{}, c.Param("cid")).Error
 	c.JSON(200, gin.H{"message": "Deleted"})
 }

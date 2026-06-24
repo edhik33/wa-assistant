@@ -54,7 +54,7 @@ func Checkout(c *gin.Context) {
 		TenantID: tid, PlanID: plan.ID, MerchantRef: merchantRef,
 		Amount: plan.Price, Status: "pending", PaymentMethod: req.Method,
 	}
-	database.DB.Create(&invoice)
+	if err := database.DB.Create(&invoice).Error; err != nil { log.Printf("Gagal Create invoice: %v", err) }
 
 	result, err := services.CreateTripayTransaction(services.TripayTxParams{
 		Method:        req.Method,
@@ -67,7 +67,7 @@ func Checkout(c *gin.Context) {
 	})
 	if err != nil {
 		invoice.Status = "failed"
-		database.DB.Save(&invoice)
+		_ = database.DB.Save(&invoice).Error
 		billingError(c, err)
 		return
 	}
@@ -116,14 +116,14 @@ func TripayCallback(c *gin.Context) {
 		now := time.Now()
 		invoice.Status = "paid"
 		invoice.PaidAt = &now
-		database.DB.Save(&invoice)
+		_ = database.DB.Save(&invoice).Error
 		activateSubscription(invoice.TenantID, invoice.PlanID)
 	case "EXPIRED":
 		invoice.Status = "expired"
-		database.DB.Save(&invoice)
+		_ = database.DB.Save(&invoice).Error
 	case "FAILED":
 		invoice.Status = "failed"
-		database.DB.Save(&invoice)
+		_ = database.DB.Save(&invoice).Error
 	}
 	c.JSON(200, gin.H{"success": true})
 }
@@ -156,9 +156,9 @@ func activateSubscription(tenantID, planID uint) {
 		if sub.StartsAt.IsZero() {
 			sub.StartsAt = now
 		}
-		database.DB.Save(&sub)
+		_ = database.DB.Save(&sub).Error
 	} else {
-		database.DB.Create(&models.Subscription{
+		if err := database.DB.Create(&models.Subscription{
 			TenantID: tenantID, PlanID: planID, Status: "active", StartsAt: now, EndsAt: ends,
 		})
 	}

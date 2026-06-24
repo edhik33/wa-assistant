@@ -93,7 +93,7 @@ func CreateSchedule(c *gin.Context) {
 			s.MediaPath = storeMedia(id, data, s.Mimetype, fh.Filename)
 		}
 	}
-	database.DB.Create(&s)
+	if err := database.DB.Create(&s).Error; err != nil { c.JSON(500, gin.H{"error": "Gagal membuat jadwal"}); return }
 	c.JSON(200, gin.H{"data": s})
 }
 
@@ -144,7 +144,7 @@ func processDueSchedules() {
 		if !services.WA(s.AgentID).IsConnected() {
 			continue // WA belum tersambung -> tunda, coba lagi menit berikutnya (jangan kirim ke ruang hampa)
 		}
-		database.DB.Model(&models.ScheduledMessage{}).Where("id = ?", s.ID).Update("status", "running")
+		_ = database.DB.Model(&models.ScheduledMessage{}).Where("id = ?", s.ID).Update("status", "running").Error
 		fireScheduled(s)
 	}
 }
@@ -163,20 +163,20 @@ func fireScheduled(s models.ScheduledMessage) {
 		recipients = append(recipients, models.BroadcastRecipient{Number: r.Number, Name: r.Name, Status: "pending"})
 	}
 	b.Total = len(recipients)
-	database.DB.Create(&b)
+	if err := database.DB.Create(&b).Error; err != nil { log.Printf("Gagal Create broadcast: %v", err); return }
 	for i := range recipients {
 		recipients[i].BroadcastID = b.ID
 	}
 	if len(recipients) > 0 {
-		database.DB.Create(&recipients)
+		_ = database.DB.Create(&recipients).Error
 	}
 	// Status jadwal tetap "running"; disinkronkan ke hasil akhir broadcast oleh finishBroadcast.
-	database.DB.Model(&models.ScheduledMessage{}).Where("id = ?", s.ID).Update("broadcast_id", b.ID)
+	_ = database.DB.Model(&models.ScheduledMessage{}).Where("id = ?", s.ID).Update("broadcast_id", b.ID).Error
 
 	go runBroadcast(b.ID, s.AgentID, s.MinDelay, s.MaxDelay)
 }
 
 // CleanupStuckSchedules menandai jadwal yang "running" saat server mati sebagai interrupted.
 func CleanupStuckSchedules() {
-	database.DB.Model(&models.ScheduledMessage{}).Where("status = ?", "running").Update("status", "interrupted")
+	_ = database.DB.Model(&models.ScheduledMessage{}).Where("status = ?", "running").Update("status", "interrupted").Error
 }

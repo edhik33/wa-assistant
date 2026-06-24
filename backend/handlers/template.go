@@ -38,7 +38,7 @@ func CreateTemplate(c *gin.Context) {
 		return
 	}
 	t := models.Template{AgentID: id, Title: req.Title, Body: req.Body, SortOrder: req.SortOrder}
-	database.DB.Create(&t)
+	if err := database.DB.Create(&t).Error; err != nil { c.JSON(500, gin.H{"error": "Gagal"}); return }
 	c.JSON(201, gin.H{"data": t})
 }
 
@@ -70,7 +70,7 @@ func UpdateTemplate(c *gin.Context) {
 	if req.SortOrder != nil {
 		t.SortOrder = *req.SortOrder
 	}
-	database.DB.Save(&t)
+	_ = database.DB.Save(&t).Error
 	c.JSON(200, gin.H{"data": t})
 }
 
@@ -79,6 +79,6 @@ func DeleteTemplate(c *gin.Context) {
 	if !ok {
 		return
 	}
-	database.DB.Where("agent_id = ?", id).Delete(&models.Template{}, c.Param("tid"))
+	_ = database.DB.Where("agent_id = ?", id).Delete(&models.Template{}, c.Param("tid")).Error
 	c.JSON(200, gin.H{"message": "Deleted"})
 }
