@@ -202,30 +202,40 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 		displayText = mediaPlaceholder(in.MediaType, in.FileName)
 	}
 	// logRow mencatat satu baris percakapan beserta lampiran media (bila ada).
-	logRow := func(message, reply string) {
+	logRow := func(message, reply string, sendErr error) {
+		status, errMsg, nextRetryAt := deliveryFields(sendErr)
+		if strings.TrimSpace(reply) == "" {
+			status, errMsg, nextRetryAt = "sent", "", nil
+		}
 		if err := database.DB.Create(&models.ChatHistory{
 			AgentID: agentID, Sender: num, Message: message, Reply: reply,
 			MediaType: in.MediaType, MediaPath: mediaPath, FileName: in.FileName, Mimetype: in.Mimetype,
 			WAMsgID: in.WAMsgID, ReplyTo: in.ReplyTo,
+			DeliveryStatus: status, SendError: errMsg, NextRetryAt: nextRetryAt,
 		}).Error; err != nil {
 			log.Printf("Gagal mencatat ChatHistory (agent %d, %s): %v", agentID, num, err)
 		}
 	}
-	send := func(text string) { _ = services.WA(agentID).SendMessage(sender, text) }
+	send := func(text string) error {
+		err := services.WA(agentID).SendMessage(sender, text)
+		if err != nil {
+			log.Printf("WA send gagal (agent %d, %s): %v", agentID, num, err)
+		}
+		return err
+	}
 
 	// 0. Permintaan berhenti (opt-out) -> catat agar tidak ikut broadcast lagi, lalu konfirmasi.
 	if in.Text != "" && isOptOutKeyword(in.Text) {
 		_ = database.DB.Where(models.OptOut{AgentID: agentID, Sender: num}).FirstOrCreate(&models.OptOut{AgentID: agentID, Sender: num}).Error
 		ack := "Baik kak 🙏 nomor ini tidak akan kami kirimi pesan promosi lagi. Terima kasih."
-		send(ack)
-		logRow(in.Text, ack)
+		logRow(in.Text, ack, send(ack))
 		return
 	}
 
 	// 1. Kontak sedang diambil alih manusia -> bot diam, catat pesan masuk untuk inbox.
 	var ho models.Handoff
 	if database.DB.Where("agent_id = ? AND sender = ?", agentID, num).First(&ho).Error == nil {
-		logRow(displayText, "")
+		logRow(displayText, "", nil)
 		return
 	}
 
@@ -238,29 +248,29 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 		var last models.ChatHistory
 		database.DB.Where("agent_id = ? AND sender = ?", agentID, num).Order("created_at desc").First(&last)
 		if last.Reply != away {
-			send(away)
-			logRow(displayText, away)
+			logRow(displayText, away, send(away))
 		} else {
-			logRow(displayText, "")
+			logRow(displayText, "", nil)
 		}
 		return
 	}
 
 	// 3. Sapaan untuk kontak baru.
 	if agent.GreetingEnabled && agent.GreetingMessage != "" && isNewContact(agentID, num) {
-		send(agent.GreetingMessage)
+		if err := send(agent.GreetingMessage); err != nil {
+			logRow(displayText, agent.GreetingMessage, err)
+		}
 	}
 
 	// 3b. Auto-reply kata kunci (instan, tanpa AI) -> dicek sebelum AI agar cepat & hemat biaya.
 	if reply, matched := matchAutoReply(agentID, in.Text); matched {
-		send(reply)
-		logRow(displayText, reply)
+		logRow(displayText, reply, send(reply))
 		return
 	}
 
 	// 3c. Balasan AI dimatikan -> bot tidak menjawab, pesan dicatat ke inbox untuk dibalas manual.
 	if !agent.AIEnabled {
-		logRow(displayText, "")
+		logRow(displayText, "", nil)
 		return
 	}
 
@@ -274,8 +284,7 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 			ack = "Terima kasih kak 🙏 file/medianya sudah kami terima, akan segera kami cek ya."
 		}
 		_ = database.DB.Create(&models.Handoff{AgentID: agentID, Sender: num, LastMsg: displayText}).Error
-		send(ack)
-		logRow(displayText, ack)
+		logRow(displayText, ack, send(ack))
 		log.Printf("Media (%s) dari %s (agent %d) -> dialihkan ke CS (AI teks tak bisa lihat media)", in.MediaType, num, agentID)
 		return
 	}
@@ -283,13 +292,12 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 	// 5. Kuota balasan AI habis -> alihkan ke CS manusia.
 	if aiQuotaExceeded(agent.TenantID) {
 		_ = database.DB.Create(&models.Handoff{AgentID: agentID, Sender: num, LastMsg: displayText}).Error
-		send(quotaMessage)
-		logRow(displayText, quotaMessage)
+		logRow(displayText, quotaMessage, send(quotaMessage))
 		log.Printf("Kuota AI habis (tenant %d, agent %d) — dialihkan ke CS untuk %s", agent.TenantID, agentID, num)
 		return
 	}
 
-	// 6. Jawaban AI (teks biasa atau media dengan caption -> AI menjawab captionnya).
+	// 6. Jawaban AI (teks biasa; media sudah dialihkan ke CS sebelum sampai sini).
 	var history []models.ChatHistory
 	database.DB.Where("agent_id = ? AND sender = ? AND created_at > ?", agentID, num, time.Now().AddDate(0, 0, -7)).
 		Order("created_at desc").Limit(20).Find(&history)
@@ -308,8 +316,11 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 		_ = database.DB.Create(&models.Handoff{AgentID: agentID, Sender: num, LastMsg: displayText}).Error
 		log.Printf("Eskalasi (agent %d) dari %s: %q", agentID, num, in.Text)
 	}
-	sendChunked(agentID, sender, reply) // balasan panjang dipecah jadi beberapa bubble (lebih manusiawi)
-	logRow(displayText, reply)
+	sendErr := sendChunked(agentID, sender, reply) // balasan panjang dipecah jadi beberapa bubble (lebih manusiawi)
+	if sendErr != nil {
+		log.Printf("WA send chunked gagal (agent %d, %s): %v", agentID, num, sendErr)
+	}
+	logRow(displayText, reply, sendErr)
 	incrementAIUsage(agent.TenantID) // hitung pemakaian kuota bulanan tenant
 
 	// Long-term memory: auto-summary setelah percakapan (jeda >30 menit).
@@ -318,10 +329,13 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 
 // sendChunked mengirim balasan AI dalam 1-3 bubble (per paragraf), masing-masing dengan
 // jeda "mengetik" alami dari SendMessage — terasa seperti manusia, bukan satu dinding teks.
-func sendChunked(agentID uint, to types.JID, text string) {
+func sendChunked(agentID uint, to types.JID, text string) error {
 	for _, part := range splitReply(text) {
-		_ = services.WA(agentID).SendMessage(to, part)
+		if err := services.WA(agentID).SendMessage(to, part); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // splitReply memecah teks per paragraf (baris kosong), maksimal 3 bubble; sisanya digabung ke bubble terakhir.
@@ -366,12 +380,12 @@ func isNewContact(agentID uint, num string) bool {
 // storeMedia menyimpan byte media ke disk dan mengembalikan path-nya (kosong bila gagal).
 func storeMedia(agentID uint, data []byte, mimetype, fileName string) string {
 	dir := fmt.Sprintf("data/media/agent-%d", agentID)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		log.Printf("gagal buat folder media: %v", err)
 		return ""
 	}
 	full := filepath.Join(dir, fmt.Sprintf("%d%s", time.Now().UnixNano(), mediaExt(mimetype, fileName)))
-	if err := os.WriteFile(full, data, 0o644); err != nil {
+	if err := os.WriteFile(full, data, 0o600); err != nil {
 		log.Printf("gagal simpan media: %v", err)
 		return ""
 	}
@@ -443,14 +457,20 @@ func OnDeviceLinked(agentID uint, jid, number string) {
 	}
 	a.DeviceJID = jid
 	a.Number = number
-	database.DB.Save(&a)
+	if err := database.DB.Save(&a).Error; err != nil {
+		log.Printf("Gagal menyimpan device agent %d: %v", agentID, err)
+		return
+	}
 	log.Printf("Agent %d ter-link ke nomor %s", agentID, number)
 }
 
 // StartAgents menyambungkan ulang semua agent yang sudah punya device saat startup.
 func StartAgents() {
 	var agents []models.Agent
-	database.DB.Find(&agents)
+	if err := database.DB.Find(&agents).Error; err != nil {
+		log.Printf("Gagal mengambil agent saat startup: %v", err)
+		return
+	}
 	for i := range agents {
 		a := agents[i]
 		// Hemat resource: hanya sambungkan ulang nomor milik tenant yang langganannya aktif.
@@ -464,7 +484,9 @@ func StartAgents() {
 				if idx := strings.IndexAny(jid, ":@"); idx >= 0 {
 					a.Number = jid[:idx]
 				}
-				database.DB.Save(&a)
+				if err := database.DB.Save(&a).Error; err != nil {
+					log.Printf("Gagal migrasi device agent %d: %v", a.ID, err)
+				}
 			}
 		}
 		if a.DeviceJID != "" {
@@ -478,7 +500,9 @@ func StartAgents() {
 				if status == "connected" && ag.Number == "" {
 					if num, _ := services.WA(ag.ID).GetInfo(); num != "" {
 						ag.Number = num
-						database.DB.Save(&ag)
+						if err := database.DB.Save(&ag).Error; err != nil {
+							log.Printf("Gagal menyimpan nomor agent %d: %v", ag.ID, err)
+						}
 					}
 				}
 			}(a)
@@ -531,7 +555,11 @@ func CreateAgent(c *gin.Context) {
 		req.Tone = "ramah"
 	}
 	a := models.Agent{TenantID: tid, Name: strings.TrimSpace(req.Name), SystemPrompt: req.SystemPrompt, Tone: req.Tone, AIEnabled: true}
-	database.DB.Create(&a)
+	if err := database.DB.Create(&a).Error; err != nil {
+		log.Printf("Gagal membuat agent tenant %d: %v", tid, err)
+		c.JSON(500, gin.H{"error": "Gagal membuat agent"})
+		return
+	}
 	c.JSON(201, gin.H{"data": a})
 }
 
@@ -622,10 +650,13 @@ func maybeSummarize(agent models.Agent, senderNum string) {
 		summary = summary[:300]
 	}
 	now := time.Now()
-	database.DB.Model(&agent).Updates(map[string]any{
+	if err := database.DB.Model(&agent).Updates(map[string]any{
 		"conversation_summary": summary,
 		"last_summary_at":      now,
-	})
+	}).Error; err != nil {
+		log.Printf("Gagal menyimpan summary agent %d: %v", agent.ID, err)
+		return
+	}
 	log.Printf("Summarized (agent %d, %s): %s", agent.ID, senderNum, summary)
 }
 
