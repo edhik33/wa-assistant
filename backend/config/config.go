@@ -11,7 +11,13 @@ import (
 // init memuat .env SEKALI, SEBELUM variabel package-level lain (mis. jwtSecret) diinisialisasi.
 // Karena package config diimpor paling awal, ini cukup — tak perlu godotenv.Load() lagi di main().
 func init() {
-	godotenv.Load(".env")
+	_ = godotenv.Load(".env")
+}
+
+// Load disediakan untuk command/seed lama yang masih memanggil config.Load().
+// init() tetap menjadi mekanisme utama agar env tersedia sebelum package-level var lain dibuat.
+func Load() {
+	_ = godotenv.Load(".env")
 }
 
 func Env(key, defaultVal string) string {
