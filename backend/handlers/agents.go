@@ -594,7 +594,7 @@ func UpdateAgent(c *gin.Context) {
 // maybeSummarize: trigger ringkasan percakapan kalau jeda >30 menit dari summary terakhir.
 // Dijalankan di background goroutine supaya tidak blocking reply ke user.
 func maybeSummarize(agent models.Agent, senderNum string) {
-	if time.Since(agent.LastSummaryAt) < 30*time.Minute {
+	if agent.LastSummaryAt != nil && time.Since(*agent.LastSummaryAt) < 30*time.Minute {
 		return // belum waktunya
 	}
 	// Ambil 30 pesan terakhir untuk konteks ringkasan.
