@@ -40,13 +40,13 @@ func TestChat(c *gin.Context) {
 	if tone == "" {
 		tone = "ramah"
 	}
-	reply, escalate, err := services.ChatWithKnowledge(id, prompt, tone, req.Message, nil)
+	reply, escalate, model, err := services.ChatWithKnowledge(id, prompt, tone, req.Message, nil)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 	incrementAIUsage(agent.TenantID)
-	c.JSON(200, gin.H{"reply": reply, "escalate": escalate})
+	c.JSON(200, gin.H{"reply": reply, "escalate": escalate, "model": model})
 }
 
 // AgentAnalytics mengembalikan ringkasan + tren 7 hari untuk satu agent.

@@ -553,6 +553,6 @@ export function useResumeHandoff(agentId: number) {
 export function useTestChat(agentId: number) {
   return useMutation({
     mutationFn: async (message: string) =>
-      (await api.post(`/agents/${agentId}/test-chat`, { message })).data as { reply: string; escalate: boolean },
+      (await api.post(`/agents/${agentId}/test-chat`, { message })).data as { reply: string; escalate: boolean; model?: string },
   });
 }

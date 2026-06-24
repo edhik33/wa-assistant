@@ -36,20 +36,20 @@ func InitAI() {
 const openRouterBase = "https://openrouter.ai/api/v1"
 
 type aiPreset struct {
-	Key, Label, Model, BaseURL, KeyEnv string
+	Key, Label, Short, Model, BaseURL, KeyEnv string
 }
 
 // aiPresetDefs mengembalikan daftar preset. Model OpenRouter bisa di-override via env
 // (slug bisa berubah sewaktu-waktu) tanpa ganti kode.
 func aiPresetDefs() []aiPreset {
 	return []aiPreset{
-		{Key: "deepseek", Label: "DeepSeek (default)",
+		{Key: "deepseek", Label: "DeepSeek (default)", Short: "DeepSeek",
 			Model: config.Env("OPENAI_MODEL", "deepseek-v4-pro"), BaseURL: config.Env("OPENAI_BASE_URL", "https://api.deepseek.com/v1"), KeyEnv: "OPENAI_API_KEY"},
-		{Key: "haiku", Label: "Claude Haiku 4.5 (OpenRouter)",
+		{Key: "haiku", Label: "Claude Haiku 4.5 (OpenRouter)", Short: "Claude Haiku 4.5",
 			Model: config.Env("OPENROUTER_MODEL_HAIKU", "anthropic/claude-haiku-4.5"), BaseURL: openRouterBase, KeyEnv: "OPENROUTER_API_KEY"},
-		{Key: "gemini-flash", Label: "Gemini Flash (OpenRouter)",
+		{Key: "gemini-flash", Label: "Gemini Flash (OpenRouter)", Short: "Gemini Flash",
 			Model: config.Env("OPENROUTER_MODEL_GEMINI", "google/gemini-2.0-flash-001"), BaseURL: openRouterBase, KeyEnv: "OPENROUTER_API_KEY"},
-		{Key: "gpt-mini", Label: "GPT-4o mini (OpenRouter)",
+		{Key: "gpt-mini", Label: "GPT-4o mini (OpenRouter)", Short: "GPT-4o mini",
 			Model: config.Env("OPENROUTER_MODEL_GPTMINI", "openai/gpt-4o-mini"), BaseURL: openRouterBase, KeyEnv: "OPENROUTER_API_KEY"},
 	}
 }
@@ -120,7 +120,8 @@ func SetActivePreset(key string) bool {
 	return false
 }
 
-func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history []models.ChatHistory) (string, bool, error) {
+// ChatWithKnowledge mengembalikan (balasan, perlu eskalasi ke manusia, nama model yang menjawab, error).
+func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history []models.ChatHistory) (string, bool, string, error) {
 	relevant := searchKnowledge(agentID, userMsg)
 
 	enhancedPrompt := systemPrompt +
@@ -165,17 +166,21 @@ func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history
 	}
 
 	p := activePreset()
-	resp, err := clientForPreset(p).CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-		Model:       p.Model,
-		Messages:    messages,
-		MaxTokens:   maxTok,
-		Temperature: temp,
-	})
+	req := openai.ChatCompletionRequest{Model: p.Model, Messages: messages, MaxTokens: maxTok, Temperature: temp}
+	resp, err := clientForPreset(p).CreateChatCompletion(context.Background(), req)
+	if err != nil && p.Key != "deepseek" {
+		// Model utama gagal (kehabisan kredit OpenRouter / provider down) → fallback ke DeepSeek
+		// agar AI tidak pernah mati. Model yang dilaporkan ikut jadi DeepSeek (jujur).
+		log.Printf("AI: model %s gagal (%v) — fallback ke DeepSeek", p.Model, err)
+		p = presetByKey("deepseek")
+		req.Model = p.Model
+		resp, err = clientForPreset(p).CreateChatCompletion(context.Background(), req)
+	}
 	if err != nil {
-		return "", false, err
+		return "", false, "", err
 	}
 	if len(resp.Choices) == 0 {
-		return "Maaf, saya tidak bisa menjawab.", false, nil
+		return "Maaf, saya tidak bisa menjawab.", false, p.Short, nil
 	}
 	if string(resp.Choices[0].FinishReason) == "length" {
 		log.Printf("WARN: jawaban kemungkinan terpotong (finish_reason=length) — pertimbangkan naikkan MaxTokens. Pesan: %q", userMsg)
@@ -183,11 +188,11 @@ func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history
 	reply := strings.TrimSpace(resp.Choices[0].Message.Content)
 	// Model menandai dirinya tidak bisa menjawab pertanyaan spesifik -> eskalasi ke manusia.
 	if strings.Contains(reply, "[[ESCALATE]]") {
-		return "", true, nil
+		return "", true, p.Short, nil
 	}
 	if reply == "" {
 		// Model sesekali balas kosong; jangan kirim pesan kosong ke WhatsApp.
-		return "Maaf kak, boleh diulang pertanyaannya?", false, nil
+		return "Maaf kak, boleh diulang pertanyaannya?", false, p.Short, nil
 	}
 
 	// Verifikasi jawaban terhadap knowledge source (keyword overlap) — deteksi dini halusinasi.
@@ -198,7 +203,7 @@ func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history
 		}
 	}
 
-	return reply, false, nil
+	return reply, false, p.Short, nil
 }
 
 // searchKnowledge mencari knowledge paling relevan dengan pesan user.

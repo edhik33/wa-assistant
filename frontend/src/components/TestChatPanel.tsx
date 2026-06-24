@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Box, Typography, Card, CardContent, TextField, IconButton, Stack, Chip, CircularProgress } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
+import SmartToyIcon from '@mui/icons-material/SmartToyOutlined';
 import { useTestChat } from '../hooks';
 import PageHeader from './PageHeader';
 
-type Msg = { role: 'user' | 'bot'; text: string; escalate?: boolean };
+type Msg = { role: 'user' | 'bot'; text: string; escalate?: boolean; model?: string };
 
 export default function TestChatPanel({ agentId }: { agentId: number }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -18,7 +19,7 @@ export default function TestChatPanel({ agentId }: { agentId: number }) {
     setInput('');
     try {
       const res = await testChat.mutateAsync(text);
-      setMsgs(m => [...m, { role: 'bot', text: res.reply, escalate: res.escalate }]);
+      setMsgs(m => [...m, { role: 'bot', text: res.reply, escalate: res.escalate, model: res.model }]);
     } catch {
       setMsgs(m => [...m, { role: 'bot', text: 'Gagal memanggil AI.' }]);
     }
@@ -41,7 +42,11 @@ export default function TestChatPanel({ agentId }: { agentId: number }) {
                 <Box sx={{ px: 1.25, py: 0.75, borderRadius: 1.5, bgcolor: m.role === 'user' ? 'primary.main' : '#eceff1', color: m.role === 'user' ? '#fff' : 'text.primary', whiteSpace: 'pre-wrap', fontSize: '0.88rem', lineHeight: 1.45 }}>
                   {m.text}
                 </Box>
-                {m.escalate && <Chip label="Bot ragu, dialihkan ke manusia" size="small" color="warning" sx={{ mt: 0.5 }} />}
+                {m.role === 'bot' && m.model && (
+                  <Chip icon={<SmartToyIcon sx={{ fontSize: 14 }} />} label={`Dijawab oleh ${m.model}`} size="small" variant="outlined"
+                    sx={{ mt: 0.5, height: 20, fontSize: '0.68rem' }} />
+                )}
+                {m.escalate && <Chip label="Bot ragu, dialihkan ke manusia" size="small" color="warning" sx={{ mt: 0.5, ml: m.model ? 0.5 : 0 }} />}
               </Box>
             ))}
             {testChat.isPending && <CircularProgress size={20} sx={{ alignSelf: 'flex-start', ml: 1 }} />}

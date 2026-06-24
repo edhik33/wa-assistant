@@ -284,7 +284,7 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 		history[i], history[j] = history[j], history[i]
 	}
 
-	reply, escalate, err := services.ChatWithKnowledge(agentID, prompt, tone, in.Text, history)
+	reply, escalate, _, err := services.ChatWithKnowledge(agentID, prompt, tone, in.Text, history)
 	if err != nil {
 		log.Printf("AI error (agent %d) dari %s: %v", agentID, num, err)
 		reply = "Maaf, ada kendala teknis."
