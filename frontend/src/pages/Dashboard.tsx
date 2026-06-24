@@ -211,12 +211,16 @@ export default function Dashboard() {
     if (!agentName.trim()) e.agentName = 'Nama CS wajib diisi';
     setSettingsErrors(e);
     if (Object.keys(e).length > 0) return;
-    await saveAgentMut.mutateAsync({
-      name: agentName, system_prompt: prompt, tone,
-      greeting_enabled: greetEnabled, greeting_message: greetMsg,
-      business_hours_enabled: bhEnabled, business_start: bhStart, business_end: bhEnd, away_message: awayMsg,
-    });
-    setSaved(true); setTimeout(() => setSaved(false), 2000);
+    try {
+      await saveAgentMut.mutateAsync({
+        name: agentName, system_prompt: prompt, tone,
+        greeting_enabled: greetEnabled, greeting_message: greetMsg,
+        business_hours_enabled: bhEnabled, business_start: bhStart, business_end: bhEnd, away_message: awayMsg,
+      });
+      setSaved(true); setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      alert('Gagal menyimpan: ' + (err?.response?.data?.error || err?.message || 'Unknown'));
+    }
   };
 
   const toggleAI = async (val: boolean) => {
