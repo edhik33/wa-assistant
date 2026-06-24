@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"wa-assistant/backend/config"
 	"wa-assistant/backend/database"
 	"wa-assistant/backend/models"
 	"wa-assistant/backend/services"
@@ -56,10 +57,18 @@ func resolveAgent(c *gin.Context) (uint, bool) {
 func planMaxNumbers(tenantID uint) int {
 	var t models.Tenant
 	if database.DB.Preload("Plan").First(&t, tenantID).Error != nil {
-		return 1
+		return trialMaxNumbers()
 	}
 	if t.Plan != nil && t.Plan.MaxNumbers > 0 {
 		return t.Plan.MaxNumbers
+	}
+	return trialMaxNumbers() // tenant trial / tanpa plan
+}
+
+// trialMaxNumbers = batas nomor untuk tenant trial (default 1, bisa diatur via env TRIAL_MAX_NUMBERS).
+func trialMaxNumbers() int {
+	if n := config.EnvInt("TRIAL_MAX_NUMBERS", 1); n > 0 {
+		return n
 	}
 	return 1
 }

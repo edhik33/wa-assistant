@@ -62,6 +62,12 @@ export default function BillingPanel() {
         </Alert>
       )}
 
+      {(!plans || plans.length === 0) && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Mohon maaf, belum ada paket langganan yang tersedia saat ini. Silakan cek kembali nanti atau hubungi admin.
+        </Alert>
+      )}
+
       <Grid container spacing={1.5} sx={{ mb: 2 }}>
         {plans?.map(p => {
           const current = usage?.tenant.plan_id === p.id;
