@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -61,7 +63,11 @@ func CreateSchedule(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Tidak ada nomor valid"})
 		return
 	}
-	recJSON, _ := json.Marshal(clean)
+	recJSON, err := json.Marshal(clean)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Gagal menyiapkan penerima"})
+		return
+	}
 
 	minD, _ := strconv.Atoi(c.PostForm("min_delay"))
 	maxD, _ := strconv.Atoi(c.PostForm("max_delay"))
@@ -78,22 +84,33 @@ func CreateSchedule(c *gin.Context) {
 		MinDelay: minD, MaxDelay: maxD, Status: "scheduled",
 	}
 	if fh, ferr := c.FormFile("file"); ferr == nil {
-		if f, e := fh.Open(); e == nil {
-			defer f.Close()
-			data, _ := io.ReadAll(f)
-			s.Mimetype = fh.Header.Get("Content-Type")
-			if s.Mimetype == "" {
-				s.Mimetype = "application/octet-stream"
-			}
-			s.FileName = fh.Filename
-			s.MediaType = "document"
-			if strings.HasPrefix(s.Mimetype, "image/") {
-				s.MediaType = "image"
-			}
-			s.MediaPath = storeMedia(id, data, s.Mimetype, fh.Filename)
+		f, e := fh.Open()
+		if e != nil {
+			c.JSON(400, gin.H{"error": "Gagal membaca lampiran"})
+			return
 		}
+		defer f.Close()
+		data, readErr := io.ReadAll(f)
+		if readErr != nil {
+			c.JSON(400, gin.H{"error": "Gagal membaca lampiran"})
+			return
+		}
+		s.Mimetype = fh.Header.Get("Content-Type")
+		if s.Mimetype == "" {
+			s.Mimetype = "application/octet-stream"
+		}
+		s.FileName = fh.Filename
+		s.MediaType = "document"
+		if strings.HasPrefix(s.Mimetype, "image/") {
+			s.MediaType = "image"
+		}
+		s.MediaPath = storeMedia(id, data, s.Mimetype, fh.Filename)
 	}
-	if err := database.DB.Create(&s).Error; err != nil { c.JSON(500, gin.H{"error": "Gagal membuat jadwal"}); return }
+	if err := database.DB.Create(&s).Error; err != nil {
+		log.Printf("Gagal membuat jadwal agent %d: %v", id, err)
+		c.JSON(500, gin.H{"error": "Gagal membuat jadwal"})
+		return
+	}
 	c.JSON(200, gin.H{"data": s})
 }
 
@@ -122,29 +139,47 @@ func CancelSchedule(c *gin.Context) {
 
 // StartScheduler mengecek jadwal & follow-up yang jatuh tempo tiap menit & menjalankannya.
 func StartScheduler() {
+	StartSchedulerCtx(context.Background())
+}
+
+// StartSchedulerCtx adalah versi lifecycle-aware dari scheduler; berhenti saat ctx dibatalkan.
+func StartSchedulerCtx(ctx context.Context) {
 	go func() {
 		processDueSchedules()
 		go processDueFollowUps()
 		t := time.NewTicker(1 * time.Minute)
-		for range t.C {
-			processDueSchedules()
-			// Follow-up dijalankan terpisah (bisa menyelipkan jeda antar kirim) agar tak menahan jadwal.
-			go processDueFollowUps()
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Println("Scheduler berhenti")
+				return
+			case <-t.C:
+				processDueSchedules()
+				// Follow-up dijalankan terpisah agar tak menahan jadwal.
+				go processDueFollowUps()
+			}
 		}
 	}()
 }
 
 func processDueSchedules() {
 	var due []models.ScheduledMessage
-	database.DB.Where("status = ? AND run_at <= ?", "scheduled", time.Now()).Find(&due)
+	if err := database.DB.Where("status = ? AND run_at <= ?", "scheduled", time.Now()).Find(&due).Error; err != nil {
+		log.Printf("Scheduler query error: %v", err)
+		return
+	}
 	for _, s := range due {
 		if !tenantWAActive(s.TenantID) {
 			continue // tenant tidak aktif -> tunda (tetap scheduled)
 		}
 		if !services.WA(s.AgentID).IsConnected() {
-			continue // WA belum tersambung -> tunda, coba lagi menit berikutnya (jangan kirim ke ruang hampa)
+			continue // WA belum tersambung -> tunda, coba lagi menit berikutnya
 		}
-		_ = database.DB.Model(&models.ScheduledMessage{}).Where("id = ?", s.ID).Update("status", "running").Error
+		if err := database.DB.Model(&models.ScheduledMessage{}).Where("id = ? AND status = ?", s.ID, "scheduled").Update("status", "running").Error; err != nil {
+			log.Printf("Scheduler gagal update jadwal %d: %v", s.ID, err)
+			continue
+		}
 		fireScheduled(s)
 	}
 }
@@ -152,7 +187,11 @@ func processDueSchedules() {
 // fireScheduled membuat broadcast dari jadwal lalu menjalankannya.
 func fireScheduled(s models.ScheduledMessage) {
 	var recs []scheduleRecipient
-	json.Unmarshal([]byte(s.Recipients), &recs)
+	if err := json.Unmarshal([]byte(s.Recipients), &recs); err != nil {
+		log.Printf("Scheduler gagal parse penerima jadwal %d: %v", s.ID, err)
+		_ = database.DB.Model(&models.ScheduledMessage{}).Where("id = ?", s.ID).Update("status", "failed").Error
+		return
+	}
 
 	b := models.Broadcast{
 		TenantID: s.TenantID, AgentID: s.AgentID, Message: s.Message, Status: "pending",
@@ -163,20 +202,32 @@ func fireScheduled(s models.ScheduledMessage) {
 		recipients = append(recipients, models.BroadcastRecipient{Number: r.Number, Name: r.Name, Status: "pending"})
 	}
 	b.Total = len(recipients)
-	_ = database.DB.Create(&b).Error
+	if err := database.DB.Create(&b).Error; err != nil {
+		log.Printf("Scheduler gagal membuat broadcast jadwal %d: %v", s.ID, err)
+		_ = database.DB.Model(&models.ScheduledMessage{}).Where("id = ?", s.ID).Update("status", "failed").Error
+		return
+	}
 	for i := range recipients {
 		recipients[i].BroadcastID = b.ID
 	}
 	if len(recipients) > 0 {
-		_ = database.DB.Create(&recipients).Error
+		if err := database.DB.Create(&recipients).Error; err != nil {
+			log.Printf("Scheduler gagal membuat penerima broadcast %d: %v", b.ID, err)
+			_ = database.DB.Model(&models.ScheduledMessage{}).Where("id = ?", s.ID).Update("status", "failed").Error
+			return
+		}
 	}
 	// Status jadwal tetap "running"; disinkronkan ke hasil akhir broadcast oleh finishBroadcast.
-	_ = database.DB.Model(&models.ScheduledMessage{}).Where("id = ?", s.ID).Update("broadcast_id", b.ID).Error
+	if err := database.DB.Model(&models.ScheduledMessage{}).Where("id = ?", s.ID).Update("broadcast_id", b.ID).Error; err != nil {
+		log.Printf("Scheduler gagal link broadcast jadwal %d: %v", s.ID, err)
+	}
 
 	go runBroadcast(b.ID, s.AgentID, s.MinDelay, s.MaxDelay)
 }
 
 // CleanupStuckSchedules menandai jadwal yang "running" saat server mati sebagai interrupted.
 func CleanupStuckSchedules() {
-	_ = database.DB.Model(&models.ScheduledMessage{}).Where("status = ?", "running").Update("status", "interrupted").Error
+	if err := database.DB.Model(&models.ScheduledMessage{}).Where("status = ?", "running").Update("status", "interrupted").Error; err != nil {
+		log.Printf("Cleanup stuck schedule gagal: %v", err)
+	}
 }
