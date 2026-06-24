@@ -161,10 +161,14 @@ export function useSendMedia(agentId: number) {
       fd.append('file', file);
       return (await api.post(`/agents/${agentId}/send-media`, fd)).data;
     },
-    onSuccess: (_d, vars) => {
-      qc.invalidateQueries({ queryKey: ['conversation', agentId, vars.to] });
-      qc.invalidateQueries({ queryKey: ['contacts', agentId] });
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['conversation', agentId] }); qc.invalidateQueries({ queryKey: ['contacts', agentId] }); },
+  });
+}
+
+export function useSendTyping(agentId: number) {
+  return useMutation({
+    mutationFn: async ({ to, active }: { to: string; active: boolean }) =>
+      (await api.post(`/agents/${agentId}/typing`, { to, active })).data,
   });
 }
 
