@@ -268,7 +268,7 @@ func processDueFollowUps() {
 		if err := services.WA(e.AgentID).SendText(e.Number, msg); err != nil {
 			continue // gagal kirim -> jangan maju, coba lagi nanti
 		}
-		logTurn(e.AgentID, e.Number, "", msg, true)
+		logTurn(e.AgentID, e.Number, "", msg, true, "", "")
 		sent++
 
 		now := time.Now()

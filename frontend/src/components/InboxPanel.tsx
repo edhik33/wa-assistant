@@ -253,7 +253,14 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
                     {(m.message || (m.media_type && !m.from_human)) && (
                       <Bubble side="left" bg="#fff" time={fmtTime(m.created_at)} name={selectedName || sender}
                         replyTo={m.reply_text || (m.reply_to ? (convo?.data?.find((x: any) => x.wa_msg_id === m.reply_to || String(x.id) === m.reply_to)?.message || '💬 Pesan...') : '')}
-                        onReply={() => setReplyTo({ id: m.wa_msg_id || String(m.id), text: m.message || '📷 Media' })}>
+                        onReply={() => setReplyTo({ id: m.wa_msg_id || String(m.id), text: ((m: any) => {
+    if (m.message) return m.message;
+    if (m.media_type === 'image' || m.media_type === 'sticker') return '📷 Foto';
+    if (m.media_type === 'video') return '🎥 Video';
+    if (m.media_type === 'audio') return '🎵 Audio';
+    if (m.media_type === 'document') return '📄 ' + (m.file_name || 'Dokumen');
+    return '📷 Media';
+  })(m) })}>
                         {m.media_type && !m.from_human && <MediaView agentId={agentId} m={m} token={convo?.media_token || ''} />}
                         {m.message && <span>{m.message}</span>}
                       </Bubble>
@@ -267,7 +274,14 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
                         tag={m.from_human ? 'CS' : 'Bot'}
                         time={fmtTime(m.created_at)}
                         replyTo={m.reply_text || (m.reply_to ? (convo?.data?.find((x: any) => x.wa_msg_id === m.reply_to || String(x.id) === m.reply_to)?.reply || convo?.data?.find((x: any) => x.wa_msg_id === m.reply_to || String(x.id) === m.reply_to)?.message || '💬 Pesan...') : '')}
-                        onReply={() => setReplyTo({ id: m.wa_msg_id || String(m.id), text: m.reply || m.message || '📷 Media' })}
+                        onReply={() => setReplyTo({ id: m.wa_msg_id || String(m.id), text: m.reply || ((m: any) => {
+    if (m.message) return m.message;
+    if (m.media_type === 'image' || m.media_type === 'sticker') return '📷 Foto';
+    if (m.media_type === 'video') return '🎥 Video';
+    if (m.media_type === 'audio') return '🎵 Audio';
+    if (m.media_type === 'document') return '📄 ' + (m.file_name || 'Dokumen');
+    return '📷 Media';
+  })(m) })}
                       >
                         {m.media_type && m.from_human && <MediaView agentId={agentId} m={m} token={convo?.media_token || ''} />}
                         {m.reply && <span>{m.reply}</span>}
