@@ -408,8 +408,7 @@ func (w *waInstance) Logout() error {
 
 // SendReply mengirim balasan yang mengutip pesan tertentu (reply-to).
 func (w *waInstance) SendReply(toNumber, message, replyToID string) error {
-	_, err := w.SendMessage(types.NewJID(toNumber, types.DefaultUserServer), message, replyToID)
-	return err
+	return w.SendMessage(types.NewJID(toNumber, types.DefaultUserServer), message, replyToID)
 }
 
 // Typing mengirim indikator "mengetik" ke kontak.
@@ -444,8 +443,7 @@ func (w *waInstance) RevokeMessage(toNumber string, msgID types.MessageID) error
 
 // SendText mengirim pesan ke nomor bare (mis "628123") tanpa pemanggil perlu menyusun JID.
 func (w *waInstance) SendText(toNumber, message string) error {
-	_, err := w.SendMessage(types.NewJID(toNumber, types.DefaultUserServer), message)
-	return err
+	return w.SendMessage(types.NewJID(toNumber, types.DefaultUserServer), message)
 }
 
 // NormalizePhone membersihkan nomor jadi format digit internasional (mis. "08.." -> "628..").
@@ -759,12 +757,12 @@ func (w *waInstance) Suspend() {
 	w.status = "disconnected"
 }
 
-func (w *waInstance) SendMessage(to types.JID, message string, replyToID ...string) (string, error) {
+func (w *waInstance) SendMessage(to types.JID, message string, replyToID ...string) error {
 	w.mu.Lock()
 	client := w.client
 	w.mu.Unlock()
 	if client == nil || !client.IsConnected() {
-		return "", fmt.Errorf("client WA tidak terhubung")
+		return fmt.Errorf("client WA tidak terhubung")
 	}
 
 	ctx := context.Background()
@@ -792,6 +790,7 @@ func (w *waInstance) SendMessage(to types.JID, message string, replyToID ...stri
 	_, err := client.SendMessage(ctx, to, msg)
 	return err
 }
+
 
 // SendTextAndGetID mengirim teks dan mengembalikan ID pesan WhatsApp (untuk revoke).
 func (w *waInstance) SendTextAndGetID(toNumber, message string) (string, error) {
