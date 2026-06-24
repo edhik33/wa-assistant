@@ -39,7 +39,8 @@ function Bubble({ side, bg, color, tag, time, name, children }: {
     }}>
       <Avatar sx={{
         width: 28, height: 28, fontSize: 12, fontWeight: 700, flexShrink: 0,
-        bgcolor: tag === 'Bot' ? '#25D366' : tag === 'CS' ? 'primary.main' : 'grey.400',
+        bgcolor: tag === 'Bot' ? '#25D366' : tag === 'CS' ? 'primary.main' : 'grey.600',
+        color: '#fff',
         alignSelf: 'flex-end',
       }}>
         {tag === 'Bot' ? <SmartToyIcon sx={{ fontSize: 16 }} /> : initial}
@@ -170,7 +171,7 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
             {contacts?.length === 0 && <Typography color="text.secondary" sx={{ p: 2 }}>Belum ada percakapan.</Typography>}
             {contacts?.map(ct => (
               <ListItemButton key={ct.sender} selected={ct.sender === sender} onClick={() => setSender(ct.sender)}>
-                <Avatar sx={{ width: 32, height: 32, fontSize: 13, fontWeight: 700, mr: 1, bgcolor: 'grey.400' }}>
+                <Avatar sx={{ width: 32, height: 32, fontSize: 13, fontWeight: 700, mr: 1, bgcolor: 'grey.600', color: '#fff' }}>
                   {(ct.name || ct.sender).charAt(0).toUpperCase()}
                 </Avatar>
                 <ListItemText
@@ -192,7 +193,7 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
             <>
               <Stack direction="row" sx={{ p: 1.25, alignItems: 'center', justifyContent: 'space-between' }}>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                  <Avatar sx={{ width: 36, height: 36, fontSize: 14, fontWeight: 700, bgcolor: 'grey.400' }}>
+                  <Avatar sx={{ width: 36, height: 36, fontSize: 14, fontWeight: 700, bgcolor: 'grey.600', color: '#fff' }}>
                     {(selectedName || sender).charAt(0).toUpperCase()}
                   </Avatar>
                   <Box>
