@@ -7,7 +7,7 @@ import SendIcon from '@mui/icons-material/Send';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import CloseIcon from '@mui/icons-material/Close';
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import DeleteIcon from '@mui/icons-material/Delete';
 import ReplyIcon from '@mui/icons-material/Reply';
 import { useContacts, useConversation, useSendMessage, useSendMedia, useSendTyping, useRevokeMessage, useResumeBot } from '../hooks';
 import PageHeader from './PageHeader';
@@ -269,6 +269,7 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
                     )}
                     {/* Balasan CS / Bot (kanan) */}
                     {(m.reply || (m.media_type && m.from_human)) && (
+                      <>
                       <Bubble
                         side="right"
                         bg={m.from_human ? '#1F8A50' : '#dcf8c6'}
@@ -276,24 +277,18 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
                         tag={m.from_human ? 'CS' : 'Bot'}
                         time={fmtTime(m.created_at)}
                         replyTo={m.reply_text || (m.reply_to ? (convo?.data?.find((x: any) => x.wa_msg_id === m.reply_to || String(x.id) === m.reply_to)?.reply || convo?.data?.find((x: any) => x.wa_msg_id === m.reply_to || String(x.id) === m.reply_to)?.message || '💬 Pesan...') : '')}
-                        onReply={() => setReplyTo({ id: m.wa_msg_id || String(m.id), text: m.reply || ((m: any) => {
-    if (m.message) return m.message;
-    if (m.media_type === 'image' || m.media_type === 'sticker') return '📷 Foto';
-    if (m.media_type === 'video') return '🎥 Video';
-    if (m.media_type === 'audio') return '🎵 Audio';
-    if (m.media_type === 'document') return '📄 ' + (m.file_name || 'Dokumen');
-    return '📷 Media';
-  })(m) })}
+                        onReply={() => setReplyTo({ id: m.wa_msg_id || String(m.id), text: m.reply || m.message || '📷 Media' })}
                       >
                         {m.media_type && m.from_human && <MediaView agentId={agentId} m={m} token={convo?.media_token || ''} />}
                         {m.reply && <span>{m.reply}</span>}
                       </Bubble>
                       {m.from_human && m.wa_msg_id && (
                         <IconButton size="small" onClick={() => revokeMsg.mutate({ msgId: m.wa_msg_id, to: sender })}
-                          sx={{ alignSelf: 'flex-end', mt: -3, mr: -1, opacity: 0, '&:hover': { opacity: 1 }, p: 0.2, width: 18, height: 18 }}>
-                          <DeleteOutlineIcon sx={{ fontSize: 14, color: 'error.main' }} />
+                          sx={{ alignSelf: 'flex-end', opacity: 0, '&:hover': { opacity: 1 }, p: 0.2, width: 18, height: 18, mt: -3, mr: -1 }}>
+                          <DeleteIcon sx={{ fontSize: 14, color: 'error.main' }} />
                         </IconButton>
                       )}
+                      </>
                     )}
                   </Box>
                 ))}
