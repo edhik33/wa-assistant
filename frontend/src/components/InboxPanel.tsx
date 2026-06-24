@@ -109,6 +109,7 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
   const bottomRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const didFirstScroll = useRef(false);
 
   useEffect(() => {
     if (!sender && contacts && contacts.length) setSender(contacts[0].sender);
@@ -119,13 +120,19 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
   // Ganti kontak → langsung scroll ke bawah (chat terbaru).
   useEffect(() => {
     const el = chatRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el) { el.scrollTop = el.scrollHeight; didFirstScroll.current = true; }
   }, [sender]);
 
   // Data refresh (pesan baru, bot reply) → cuma scroll kalau user dekat bawah.
+  // KECUALI load pertama: langsung scroll ke bawah.
   useEffect(() => {
     const el = chatRef.current;
     if (!el) return;
+    if (!didFirstScroll.current) {
+      el.scrollTop = el.scrollHeight;
+      didFirstScroll.current = true;
+      return;
+    }
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     if (nearBottom) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [convo]);
