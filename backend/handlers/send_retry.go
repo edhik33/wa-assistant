@@ -39,11 +39,30 @@ func maxSendRetries() int {
 	return 3
 }
 
+func sendRetryInterval() time.Duration {
+	interval := time.Duration(config.EnvInt("SEND_RETRY_INTERVAL_SECONDS", 30)) * time.Second
+	if interval <= 0 {
+		return 30 * time.Second
+	}
+	return interval
+}
+
+func sendRetryBatchSize() int {
+	batch := config.EnvInt("SEND_RETRY_BATCH", 20)
+	if batch <= 0 {
+		return 20
+	}
+	if batch > 200 {
+		return 200
+	}
+	return batch
+}
+
 // StartFailedSendRetry mencoba ulang chat AI/manual yang gagal terkirim ke WhatsApp.
 func StartFailedSendRetry(ctx context.Context) {
 	go func() {
 		retryFailedSends()
-		ticker := time.NewTicker(time.Duration(config.EnvInt("SEND_RETRY_INTERVAL_SECONDS", 30)) * time.Second)
+		ticker := time.NewTicker(sendRetryInterval())
 		defer ticker.Stop()
 		for {
 			select {
@@ -60,7 +79,7 @@ func StartFailedSendRetry(ctx context.Context) {
 func retryFailedSends() {
 	var rows []models.ChatHistory
 	if err := database.DB.Where("delivery_status = ? AND next_retry_at IS NOT NULL AND next_retry_at <= ?", "pending_retry", time.Now()).
-		Order("next_retry_at asc").Limit(config.EnvInt("SEND_RETRY_BATCH", 20)).Find(&rows).Error; err != nil {
+		Order("next_retry_at asc").Limit(sendRetryBatchSize()).Find(&rows).Error; err != nil {
 		log.Printf("failed-send retry query error: %v", err)
 		return
 	}
