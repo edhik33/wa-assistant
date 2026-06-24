@@ -28,6 +28,7 @@ type IncomingMessage struct {
 	Mimetype  string
 	FileName  string
 	Data      []byte
+	WAMsgID   string // ID pesan asli dari WhatsApp (untuk reply-to)
 	PushName  string // nama profil pengirim (dari WA), untuk disimpan ke Contact
 }
 
@@ -291,6 +292,7 @@ func (w *waInstance) handleEvent(evt interface{}) {
 		if !ok || onMessage == nil {
 			return
 		}
+		in.WAMsgID = v.Info.ID
 		in.PushName = v.Info.PushName
 		// Kontak modern bisa beralamat LID (privasi). Pakai nomor telepon asli (SenderAlt)
 		// agar yang tersimpan & ditampilkan adalah nomor WA betulan, bukan angka LID.
@@ -756,11 +758,17 @@ func (w *waInstance) SendMessage(to types.JID, message string, replyToID ...stri
 	msg := &waProto.Message{
 		Conversation: proto.String(message),
 	}
-	// Reply: sisipkan kutipan di awal pesan sebagai konteks.
+	// Reply native: gunakan ExtendedTextMessage dengan ContextInfo.
 	if len(replyToID) > 0 && replyToID[0] != "" {
-		// Tidak ada API reply native yang stabil di whatsmeow lintas versi.
-		// Fallback: prefix kutipan ringan di teks.
-		msg.Conversation = proto.String("⤷ " + message)
+		msg = &waProto.Message{
+			ExtendedTextMessage: &waProto.ExtendedTextMessage{
+				Text: proto.String(message),
+				ContextInfo: &waProto.ContextInfo{
+					StanzaID:    proto.String(replyToID[0]),
+					Participant: proto.String(to.ToNonAD().String()),
+				},
+			},
+		}
 	}
 	_, err := client.SendMessage(ctx, to, msg)
 	return err

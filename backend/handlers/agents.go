@@ -206,6 +206,7 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 		database.DB.Create(&models.ChatHistory{
 			AgentID: agentID, Sender: num, Message: message, Reply: reply,
 			MediaType: in.MediaType, MediaPath: mediaPath, FileName: in.FileName, Mimetype: in.Mimetype,
+			WAMsgID: in.WAMsgID,
 		})
 	}
 	send := func(text string) { _ = services.WA(agentID).SendMessage(sender, text) }

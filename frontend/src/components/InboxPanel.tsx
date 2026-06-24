@@ -232,7 +232,7 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
                     {/* Pesan dari pelanggan (kiri) */}
                     {(m.message || (m.media_type && !m.from_human)) && (
                       <Bubble side="left" bg="#fff" time={fmtTime(m.created_at)} name={selectedName || sender}
-                        onReply={() => setReplyTo({ id: String(m.id), text: m.message || '📷 Media' })}>
+                        onReply={() => setReplyTo({ id: m.wa_msg_id || String(m.id), text: m.message || '📷 Media' })}>
                         {m.media_type && !m.from_human && <MediaView agentId={agentId} m={m} token={convo?.media_token || ''} />}
                         {m.message && <span>{m.message}</span>}
                       </Bubble>
@@ -245,7 +245,7 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
                         color={m.from_human ? '#fff' : 'inherit'}
                         tag={m.from_human ? 'CS' : 'Bot'}
                         time={fmtTime(m.created_at)}
-                        onReply={() => setReplyTo({ id: String(m.id), text: m.reply || m.message || '📷 Media' })}
+                        onReply={() => setReplyTo({ id: m.wa_msg_id || String(m.id), text: m.reply || m.message || '📷 Media' })}
                       >
                         {m.media_type && m.from_human && <MediaView agentId={agentId} m={m} token={convo?.media_token || ''} />}
                         {m.reply && <span>{m.reply}</span>}

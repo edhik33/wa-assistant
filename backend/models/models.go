@@ -54,6 +54,7 @@ type ChatHistory struct {
 	MediaPath string    `json:"-"`                         // path file di server (diakses lewat endpoint media)
 	FileName  string    `json:"file_name"`
 	Mimetype  string    `json:"mimetype"`
+	WAMsgID   string    `gorm:"size:64" json:"wa_msg_id"` // ID pesan asli WhatsApp (untuk reply-to)
 	CreatedAt time.Time `json:"created_at"`
 }
 
