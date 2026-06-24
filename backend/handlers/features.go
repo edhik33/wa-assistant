@@ -166,9 +166,10 @@ func InboxSend(c *gin.Context) {
 		return
 	}
 	var req struct {
-		To      string `json:"to"`
-		Message string `json:"message"`
-		ReplyTo string `json:"reply_to"`
+		To        string `json:"to"`
+		Message   string `json:"message"`
+		ReplyTo   string `json:"reply_to"`
+		ReplyText string `json:"reply_text"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.To == "" || strings.TrimSpace(req.Message) == "" {
 		c.JSON(400, gin.H{"error": "Nomor & pesan wajib diisi"})
@@ -185,6 +186,10 @@ func InboxSend(c *gin.Context) {
 		return
 	}
 	logTurn(id, req.To, "", req.Message, true, req.ReplyTo)
+	// Update reply_text jika ada
+	if req.ReplyText != "" {
+		database.DB.Model(&models.ChatHistory{}).Where("agent_id = ? AND sender = ? AND reply = ?", id, req.To, req.Message).Order("id desc").Limit(1).Update("reply_text", req.ReplyText)
+	}
 
 	// Kirim manual = ambil alih percakapan: pastikan bot berhenti untuk kontak ini.
 	var cnt int64

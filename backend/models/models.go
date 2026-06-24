@@ -55,7 +55,8 @@ type ChatHistory struct {
 	FileName  string    `json:"file_name"`
 	Mimetype  string    `json:"mimetype"`
 	WAMsgID   string    `gorm:"size:64" json:"wa_msg_id"` // ID pesan asli WhatsApp (untuk reply-to)
-	ReplyTo   string    `json:"reply_to"`                   // ID pesan yg di-reply (untuk tampilan quote)
+	ReplyTo   string    `json:"reply_to"`                   // ID pesan yg di-reply (untuk lookup)
+	ReplyText string    `gorm:"size:200" json:"reply_text"` // teks pendek pesan yg di-quote
 	CreatedAt time.Time `json:"created_at"`
 }
 
