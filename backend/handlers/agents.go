@@ -185,9 +185,13 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 		if agent.Tone != "" {
 			tone = agent.Tone
 		}
-		// Long-term memory: inject ringkasan percakapan sebelumnya (kalau ada).
+		// Long-term memory: inject ringkasan percakapan lama ke prompt.
 		if agent.ConversationSummary != "" {
 			prompt = "PERCAKAPAN SEBELUMNYA: " + agent.ConversationSummary + "\n\n" + prompt
+		}
+		// Auto-react: kirim reaction emoji kalau di-set
+		if agent.AutoReact != "" && in.WAMsgID != "" {
+			go func() { _ = services.WA(agentID).SendReaction(num, in.WAMsgID, agent.AutoReact) }()
 		}
 	}
 
