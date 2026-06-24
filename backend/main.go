@@ -34,7 +34,7 @@ func main() {
 	// Sambungkan ulang semua agent yang sudah ter-link.
 	go handlers.StartAgents()
 	// Watchdog: pantau & sambungkan ulang sesi WA yang terputus diam-diam (tiap 90 detik).
-	services.StartReconnectWatchdog(90 * time.Second)
+	services.StartReconnectWatchdogCtx(appCtx, 90*time.Second)
 
 	// Lanjutkan broadcast yang sempat terhenti saat server mati; tandai jadwal yang nyangkut.
 	go handlers.ResumeBroadcasts()
@@ -54,7 +54,7 @@ func main() {
 	r := gin.Default()
 	maxRequestMB := config.EnvInt("MAX_REQUEST_MB", 32)
 	r.MaxMultipartMemory = int64(config.EnvInt("MAX_MULTIPART_MEMORY_MB", 16)) << 20
-	r.Use(handlers.BodySizeLimit(int64(maxRequestMB) << 20), handlers.CORS())
+	r.Use(handlers.BodySizeLimit(int64(maxRequestMB)<<20), handlers.CORS())
 
 	api := r.Group("/api")
 	{
