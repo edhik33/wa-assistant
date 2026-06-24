@@ -96,7 +96,7 @@ function TypingIndicator() {
   );
 }
 
-export default function InboxPanel({ agentId, seed }: { agentId: number; seed?: { value: string; n: number } | null }) {
+export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: number; aiEnabled: boolean; seed?: { value: string; n: number } | null }) {
   const { data: contacts, isLoading } = useContacts(agentId);
   const [sender, setSender] = useState('');
   const { data: convo } = useConversation(agentId, sender);
@@ -183,7 +183,9 @@ export default function InboxPanel({ agentId, seed }: { agentId: number; seed?: 
                     {selectedName && <Typography variant="caption" color="text.secondary">+{sender}</Typography>}
                   </Box>
                 </Stack>
-                {convo?.needs_human ? (
+                {!aiEnabled ? (
+                  <Chip label="AI nonaktif" size="small" color="default" variant="outlined" />
+                ) : convo?.needs_human ? (
                   <Button size="small" startIcon={<SmartToyIcon />} onClick={() => resumeBot.mutate(sender)} disabled={resumeBot.isPending}>Aktifkan bot</Button>
                 ) : (
                   <Chip label="Bot aktif" size="small" color="success" variant="outlined" />
