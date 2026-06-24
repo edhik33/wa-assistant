@@ -41,13 +41,13 @@ func main() {
 	handlers.CleanupStuckSchedules()
 
 	// Scheduler pesan terjadwal + pembersihan media lama.
-	handlers.StartScheduler()
+	handlers.StartSchedulerCtx(appCtx)
 	handlers.StartMediaCleanup(config.EnvInt("MEDIA_RETENTION_DAYS", 30))
 	// Retry pesan WhatsApp yang gagal terkirim agar dashboard tidak berhenti di status palsu.
 	handlers.StartFailedSendRetry(appCtx)
 
 	// Cek langganan tiap jam: expire yang habis & suspend sesi WA tenant non-aktif.
-	handlers.StartSubscriptionSweep(time.Hour)
+	handlers.StartSubscriptionSweepCtx(appCtx, time.Hour)
 	// Bersihkan entry throttle login yang kadaluarsa secara berkala (anti memory-leak botnet).
 	handlers.StartLoginThrottleSweeper()
 
