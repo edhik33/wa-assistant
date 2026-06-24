@@ -28,21 +28,25 @@ type Agent struct {
 }
 
 type ChatHistory struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	AgentID   uint      `gorm:"index" json:"agent_id"`
-	Sender    string    `gorm:"index;size:32" json:"sender"`
-	Message   string    `json:"message"`
-	Reply     string    `json:"reply"`
-	FromHuman bool      `gorm:"not null;default:false" json:"from_human"`
-	MediaType string    `gorm:"size:16" json:"media_type"`
-	MediaPath string    `json:"-"`
-	FileName  string    `json:"file_name"`
-	Mimetype  string    `json:"mimetype"`
-	WAMsgID   string    `gorm:"size:64" json:"wa_msg_id"`
-	ReplyTo   string    `json:"reply_to"`
-	ReplyText string    `gorm:"size:200" json:"reply_text"`
-	Revoked   bool      `gorm:"default:false" json:"revoked"`
-	CreatedAt time.Time `json:"created_at"`
+	ID             uint       `gorm:"primaryKey" json:"id"`
+	AgentID        uint       `gorm:"index" json:"agent_id"`
+	Sender         string     `gorm:"index;size:32" json:"sender"`
+	Message        string     `json:"message"`
+	Reply          string     `json:"reply"`
+	FromHuman      bool       `gorm:"not null;default:false" json:"from_human"`
+	MediaType      string     `gorm:"size:16" json:"media_type"`
+	MediaPath      string     `json:"-"`
+	FileName       string     `json:"file_name"`
+	Mimetype       string     `json:"mimetype"`
+	WAMsgID        string     `gorm:"size:64" json:"wa_msg_id"`
+	ReplyTo        string     `json:"reply_to"`
+	ReplyText      string     `gorm:"size:200" json:"reply_text"`
+	Revoked        bool       `gorm:"default:false" json:"revoked"`
+	DeliveryStatus string     `gorm:"size:24;index;default:sent" json:"delivery_status"` // sent, pending_retry, failed_send
+	SendError      string     `gorm:"type:text" json:"send_error,omitempty"`
+	RetryCount     int        `gorm:"not null;default:0" json:"retry_count"`
+	NextRetryAt    *time.Time `gorm:"index" json:"next_retry_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 type Contact struct {
@@ -91,3 +95,12 @@ type User struct {
 	IsSuperAdmin bool    `gorm:"default:false" json:"is_super_admin"`
 }
 
+// LoginThrottle menyimpan rate-limit login secara persistent agar tidak hilang saat restart.
+type LoginThrottle struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	Key         string    `gorm:"size:255;uniqueIndex;not null" json:"key"`
+	Failures    int       `gorm:"not null;default:0" json:"failures"`
+	FirstSeen   time.Time `gorm:"index" json:"first_seen"`
+	LockedUntil time.Time `gorm:"index" json:"locked_until"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
