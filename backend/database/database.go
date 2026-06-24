@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"log"
+	"os"
 	"time"
 	"wa-assistant/backend/config"
 	"wa-assistant/backend/models"
@@ -104,6 +105,7 @@ func seedSuperAdmin() {
 	var n int64
 	DB.Model(&models.User{}).Where("is_super_admin = ?", true).Count(&n)
 	if n > 0 {
+		syncSuperAdminPassword() // jaga password/username super-admin sinkron dengan env
 		return
 	}
 	username := config.Env("SUPERADMIN_USERNAME", "superadmin")
@@ -114,6 +116,32 @@ func seedSuperAdmin() {
 		Password: string(hash), IsSuperAdmin: true, Role: "admin",
 	})
 	log.Printf("Seeder: super admin '%s' dibuat", username)
+}
+
+// syncSuperAdminPassword memperbarui kredensial super-admin agar cocok dengan env
+// SUPERADMIN_PASSWORD / SUPERADMIN_USERNAME (kalau diisi). Cara aman ganti password
+// super-admin TANPA lewat chat: set SUPERADMIN_PASSWORD di .env lalu restart service.
+// Kalau env kosong, kredensial yang ada dibiarkan apa adanya.
+func syncSuperAdminPassword() {
+	pw := os.Getenv("SUPERADMIN_PASSWORD")
+	if pw == "" {
+		return
+	}
+	username := config.Env("SUPERADMIN_USERNAME", "superadmin")
+	var u models.User
+	if DB.Where("is_super_admin = ?", true).First(&u).Error != nil {
+		return
+	}
+	// Sudah cocok → cukup pastikan username sinkron (hindari re-hash tiap restart).
+	if bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(pw)) == nil {
+		if u.Username != username {
+			DB.Model(&u).Update("username", username)
+		}
+		return
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	DB.Model(&u).Updates(map[string]any{"password": string(hash), "username": username})
+	log.Printf("Super admin '%s': kredensial disinkronkan dari env", username)
 }
 
 // migrateLegacyTenant memindahkan data single-tenant lama ke satu tenant default.
