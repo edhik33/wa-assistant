@@ -165,6 +165,18 @@ export function useSendMedia(agentId: number) {
   });
 }
 
+
+export function useRevokeMessage(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ msgId, to }: { msgId: string; to: string }) =>
+      (await api.delete('/agents/' + agentId + '/messages/' + msgId, { data: { to } })).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['conversation', agentId] });
+    },
+  });
+}
+
 export function useSendTyping(agentId: number) {
   return useMutation({
     mutationFn: async ({ to, active }: { to: string; active: boolean }) =>

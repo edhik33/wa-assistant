@@ -7,8 +7,9 @@ import SendIcon from '@mui/icons-material/Send';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import CloseIcon from '@mui/icons-material/Close';
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ReplyIcon from '@mui/icons-material/Reply';
-import { useContacts, useConversation, useSendMessage, useSendMedia, useSendTyping, useResumeBot } from '../hooks';
+import { useContacts, useConversation, useSendMessage, useSendMedia, useSendTyping, useRevokeMessage, useResumeBot } from '../hooks';
 import PageHeader from './PageHeader';
 import TemplatePicker from './TemplatePicker';
 import type { ChatMsg } from '../types';
@@ -129,6 +130,7 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
   const { data: contacts, isLoading } = useContacts(agentId);
   const [sender, setSender] = useState('');
   const { data: convo } = useConversation(agentId, sender);
+  const revokeMsg = useRevokeMessage(agentId);
   const sendMsg = useSendMessage(agentId);
   const sendMedia = useSendMedia(agentId);
   const sendTyping = useSendTyping(agentId);
@@ -286,6 +288,12 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
                         {m.media_type && m.from_human && <MediaView agentId={agentId} m={m} token={convo?.media_token || ''} />}
                         {m.reply && <span>{m.reply}</span>}
                       </Bubble>
+                      {m.from_human && m.wa_msg_id && (
+                        <IconButton size="small" onClick={() => revokeMsg.mutate({ msgId: m.wa_msg_id, to: sender })}
+                          sx={{ alignSelf: 'flex-end', mt: -3, mr: -1, opacity: 0, '&:hover': { opacity: 1 }, p: 0.2, width: 18, height: 18 }}>
+                          <DeleteOutlineIcon sx={{ fontSize: 14, color: 'error.main' }} />
+                        </IconButton>
+                      )}
                     )}
                   </Box>
                 ))}

@@ -122,6 +122,7 @@ func main() {
 			auth.POST("/agents/:id/send", handlers.InboxSend)
 			auth.POST("/agents/:id/send-media", handlers.InboxSendMedia)
 			auth.POST("/agents/:id/typing", handlers.ChatPresence)
+		auth.DELETE("/agents/:id/messages/:msgId", handlers.RevokeMessage)
 			auth.GET("/agents/:id/auto-replies", handlers.ListAutoReplies)
 			auth.POST("/agents/:id/auto-replies", handlers.CreateAutoReply)
 			auth.PUT("/agents/:id/auto-replies/:rid", handlers.UpdateAutoReply)

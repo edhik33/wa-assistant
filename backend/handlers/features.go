@@ -11,6 +11,7 @@ import (
 	"wa-assistant/backend/services"
 
 	"github.com/gin-gonic/gin"
+	"go.mau.fi/whatsmeow/types"
 )
 
 // TestChat menjalankan AI agent tanpa WhatsApp (simulator "coba chat" di dashboard).
@@ -209,6 +210,29 @@ func ChatPresence(c *gin.Context) {
 		return
 	}
 	_ = services.WA(id).Typing(req.To, req.Active)
+	c.JSON(200, gin.H{"ok": true})
+}
+
+// RevokeMessage menghapus (unsend) pesan yang sudah dikirim.
+func RevokeMessage(c *gin.Context) {
+	id, ok := resolveAgent(c)
+	if !ok { return }
+	msgID := c.Param("msgId")
+	if msgID == "" {
+		c.JSON(400, gin.H{"error": "msgId wajib"})
+		return
+	}
+	var req struct {
+		To string `json:"to"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.To == "" {
+		c.JSON(400, gin.H{"error": "to wajib"})
+		return
+	}
+	if err := services.WA(id).RevokeMessage(req.To, types.MessageID(msgID)); err != nil {
+		c.JSON(502, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(200, gin.H{"ok": true})
 }
 

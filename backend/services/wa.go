@@ -427,6 +427,20 @@ func (w *waInstance) Typing(toNumber string, composing bool) error {
 	return client.SendChatPresence(context.Background(), jid, state, types.ChatPresenceMediaText)
 }
 
+
+// RevokeMessage menghapus (unsend) pesan yang sudah dikirim ke kontak.
+func (w *waInstance) RevokeMessage(toNumber string, msgID types.MessageID) error {
+	w.mu.Lock()
+	client := w.client
+	w.mu.Unlock()
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("client WA tidak terhubung")
+	}
+	jid := types.NewJID(toNumber, types.DefaultUserServer)
+	_, err := client.SendMessage(context.Background(), jid, client.BuildRevoke(jid, jid, msgID))
+	return err
+}
+
 // SendText mengirim pesan ke nomor bare (mis "628123") tanpa pemanggil perlu menyusun JID.
 func (w *waInstance) SendText(toNumber, message string) error {
 	return w.SendMessage(types.NewJID(toNumber, types.DefaultUserServer), message)
