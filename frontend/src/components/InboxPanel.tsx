@@ -281,7 +281,7 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
                         replyTo={m.reply_text || (m.reply_to ? (convo?.data?.find((x: any) => x.wa_msg_id === m.reply_to || String(x.id) === m.reply_to)?.reply || convo?.data?.find((x: any) => x.wa_msg_id === m.reply_to || String(x.id) === m.reply_to)?.message || '💬 Pesan...') : '')}
                         onReply={() => setReplyTo({ id: m.wa_msg_id || String(m.id), text: m.reply || m.message || '📷 Media' })}
                       >
-                        {m.revoked ? <Typography sx={{ fontStyle: "italic", color: "text.disabled" }}>Pesan ini dihapus</Typography> : <>
+                        {m.revoked ? <Typography sx={{ fontStyle: "italic", color: m.from_human ? "rgba(255,255,255,0.7)" : "text.disabled" }}>Pesan ini dihapus</Typography> : <>
                         {m.media_type && m.from_human && <MediaView agentId={agentId} m={m} token={convo?.media_token || ''} />}
                         {m.reply && <span>{m.reply}</span>}
                         </>}
