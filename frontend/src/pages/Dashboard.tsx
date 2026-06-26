@@ -46,7 +46,9 @@ import {
   useCreateAgent, useDeleteAgent, useSaveAgent, useAgentConnect, useAgentDisconnect,
   useAddKnowledge, useDeleteKnowledge, useGenerateKnowledge,
   useAgentHandoffs, useResumeHandoff,
+  useUsage,
 } from '../hooks';
+import BillingPanel from '../components/BillingPanel';
 
 const TONES = [
   { value: 'ramah', label: '😊 Ramah' },
@@ -97,6 +99,7 @@ export default function Dashboard() {
   const [aiEnabled, setAiEnabled] = useState(true);
   const [showGuardModal, setShowGuardModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(false);
   const [guardMissing, setGuardMissing] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [greetEnabled, setGreetEnabled] = useState(false);
@@ -139,6 +142,7 @@ export default function Dashboard() {
   const { data: knowledge = [] } = useAgentKnowledge(agentId);
   const { data: handoffs = [] } = useAgentHandoffs(agentId);
   const resumeHandoff = useResumeHandoff(agentId);
+  const { data: usage } = useUsage();
 
   const status = statusData?.status || '';
   const qr = statusData?.qr || '';
@@ -455,6 +459,40 @@ export default function Dashboard() {
           ))}
         </Box>
         <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
+        {/* Indikator Langganan */}
+        {usage && (
+          <Paper
+            variant="outlined"
+            onClick={() => setBillingOpen(true)}
+            sx={{
+              display: { xs: 'none', md: 'flex' },
+              alignItems: 'center', gap: 1,
+              p: 1, mx: 0.5, mb: 0.5,
+              cursor: 'pointer',
+              borderColor: 'divider',
+              bgcolor: 'action.hover',
+              '&:hover': { bgcolor: 'action.selected' },
+            }}
+          >
+            <CreditCardIcon sx={{ fontSize: 18, color: 'primary.main', flexShrink: 0 }} />
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', lineHeight: 1.3 }}>
+                {usage.tenant?.plan?.name || 'Trial'}
+              </Typography>
+              {usage.tenant?.status === 'trial' && usage.tenant?.trial_ends_at && (
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', lineHeight: 1.2 }}>
+                  s/d {new Date(usage.tenant.trial_ends_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                </Typography>
+              )}
+            </Box>
+            <Chip
+              label={usage.tenant?.status || 'trial'}
+              size="small"
+              color={usage.tenant?.status === 'active' ? 'success' : usage.tenant?.status === 'trial' ? 'warning' : 'default'}
+              sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }}
+            />
+          </Paper>
+        )}
         <Button startIcon={<PersonIcon />} onClick={() => setProfileModalOpen(true)} sx={{ display: { xs: 'none', md: 'inline-flex' }, justifyContent: 'flex-start', color: 'text.secondary' }}>
           Profil
         </Button>
@@ -854,7 +892,7 @@ export default function Dashboard() {
         {tab === 'template' && <TemplatePanel agentId={agentId} />}
         {tab === 'follow-up' && <FollowUpPanel agentId={agentId} />}
         {tab === 'kontak' && (
-          <ContactsPanel agentId={agentId}
+          <ContactsPanel agentId={agentId} agentStatus={status}
             onBroadcast={(recipients) => { setSeed({ kind: 'broadcast', value: recipients, n: Date.now() }); setTab('broadcast'); }}
             onOpenChat={(number) => { setSeed({ kind: 'inbox', value: number, n: Date.now() }); setTab('inbox'); }} />
         )}
@@ -965,6 +1003,19 @@ export default function Dashboard() {
         <DialogActions>
           <Button onClick={() => setShowGuardModal(false)}>Nanti saja</Button>
           <Button variant="contained" onClick={() => { setShowGuardModal(false); setTab('knowledge'); }}>Isi Knowledge Base</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal Langganan */}
+      <Dialog open={billingOpen} onClose={() => setBillingOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CreditCardIcon color="primary" /> Langganan
+        </DialogTitle>
+        <DialogContent>
+          <BillingPanel />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBillingOpen(false)}>Tutup</Button>
         </DialogActions>
       </Dialog>
 

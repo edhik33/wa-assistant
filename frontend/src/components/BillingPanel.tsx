@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import {
-  Box, Card, CardContent, Typography, Button, Grid, Chip, Stack, Alert,
+  Box, Card, CardContent, Typography, Button, Grid, Chip, Stack, Alert, Paper,
   Dialog, DialogTitle, DialogContent, DialogActions, Select, MenuItem, FormControl,
   InputLabel, Table, TableBody, TableCell, TableHead, TableRow, CircularProgress,
 } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
+import CreditCardIcon from '@mui/icons-material/CreditCardOutlined';
 import { usePublicPlans, useUsage, useBillingChannels, useInvoices, useCheckout } from '../hooks';
 import type { Plan } from '../types';
 import { rupiah } from '../types';
@@ -49,11 +50,19 @@ export default function BillingPanel() {
       <PageHeader title="Langganan" />
 
       {usage && (
-        <Alert severity={usage.tenant.status === 'active' ? 'success' : 'info'} sx={{ mb: 2 }}>
-          Paket saat ini: <b>{usage.tenant.plan?.name || 'Trial'}</b> · status <b>{usage.tenant.status}</b>
-          {usage.tenant.status === 'trial' && usage.tenant.trial_ends_at &&
-            ` · trial berakhir ${new Date(usage.tenant.trial_ends_at).toLocaleDateString('id-ID')}`}
-        </Alert>
+        <Paper variant="outlined" sx={{ p: 1.5, mb: 2, display: 'flex', alignItems: 'center', gap: 1.5, borderColor: usage.tenant.status === 'active' ? 'success.light' : 'warning.light' }}>
+          <CreditCardIcon sx={{ color: usage.tenant.status === 'active' ? 'success.main' : 'warning.main' }} />
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="body2">
+              Paket saat ini: <b>{usage.tenant.plan?.name || 'Trial'}</b> · <Chip label={usage.tenant.status} size="small" color={usage.tenant.status === 'active' ? 'success' : 'warning'} sx={{ height: 20, fontSize: '0.7rem', verticalAlign: 'middle' }} />
+            </Typography>
+            {usage.tenant.status === 'trial' && usage.tenant.trial_ends_at && (
+              <Typography variant="caption" color="text.secondary">
+                Trial berakhir {new Date(usage.tenant.trial_ends_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </Typography>
+            )}
+          </Box>
+        </Paper>
       )}
 
       {channelsError && (
