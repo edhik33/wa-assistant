@@ -4,7 +4,7 @@
 #   DB:   zcat db-XXXX.sql.gz | MYSQL_PWD=<pass> mysql -u <user> <dbname>
 #   Sesi: tar -xzf wa-session-XXXX.tar.gz -C /var/www/Wai && sudo systemctl restart wai
 set -uo pipefail
-APP_DIR=/var/www/Wai
+APP_DIR=/var/www/wa-assistant
 BACKUP_DIR=/home/mastery/wai-backups
 KEEP=14
 mkdir -p "$BACKUP_DIR"
