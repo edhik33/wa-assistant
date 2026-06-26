@@ -161,10 +161,26 @@ export function useSendMedia(agentId: number) {
       fd.append('file', file);
       return (await api.post(`/agents/${agentId}/send-media`, fd)).data;
     },
-    onSuccess: (_d, vars) => {
-      qc.invalidateQueries({ queryKey: ['conversation', agentId, vars.to] });
-      qc.invalidateQueries({ queryKey: ['contacts', agentId] });
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['conversation', agentId] }); qc.invalidateQueries({ queryKey: ['contacts', agentId] }); },
+  });
+}
+
+
+export function useRevokeMessage(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ msgId, to }: { msgId: string; to: string }) =>
+      (await api.delete('/agents/' + agentId + '/messages/' + msgId, { data: { to } })).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['conversation', agentId] });
     },
+  });
+}
+
+export function useSendTyping(agentId: number) {
+  return useMutation({
+    mutationFn: async ({ to, active }: { to: string; active: boolean }) =>
+      (await api.post(`/agents/${agentId}/typing`, { to, active })).data,
   });
 }
 
@@ -411,6 +427,18 @@ export function useCreateBroadcast(agentId: number) {
   });
 }
 
+export function useCancelBroadcast(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (bid: number) =>
+      (await api.post(`/agents/${agentId}/broadcasts/${bid}/cancel`)).data,
+    onSuccess: (_data, bid) => {
+      qc.invalidateQueries({ queryKey: ['broadcasts', agentId] });
+      qc.invalidateQueries({ queryKey: ['broadcast', agentId, bid] });
+    },
+  });
+}
+
 // ---- Agent list & detail (Dashboard) ----
 
 export function useAgents() {
@@ -532,7 +560,7 @@ export function useDeleteKnowledge(agentId: number) {
 export function useGenerateKnowledge(agentId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: { text: string; count: number }) =>
+    mutationFn: async (body: { text: string; count: number; biz_type?: string }) =>
       (await api.post(`/agents/${agentId}/knowledge/generate`, body)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['agent', agentId, 'knowledge'] }),
   });

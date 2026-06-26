@@ -68,7 +68,7 @@ export default function Landing() {
             <img src={heroLogo} alt="ChatLoop" style={{ height: 'clamp(28px, 6vw, 38px)' }} />
           </Stack>
           <Stack direction="row" spacing={1}>
-            <Button onClick={() => navigate('/login')}>Masuk</Button>
+            <Button onClick={() => navigate('/daftar')}>Masuk</Button>
             <Button variant="contained" onClick={() => navigate(loggedIn ? '/app' : '/daftar')}>
               {loggedIn ? 'Dashboard' : 'Coba Gratis'}
             </Button>
@@ -88,7 +88,7 @@ export default function Landing() {
           </Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ justifyContent: 'center', alignItems: 'center' }}>
             <CtaButton loggedIn={loggedIn} onClick={goToCta} />
-            <Button variant="text" size="large" onClick={() => navigate('/login')}>Sudah punya akun</Button>
+            <Button variant="text" size="large" onClick={() => navigate('/daftar')}>Sudah punya akun</Button>
           </Stack>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
             Tanpa kartu kredit. Siap pakai dalam beberapa menit.

@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import {
-  Box, Card, CardContent, Typography, Button, Stack, IconButton, Alert,
+  Box, Card, CardContent, Typography, Button, Stack, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, CircularProgress,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
+import TemplateIcon from '@mui/icons-material/TextSnippetOutlined';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useTemplates, useSaveTemplate, useDeleteTemplate } from '../hooks';
 import type { Template } from '../types';
 import { swalConfirm } from '../services/swal';
 import PageHeader from './PageHeader';
+import EmptyState from './common/EmptyState';
 import WhatsAppEditor from './WhatsAppEditor';
 
 const EMPTY: Partial<Template> = { title: '', body: '' };
@@ -47,7 +49,13 @@ export default function TemplatePanel({ agentId }: { agentId: number }) {
         action={<Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>Tambah Template</Button>} />
 
       {(!templates || templates.length === 0) ? (
-        <Alert severity="info">Belum ada template. Contoh: judul <code>Sapaan order</code> → isi <code>Halo {'{nama}'}, terima kasih sudah order 🙏</code>. Klik "Tambah Template".</Alert>
+        <EmptyState
+          icon={<TemplateIcon sx={{ fontSize: 48 }} />}
+          title="Belum ada template"
+          description="Simpan pesan yang sering dipakai sebagai template. Pakai {'{nama}'} untuk personalisasi otomatis."
+          actionLabel="Tambah Template"
+          onAction={openNew}
+        />
       ) : (
         <Stack spacing={1}>
           {templates.map(t => (

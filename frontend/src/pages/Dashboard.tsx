@@ -3,7 +3,7 @@ import {
   Box, Card, CardContent, Typography, Button, Chip, CircularProgress, TextField,
   Stack, IconButton, Paper, Grid, Select, MenuItem, FormControl, InputLabel, Divider,
   Switch, FormControlLabel, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions,
-  Badge, Popover, Avatar,
+  Badge, Popover, Avatar, ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AddIcon from '@mui/icons-material/Add';
@@ -22,15 +22,16 @@ import TemplateIcon from '@mui/icons-material/TextSnippetOutlined';
 import FollowUpIcon from '@mui/icons-material/ScheduleSendOutlined';
 import ContactsIcon from '@mui/icons-material/ContactsOutlined';
 import CreditCardIcon from '@mui/icons-material/CreditCardOutlined';
+import PersonIcon from '@mui/icons-material/Person';
 import { QRCodeSVG } from 'qrcode.react';
 import logo from '../assets/logo-chatloop-1.png';
+import api from '../services/api';
 import { swalConfirm, swalPrompt, swalAlert, swalToast } from '../services/swal';
 import SettingsIcon from '@mui/icons-material/Settings';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import SmartToyIcon from '@mui/icons-material/SmartToyOutlined';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import UsageCard from '../components/UsageCard';
-import BillingPanel from '../components/BillingPanel';
 import InboxPanel from '../components/InboxPanel';
 import TestChatPanel from '../components/TestChatPanel';
 import BroadcastPanel from '../components/BroadcastPanel';
@@ -77,7 +78,7 @@ const NAV_GROUPS = [
   ] },
   { section: 'Akun', items: [
     { id: 'settings', label: 'Settings', icon: <SettingsIcon fontSize="small" /> },
-    { id: 'langganan', label: 'Langganan', icon: <CreditCardIcon fontSize="small" /> },
+    
   ] },
 ];
 const NAV_ITEMS = NAV_GROUPS.flatMap(g => g.items);
@@ -108,15 +109,27 @@ export default function Dashboard() {
   const [newA, setNewA] = useState('');
   const [newTags, setNewTags] = useState('');
   const [genText, setGenText] = useState('');
-  const [genCount, setGenCount] = useState(5);
-  const [tpl, setTpl] = useState({ name: '', price: '', specs: '', warranty: '', order: '', shipping: '', payment: '', usp: '', notes: '' });
-  const [showTpl, setShowTpl] = useState(false);
+  const [genCount, setGenCount] = useState(10);
+  const [bizType, setBizType] = useState('produk_fisik');
   const [knowledgePage, setKnowledgePage] = useState(0);
   const [knowledgeErrors, setKnowledgeErrors] = useState<Record<string, string>>({});
   const KNOWLEDGE_PER_PAGE = 10;
   const [settingsErrors, setSettingsErrors] = useState<Record<string, string>>({});
-  const user = JSON.parse(localStorage.getItem('user') || '{}') as { name?: string; username?: string; email?: string; role?: string };
+  // Google Sheets integration
+  const [sheetUrl, setSheetUrl] = useState('');
+  const [sheetName, setSheetName] = useState('Leads');
+  const [sheetSync, setSheetSync] = useState(false);
+  const [sheetNames, setSheetNames] = useState<string[]>([]);
+  const [loadingNames, setLoadingNames] = useState(false);
+  // Setup Wizard
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardBiz, setWizardBiz] = useState({ biz_name: '', biz_type: 'produk_fisik', products: '', price_range: '', order_flow: '', shipping: '', hours: '08:00-21:00', cs_name: '' });
+  const [wizardLoading, setWizardLoading] = useState(false);
+  const user = JSON.parse(localStorage.getItem('user') || '{}') as { name?: string; username?: string; email?: string; role?: string; phone?: string };
   const [profileAnchor, setProfileAnchor] = useState<HTMLElement | null>(null);
+  const [profileName, setProfileName] = useState(user.name || '');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   // ---- TanStack Query: data fetching + auto-polling, tanpa useEffect/setInterval manual ----
 
@@ -170,6 +183,8 @@ export default function Dashboard() {
       setGreetEnabled(!!a.greeting_enabled); setGreetMsg(a.greeting_message || '');
       setBhEnabled(!!a.business_hours_enabled); setBhStart(a.business_start || '08:00');
       setBhEnd(a.business_end || '21:00'); setAwayMsg(a.away_message || '');
+      setSheetUrl(a.spreadsheet_url || ''); setSheetName(a.spreadsheet_sheet_name || 'Leads');
+      setSheetSync(!!a.sheet_sync_enabled);
     }
   }, [agentId, agents]);
 
@@ -207,6 +222,23 @@ export default function Dashboard() {
     try { await disconnectMut.mutateAsync(); } catch { /* refresh status agar UI tetap sinkron */ }
   };
 
+  const saveProfile = async () => {
+    if (!profileName.trim()) return;
+    setProfileSaving(true);
+    try {
+      const res = await api.put('/profile', { name: profileName.trim() });
+      const updated = res.data.user;
+      const stored = JSON.parse(localStorage.getItem('user') || '{}');
+      localStorage.setItem('user', JSON.stringify({ ...stored, ...updated }));
+      swalToast('Profil disimpan');
+      setProfileModalOpen(false);
+    } catch {
+      swalToast('Gagal menyimpan profil');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   const saveAgent = async () => {
     const e: Record<string, string> = {};
     if (!agentName.trim()) e.agentName = 'Nama CS wajib diisi';
@@ -217,6 +249,7 @@ export default function Dashboard() {
         name: agentName, system_prompt: prompt, tone,
         greeting_enabled: greetEnabled, greeting_message: greetMsg,
         business_hours_enabled: bhEnabled, business_start: bhStart, business_end: bhEnd, away_message: awayMsg,
+        spreadsheet_url: sheetUrl, spreadsheet_sheet_name: sheetName, sheet_sync_enabled: sheetSync,
       });
       setSaved(true); setTimeout(() => setSaved(false), 2000);
     } catch (err: any) {
@@ -255,7 +288,7 @@ export default function Dashboard() {
       setTab('dashboard');
     } catch (err: any) {
       if (err?.response?.status === 403) {
-        if (await swalConfirm('Jumlah CS sudah mencapai batas paketmu.', 'Mau lihat pilihan paket untuk menambah CS?')) setTab('langganan');
+        swalToast('Kuota CS penuh, upgrade paket kamu dulu ya', 'warning'); return null;
       } else {
         await swalAlert(err?.response?.data?.error || 'Gagal menambah CS.', 'error');
       }
@@ -291,7 +324,7 @@ export default function Dashboard() {
     setKnowledgeErrors(e);
     if (Object.keys(e).length > 0) return;
     try {
-      await generateKnowledgeMut.mutateAsync({ text: genText, count: genCount });
+      await generateKnowledgeMut.mutateAsync({ text: genText, count: genCount, biz_type: bizType || undefined });
       setGenText('');
     } catch {
       swalToast('Gagal generate knowledge', 'error');
@@ -422,6 +455,9 @@ export default function Dashboard() {
           ))}
         </Box>
         <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
+        <Button startIcon={<PersonIcon />} onClick={() => setProfileModalOpen(true)} sx={{ display: { xs: 'none', md: 'inline-flex' }, justifyContent: 'flex-start', color: 'text.secondary' }}>
+          Profil
+        </Button>
         <Button startIcon={<LogoutIcon />} onClick={logout} color="error" sx={{ display: { xs: 'none', md: 'inline-flex' }, justifyContent: 'flex-start' }}>
           Logout
         </Button>
@@ -509,48 +545,50 @@ export default function Dashboard() {
           <Box>
             <PageHeader title={<>Knowledge Base {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>} />
 
+            <Card sx={{ mb: 1.5, borderLeft: '4px solid', borderColor: 'success.main', bgcolor: 'rgba(37,211,102,0.05)' }}>
+              <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    <AutoAwesomeIcon sx={{ mr: 0.5, verticalAlign: 'middle', color: '#25D366', fontSize: 18 }} />
+                    Setup Cepat — Direkomendasikan
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Isi profil bisnis kamu, AI akan otomatis generate System Prompt + 15 FAQ. Cocok untuk pemula.
+                  </Typography>
+                </Box>
+                <Button variant="contained" color="success" size="small" startIcon={<AutoAwesomeIcon />} onClick={() => setWizardOpen(true)} disabled={!agentId}>
+                  Mulai Setup Cepat
+                </Button>
+              </CardContent>
+            </Card>
+
             <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
               <Grid size={{ xs: 12, md: 6 }}>
-                <Card sx={{ height: '100%', borderColor: 'primary.main' }}>
+                <Card>
                   <CardContent>
-                    <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: 'center' }}>
-                      <Typography variant="subtitle2">
-                        <AutoAwesomeIcon sx={{ mr: 0.5, verticalAlign: 'middle', color: '#25D366', fontSize: 18 }} />
-                        Generate dengan AI
-                      </Typography>
-                      <Chip size="small" label={showTpl ? 'Template' : 'Free Text'} color={showTpl ? 'primary' : 'default'}
-                        onClick={() => setShowTpl(!showTpl)} sx={{ ml: 'auto' }} />
-                    </Stack>
+                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Atau tulis sendiri</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 0.75, display: 'block' }}>
+                      Punya deskripsi produk sendiri? Paste di sini, AI ubah jadi FAQ.
+                    </Typography>
 
-                    {showTpl ? (
-                      <Stack spacing={0.8}>
-                        {[
-                          ['Nama Produk', 'name', 'iPhone 15, Template Canva, ...'],
-                          ['Harga', 'price', 'Rp 12.000.000 (128GB)'],
-                          ['Spesifikasi', 'specs', 'Chip A16, layar 6.1, kamera 48MP'],
-                          ['Garansi', 'warranty', '1 tahun resmi / update gratis 3 bulan'],
-                          ['Cara Order', 'order', 'WA ke 08xxx / Transfer + konfirmasi'],
-                          ['Pengiriman', 'shipping', 'GoSend 1-2 jam / Email instan'],
-                          ['Pembayaran', 'payment', 'Transfer BCA, QRIS, GoPay'],
-                          ['Keunggulan', 'usp', 'USB-C pertama, Dynamic Island / Tinggal edit'],
-                          ['Catatan', 'notes', 'Stok terbatas / Bukan file PSD'],
-                        ].map(([label, key, placeholder]) => (
-                          <TextField key={key} size="small" label={label} fullWidth
-                            value={(tpl as any)[key]} placeholder={placeholder}
-                            onChange={e => setTpl(p => ({ ...p, [key]: e.target.value }))}
-                          />
-                        ))}
-                      </Stack>
-                    ) : (
-                      <TextField multiline rows={5} fullWidth size="small" value={genText}
-                        onChange={e => setGenText(e.target.value)}
-                        placeholder="Paste teks atau artikel di sini..."
-                        sx={{ mb: 1 }} />
-                    )}
+                    <FormControl size="small" fullWidth sx={{ mb: 1 }}>
+                      <InputLabel>Jenis Bisnis</InputLabel>
+                      <Select value={bizType} label="Jenis Bisnis" onChange={e => setBizType(e.target.value)}>
+                        <MenuItem value="">✨ Umum (semua jenis)</MenuItem>
+                        <MenuItem value="produk_fisik">📦 Produk Fisik</MenuItem>
+                        <MenuItem value="produk_digital">💻 Produk Digital</MenuItem>
+                        <MenuItem value="jasa">🔧 Jasa / Layanan</MenuItem>
+                      </Select>
+                    </FormControl>
 
-                    <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: 'center' }}>
-                      <TextField type="number" size="small" label="Jumlah" value={genCount}
-                        onChange={e => setGenCount(Number(e.target.value))} sx={{ width: 80 }} />
+                    <TextField multiline rows={4} fullWidth size="small" value={genText}
+                      onChange={e => setGenText(e.target.value)}
+                      placeholder="Tulis info tentang produk/layanan kamu..."
+                      sx={{ mb: 1 }} />
+
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                      <TextField type="number" size="small" label="Jumlah FAQ" value={genCount}
+                        onChange={e => setGenCount(Number(e.target.value))} sx={{ width: 90 }} />
                       <Button variant="contained" size="small" onClick={generateKnowledge} disabled={generateKnowledgeMut.isPending}
                         startIcon={generateKnowledgeMut.isPending ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}>
                         Generate
@@ -623,6 +661,7 @@ export default function Dashboard() {
         {tab === 'settings' && (
           <Box>
             <PageHeader title={<><SettingsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />Pengaturan {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>} />
+
             <Card sx={{ mb: 1.5 }}>
               <CardContent>
                 <Box sx={{ mb: 1.5, p: 1.25, borderRadius: 1, border: '1px solid', borderColor: aiEnabled ? 'success.light' : 'divider', bgcolor: aiEnabled ? 'rgba(37,211,102,0.07)' : 'action.hover' }}>
@@ -700,7 +739,69 @@ export default function Dashboard() {
                   </Grid>
                 </Grid>
 
-                <Button variant="contained" onClick={saveAgent} disabled={saveAgentMut.isPending} sx={{ mt: 1.5 }}>{saved ? 'Tersimpan ✓' : saveAgentMut.isPending ? 'Menyimpan…' : 'Simpan'}</Button>
+                <Divider sx={{ mt: 1.5, mb: 1.5 }} />
+
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>AI Closing → Google Sheets</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block' }}>
+                  AI otomatis mengekstrak data closing dari chat customer dan menambahkannya ke Google Sheet.
+                </Typography>
+
+                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 1.5 }}>
+                  <Switch checked={sheetSync} onChange={e => setSheetSync(e.target.checked)} />
+                  <Typography variant="body2" color={sheetSync ? 'success.main' : 'text.secondary'}>
+                    {sheetSync ? 'Aktif' : 'Nonaktif'}
+                  </Typography>
+                </Stack>
+
+                <Grid container spacing={1.5}>
+                  <Grid size={{ xs: 12, sm: 8 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>URL Google Sheet</Typography>
+                    <TextField fullWidth size="small" value={sheetUrl}
+                      onChange={e => setSheetUrl(e.target.value)}
+                      placeholder="https://docs.google.com/spreadsheets/d/xxx/edit" />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Nama Tab</Typography>
+                    <Stack direction="row" spacing={0.5}>
+                      <FormControl fullWidth size="small">
+                        <Select value={sheetNames.includes(sheetName) ? sheetName : ''}
+                          onChange={e => setSheetName(e.target.value)}
+                          displayEmpty
+                          renderValue={v => v || sheetName || 'Pilih atau ketik...'}>
+                          <MenuItem value=""><em>Ketik manual</em></MenuItem>
+                          {sheetNames.map(n => <MenuItem key={n} value={n}>{n}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                      <Button size="small" variant="outlined" onClick={async () => {
+                        if (!sheetUrl) { swalToast('Isi URL dulu', 'warning'); return; }
+                        setLoadingNames(true);
+                        try {
+                          const res = await api.get(`/agents/${agentId}/settings/sheet-names`);
+                          setSheetNames(res.data.data || []);
+                          if (res.data.data?.length === 1) setSheetName(res.data.data[0]);
+                        } catch { swalToast('Gagal membaca sheet', 'error'); }
+                        setLoadingNames(false);
+                      }} disabled={loadingNames}>
+                        {loadingNames ? '…' : 'Segarkan'}
+                      </Button>
+                    </Stack>
+                  </Grid>
+                </Grid>
+
+                <Stack direction="row" spacing={1} sx={{ mt: 1.5, alignItems: 'center' }}>
+                  <Button size="small" variant="outlined" onClick={async () => {
+                    if (!sheetUrl) { swalToast('Isi URL Google Sheet dulu', 'warning'); return; }
+                    try {
+                      const res = await api.post(`/agents/${agentId}/settings/test-sheet`);
+                      swalToast(res.data.message, res.data.status === 'ok' ? 'success' : 'error');
+                    } catch { swalToast('Gagal tes koneksi', 'error'); }
+                  }}>Test Koneksi</Button>
+                  <Typography variant="caption" color="text.secondary">
+                    Share spreadsheet ke: chatloop-sheets@whatsmeow.iam.gserviceaccount.com
+                  </Typography>
+                </Stack>
+
+                <Button variant="contained" onClick={saveAgent} disabled={saveAgentMut.isPending} sx={{ mt: 2 }}>{saved ? 'Tersimpan ✓' : saveAgentMut.isPending ? 'Menyimpan…' : 'Simpan'}</Button>
               </CardContent>
             </Card>
 
@@ -713,12 +814,11 @@ export default function Dashboard() {
           </Box>
         )}
 
-        {tab === 'langganan' && <BillingPanel />}
         {tab === 'handoff' && (
           <Box>
             <Typography variant="h6" sx={{ mb: 1 }}>Butuh CS ({handoffs.length})</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Kontak yang mengirim media atau pertanyaan yang tidak bisa dijawab AI. Segera ditangani manual oleh CS.
+              Percakapan yang tidak bisa dijawab AI, atau yang kamu ambil alih dari Inbox. Tangani manual di sini sampai selesai.
             </Typography>
             {handoffs.length === 0 ? (
               <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
@@ -746,7 +846,7 @@ export default function Dashboard() {
             )}
           </Box>
         )}
-        {tab === 'inbox' && <InboxPanel agentId={agentId} aiEnabled={aiEnabled} seed={seed?.kind === 'inbox' ? seed : null} />}
+        {tab === 'inbox' && <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}><InboxPanel agentId={agentId} aiEnabled={aiEnabled} seed={seed?.kind === 'inbox' ? seed : null} /></Box>}
         {tab === 'coba-chat' && <TestChatPanel agentId={agentId} />}
         {tab === 'broadcast' && <BroadcastPanel agentId={agentId} seed={seed?.kind === 'broadcast' ? seed : null} />}
         {tab === 'kalender' && <CalendarPanel agentId={agentId} />}
@@ -884,21 +984,108 @@ export default function Dashboard() {
             <Box>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>{user.name || user.username}</Typography>
               <Typography variant="caption" color="text.secondary">{user.email || '—'}</Typography>
+              {user.phone && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>+{user.phone}</Typography>}
             </Box>
           </Stack>
           {user.role && (
             <Chip label={user.role === 'admin' ? 'Super Admin' : user.role === 'owner' ? 'Owner' : user.role}
               size="small" color={user.role === 'admin' ? 'error' : 'primary'} variant="outlined" sx={{ alignSelf: 'flex-start' }} />
           )}
-          <Divider />
-          <Button size="small" startIcon={<SettingsIcon />} onClick={() => { setTab('settings'); setProfileAnchor(null); }}>
-            Pengaturan Akun
-          </Button>
-          <Button size="small" startIcon={<LogoutIcon />} color="error" onClick={() => { setProfileAnchor(null); logout(); }}>
-            Logout
-          </Button>
         </Stack>
       </Popover>
+
+      <Dialog open={profileModalOpen} onClose={() => setProfileModalOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Profil</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField label="Nama" size="small" fullWidth value={profileName} onChange={e => setProfileName(e.target.value)} autoFocus />
+            <TextField label="Email" size="small" fullWidth value={user.email || ''} disabled helperText="Email tidak bisa diubah" />
+            <TextField label="Nomor WhatsApp" size="small" fullWidth value={user.phone ? `+${user.phone}` : '—'} disabled helperText="Nomor tidak bisa diubah" />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setProfileModalOpen(false)}>Batal</Button>
+          <Button variant="contained" onClick={saveProfile} disabled={profileSaving || !profileName.trim()}>
+            {profileSaving ? 'Menyimpan…' : 'Simpan'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Setup Wizard */}
+      <Dialog open={wizardOpen} onClose={() => setWizardOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AutoAwesomeIcon sx={{ color: '#25D366' }} /> Setup Cepat — Isi Profil Bisnis
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block' }}>
+            AI akan otomatis generate System Prompt + 15 FAQ Knowledge Base dari profil ini.
+          </Typography>
+          <Grid container spacing={1}>
+            <Grid size={6}>
+              <TextField fullWidth size="small" label="Nama Bisnis *" value={wizardBiz.biz_name}
+                onChange={e => setWizardBiz({...wizardBiz, biz_name: e.target.value})} required />
+            </Grid>
+            <Grid size={6}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Jenis Bisnis</InputLabel>
+                <Select value={wizardBiz.biz_type} label="Jenis Bisnis"
+                  onChange={e => setWizardBiz({...wizardBiz, biz_type: e.target.value})}>
+                  <MenuItem value="produk_fisik">Produk Fisik</MenuItem>
+                  <MenuItem value="produk_digital">Produk Digital</MenuItem>
+                  <MenuItem value="jasa">Jasa/Layanan</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid size={12}>
+              <TextField fullWidth size="small" label="Produk/Layanan" value={wizardBiz.products}
+                onChange={e => setWizardBiz({...wizardBiz, products: e.target.value})}
+                placeholder="mis: Baju muslim, gamis, hijab" />
+            </Grid>
+            <Grid size={6}>
+              <TextField fullWidth size="small" label="Range Harga" value={wizardBiz.price_range}
+                onChange={e => setWizardBiz({...wizardBiz, price_range: e.target.value})}
+                placeholder="Rp 50rb - 300rb" />
+            </Grid>
+            <Grid size={6}>
+              <TextField fullWidth size="small" label="Nama CS" value={wizardBiz.cs_name}
+                onChange={e => setWizardBiz({...wizardBiz, cs_name: e.target.value})}
+                placeholder="mis: Admin Maya" />
+            </Grid>
+            <Grid size={6}>
+              <TextField fullWidth size="small" label="Cara Order" value={wizardBiz.order_flow}
+                onChange={e => setWizardBiz({...wizardBiz, order_flow: e.target.value})}
+                placeholder="Transfer dulu, kirim 2-3 hari" />
+            </Grid>
+            <Grid size={6}>
+              <TextField fullWidth size="small" label="Pengiriman" value={wizardBiz.shipping}
+                onChange={e => setWizardBiz({...wizardBiz, shipping: e.target.value})}
+                placeholder="JNE, J&T, seluruh Indo" />
+            </Grid>
+            <Grid size={6}>
+              <TextField fullWidth size="small" label="Jam Operasional" value={wizardBiz.hours}
+                onChange={e => setWizardBiz({...wizardBiz, hours: e.target.value})}
+                placeholder="08:00 - 21:00" />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setWizardOpen(false)} disabled={wizardLoading}>Batal</Button>
+          <Button variant="contained" color="success" disabled={wizardLoading || !wizardBiz.biz_name}
+            onClick={async () => {
+              setWizardLoading(true);
+              try {
+                const res = await api.post(`/agents/${agentId}/setup-wizard`, wizardBiz);
+                swalToast(`✅ ${res.data.message} (${res.data.knowledge} FAQ dibuat)`, 'success');
+                setWizardOpen(false);
+                window.location.reload();
+              } catch (e: any) { swalToast(e?.response?.data?.error || 'Gagal', 'error'); }
+              setWizardLoading(false);
+            }}
+            startIcon={wizardLoading ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}>
+            {wizardLoading ? 'Generating…' : 'Generate AI Setup'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
     </Box>
   );

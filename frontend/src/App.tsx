@@ -3,6 +3,7 @@ import { ThemeProvider, CssBaseline } from '@mui/material';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
 import Dashboard from './pages/Dashboard';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminOverview from './pages/admin/AdminOverview';
@@ -27,15 +28,26 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function HomeRoute() {
+  const token = localStorage.getItem('token');
+  if (token) {
+    let isAdmin = false;
+    try { isAdmin = !!JSON.parse(localStorage.getItem('user') || '{}')?.is_super_admin; } catch {}
+    return <Navigate to={isAdmin ? '/admin' : '/app'} replace />;
+  }
+  return <Navigate to="/login" replace />;
+}
+
 export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={<HomeRoute />} />
           <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
           <Route path="/daftar" element={<GuestRoute><Register /></GuestRoute>} />
+          <Route path="/lupa-password" element={<ForgotPassword />} />
 
           {/* Panel operator platform (super admin) */}
           <Route path="/admin" element={<PrivateRoute><AdminLayout /></PrivateRoute>}>

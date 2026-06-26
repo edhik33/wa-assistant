@@ -1,10 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Box, Card, CardContent, TextField, Button, Typography, Alert, Link } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import logo from '../assets/logo-chatloop-login.png';
-
-const TURNSTILE_SITE_KEY = '0x4AAAAAADrLaq7r2pyIGOYs';
 
 function errorMessage(error: unknown, fallback: string) {
   if (typeof error === 'object' && error && 'response' in error) {
@@ -14,34 +12,33 @@ function errorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function normalizePhone(v: string): string {
+  return v.replace(/[^0-9+]/g, '').replace(/^0+/, '62').replace(/^\+/, '').slice(0, 15);
+}
+
+declare global { interface Window { turnstile: any; __TURNSTILE_SITE_KEY__?: string } }
+
 export default function Register() {
-  const [form, setForm] = useState({ name: '', business_name: '', username: '', email: '', password: '' });
+  const [form, setForm] = useState({ name: '', business_name: '', phone: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
-  const turnstileRef = useRef<string | null>(null);
-  const turnstileWidgetId = useRef<string | null>(null);
+  const [turnstileToken, setTurnstile] = useState('');
+    const navigate = useNavigate();
 
+  // Render Turnstile widget
   useEffect(() => {
-    const checkTurnstile = () => {
-      if ((window as any).turnstile) {
-        const id = (window as any).turnstile.render('#turnstile-register', {
-          sitekey: TURNSTILE_SITE_KEY,
-          callback: (token: string) => { turnstileRef.current = token; },
-          'expired-callback': () => { turnstileRef.current = null; },
+    const render = () => {
+      if (window.turnstile) {
+        window.turnstile.render('#turnstile-register', {
+          sitekey: '0x4AAAAAADrLaq7r2pyIGOYs',
+          callback: (token: string) => { setTurnstile(token); },
         });
-        turnstileWidgetId.current = id;
       } else {
-        setTimeout(checkTurnstile, 200);
+        setTimeout(render, 200);
       }
     };
-    checkTurnstile();
-    return () => {
-      if (turnstileWidgetId.current && (window as any).turnstile) {
-        (window as any).turnstile.remove(turnstileWidgetId.current);
-      }
-    };
+    render();
   }, []);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -49,14 +46,22 @@ export default function Register() {
     if (errors[k]) setErrors(p => ({ ...p, [k]: '' }));
   };
 
+  const handlePhoneBlur = () => {
+    setForm(f => ({ ...f, phone: normalizePhone(f.phone) }));
+  };
+
   const validate = () => {
     const e: Record<string, string> = {};
     if (!form.name.trim()) e.name = 'Wajib diisi';
     if (!form.business_name.trim()) e.business_name = 'Wajib diisi';
-    if (!form.username.trim()) e.username = 'Wajib diisi';
+    if (!form.phone.trim()) {
+      e.phone = 'Wajib diisi';
+    } else if (form.phone.replace(/\D/g, '').length < 8) {
+      e.phone = 'Nomor terlalu pendek';
+    }
     if (!form.email.trim()) e.email = 'Wajib diisi';
-    if (!form.password) e.password = 'Wajib diisi (min. 4 karakter)';
-    else if (form.password.length < 4) e.password = 'Minimal 4 karakter';
+    if (!form.password) e.password = 'Wajib diisi (min. 8 karakter)';
+    else if (form.password.length < 8) e.password = 'Minimal 8 karakter';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -67,16 +72,15 @@ export default function Register() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.post('/register', { ...form, turnstile: turnstileRef.current || '' });
+      const res = await api.post('/register', { ...form, turnstile: turnstileToken });
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
       navigate('/app');
     } catch (e) {
       setError(errorMessage(e, 'Gagal mendaftar'));
       setLoading(false);
-      if ((window as any).turnstile && turnstileWidgetId.current) {
-        (window as any).turnstile.reset(turnstileWidgetId.current);
-      }
+      // Reset Turnstile
+      if (window.turnstile) window.turnstile.reset();
     }
   };
 
@@ -92,14 +96,15 @@ export default function Register() {
             error={!!errors.business_name} helperText={errors.business_name} sx={{ mb: 1.5 }} />
           <TextField fullWidth label="Nama Kamu" value={form.name} onChange={set('name')} disabled={loading}
             error={!!errors.name} helperText={errors.name} sx={{ mb: 1.5 }} />
-          <TextField fullWidth label="Username" value={form.username} onChange={set('username')} disabled={loading}
-            error={!!errors.username} helperText={errors.username} sx={{ mb: 1.5 }} />
+          <TextField fullWidth label="Nomor WhatsApp" value={form.phone} onChange={set('phone')} onBlur={handlePhoneBlur} disabled={loading}
+            error={!!errors.phone} helperText={errors.phone || 'Contoh: 08123456789'}
+            placeholder="08123456789" sx={{ mb: 1.5 }} />
           <TextField fullWidth label="Email" type="email" value={form.email} onChange={set('email')} disabled={loading}
             error={!!errors.email} helperText={errors.email} sx={{ mb: 1.5 }} />
           <TextField fullWidth label="Password" type="password" value={form.password} onChange={set('password')} disabled={loading}
             error={!!errors.password} helperText={errors.password}
             sx={{ mb: 2 }} onKeyDown={e => e.key === 'Enter' && handleRegister()} />
-          <Box id="turnstile-register" sx={{ mb: 2, mt: 1, display: 'flex', justifyContent: 'center' }} />
+          <Box id="turnstile-register" sx={{ mb: 2, display: "flex", justifyContent: "center" }} />
           <Button fullWidth variant="contained" onClick={handleRegister} disabled={loading} sx={{ py: 1.5, fontWeight: 700 }}>
             {loading ? 'Mendaftar…' : 'Daftar Sekarang'}
           </Button>

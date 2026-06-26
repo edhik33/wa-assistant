@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Box, Card, CardContent, TextField, Button, Typography, Alert, CircularProgress, Link } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import logo from '../assets/logo-chatloop-login.png';
 
-const TURNSTILE_SITE_KEY = '0x4AAAAAADrLaq7r2pyIGOYs';
+declare global { interface Window { turnstile: any; __TURNSTILE_SITE_KEY__?: string } }
 
 function responseStatus(error: unknown) {
   if (typeof error === 'object' && error && 'response' in error) {
@@ -20,36 +20,29 @@ export default function Login() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
-  const navigate = useNavigate();
-  const turnstileRef = useRef<string | null>(null);
-  const turnstileWidgetId = useRef<string | null>(null);
+  const [turnstileToken, setTurnstile] = useState('');
+    const navigate = useNavigate();
+
+  // Render Turnstile widget
+  useEffect(() => {
+    const render = () => {
+      if (window.turnstile) {
+        window.turnstile.render('#turnstile-login', {
+          sitekey: '0x4AAAAAADrLaq7r2pyIGOYs',
+          callback: (token: string) => { setTurnstile(token); },
+        });
+      } else {
+        setTimeout(render, 200);
+      }
+    };
+    render();
+  }, []);
 
   useEffect(() => {
     if (cooldown <= 0) return;
     const timer = window.setInterval(() => setCooldown((v) => Math.max(0, v - 1)), 1000);
     return () => window.clearInterval(timer);
   }, [cooldown]);
-
-  useEffect(() => {
-    const checkTurnstile = () => {
-      if ((window as any).turnstile) {
-        const id = (window as any).turnstile.render('#turnstile-login', {
-          sitekey: TURNSTILE_SITE_KEY,
-          callback: (token: string) => { turnstileRef.current = token; },
-          'expired-callback': () => { turnstileRef.current = null; },
-        });
-        turnstileWidgetId.current = id;
-      } else {
-        setTimeout(checkTurnstile, 200);
-      }
-    };
-    checkTurnstile();
-    return () => {
-      if (turnstileWidgetId.current && (window as any).turnstile) {
-        (window as any).turnstile.remove(turnstileWidgetId.current);
-      }
-    };
-  }, []);
 
   const handleLogin = async () => {
     if (loading || cooldown > 0) return;
@@ -62,7 +55,7 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.post('/login', { username: cleanUsername, password, turnstile: turnstileRef.current || '' });
+      const res = await api.post('/login', { username: cleanUsername, password, turnstile: turnstileToken });
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
       navigate(res.data.user?.is_super_admin ? '/admin' : '/app');
@@ -78,9 +71,7 @@ export default function Login() {
         setError('Login belum berhasil. Periksa kembali data yang kamu masukkan.');
       }
       setLoading(false);
-      if ((window as any).turnstile && turnstileWidgetId.current) {
-        (window as any).turnstile.reset(turnstileWidgetId.current);
-      }
+      if (window.turnstile) window.turnstile.reset();
     }
   };
 
@@ -102,7 +93,7 @@ export default function Login() {
             onChange={e => { setPassword(e.target.value); if (errors.password) setErrors(p => ({...p, password: ''})); }}
             error={!!errors.password} helperText={errors.password}
             sx={{ mb: 2 }} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
-          <Box id="turnstile-login" sx={{ mb: 2, display: 'flex', justifyContent: 'center' }} />
+          <Box id="turnstile-login" sx={{ mb: 2, display: "flex", justifyContent: "center" }} />
           <Button fullWidth variant="contained" onClick={handleLogin} disabled={loading || cooldown > 0}
             startIcon={loading ? <CircularProgress size={18} color="inherit" /> : null}
             sx={{ py: 1.5, fontWeight: 700 }}>

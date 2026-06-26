@@ -1,4 +1,23 @@
-node_modules/
-dist/
+# Binary
+wa-server
+wa-server-linux
+wa-assistant
+
+# Environment
 .env
+!.env.example
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# Frontend
+frontend/node_modules
+frontend/dist
+
+# OS
+.DS_Store
 *.log
+2026-06-*.txt

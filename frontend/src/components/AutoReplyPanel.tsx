@@ -7,10 +7,12 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import RuleIcon from '@mui/icons-material/RuleOutlined';
 import { useAutoReplies, useSaveAutoReply, useDeleteAutoReply } from '../hooks';
 import type { AutoReply } from '../types';
 import { swalConfirm } from '../services/swal';
 import PageHeader from './PageHeader';
+import EmptyState from './common/EmptyState';
 
 const MATCH_LABEL: Record<string, string> = {
   contains: 'Mengandung kata', exact: 'Sama persis', prefix: 'Diawali',
@@ -51,7 +53,13 @@ export default function AutoReplyPanel({ agentId }: { agentId: number }) {
         action={<Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>Tambah Aturan</Button>} />
 
       {(!rules || rules.length === 0) ? (
-        <Alert severity="info">Belum ada aturan. Contoh: kata kunci <code>harga, price</code> → balasan daftar harga. Klik "Tambah Aturan".</Alert>
+        <EmptyState
+          icon={<RuleIcon sx={{ fontSize: 48 }} />}
+          title="Belum ada aturan"
+          description="Atur balasan instan untuk kata kunci tertentu. Contoh: saat pelanggan tanya harga, langsung balas daftar harga tanpa AI."
+          actionLabel="Tambah Aturan"
+          onAction={openNew}
+        />
       ) : (
         <Stack spacing={1}>
           {rules.map(r => (

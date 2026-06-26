@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Card, CardContent, TextField, Button, Stack, Alert, AlertTitle, Chip,
   Table, TableBody, TableCell, TableHead, TableRow, LinearProgress, CircularProgress,
@@ -8,7 +8,8 @@ import SendIcon from '@mui/icons-material/Send';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import { useCheckNumbers, useCreateBroadcast, useBroadcasts, useBroadcastDetail } from '../hooks';
+import { useCheckNumbers, useCreateBroadcast, useBroadcasts, useBroadcastDetail, useCancelBroadcast } from '../hooks';
+import { swalToast, swalConfirm } from '../services/swal';
 import RecipientField from './RecipientField';
 import WhatsAppEditor from './WhatsAppEditor';
 import TemplatePicker from './TemplatePicker';
@@ -25,6 +26,7 @@ function normalizePhone(s: string): string {
 
 const STATUS_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
   done: 'success', running: 'warning', pending: 'default', failed: 'error', interrupted: 'error',
+  cancel_requested: 'warning', cancelled: 'default',
 };
 const RCP_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
   sent: 'success', failed: 'error', skipped: 'default', pending: 'warning',
@@ -38,13 +40,15 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   const [minDelay, setMinDelay] = useState(10);
   const [maxDelay, setMaxDelay] = useState(30);
   const [file, setFile] = useState<File | null>(null);
-  const [info, setInfo] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [checked, setChecked] = useState<NumberCheck[] | null>(null);
   const [summary, setSummary] = useState<CheckResult['summary'] | null>(null);
   const [ackRisk, setAckRisk] = useState(false);
   const [page, setPage] = useState(1);
+  const [lastStartedId, setLastStartedId] = useState<number | null>(null);
+
+  const historyRef = useRef<HTMLDivElement | null>(null);
 
   const [detailId, setDetailId] = useState<number | null>(null);
   const [detailFilter, setDetailFilter] = useState<'all' | 'sent' | 'failed' | 'skipped'>('all');
@@ -53,14 +57,17 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
 
   const checkNumbers = useCheckNumbers(agentId);
   const createBroadcast = useCreateBroadcast(agentId);
+  const cancelBroadcast = useCancelBroadcast(agentId);
   const { data: bpage } = useBroadcasts(agentId, page);
   const { data: detail } = useBroadcastDetail(agentId, detailId);
   const broadcasts = bpage?.data || [];
   const totalPages = Math.max(1, Math.ceil((bpage?.total || 0) / (bpage?.limit || 10)));
 
   const parsed = recipientsText.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
-    const [num, ...rest] = line.split(',');
-    return { number: normalizePhone(num), name: rest.join(',').trim() };
+    const parts = line.split(/[\t,]/);
+    const num = parts.find(p => /\d/.test(p)) || parts[0];
+    const name = parts.filter(p => p !== num && p.trim()).join(' ').trim();
+    return { number: normalizePhone(num), name };
   }).filter(r => r.number);
 
   const nameMap: Record<string, string> = {};
@@ -69,7 +76,6 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   const registered = (checked || []).filter(c => c.registered);
 
   const openModal = () => {
-    setInfo('');
     const e: Record<string, string> = {};
     if (!message.trim()) e.message = 'Pesan tidak boleh kosong';
     if (parsed.length === 0) e.recipients = 'Masukkan minimal satu nomor';
@@ -97,10 +103,29 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   const doSend = async () => {
     const recipients = registered.map(c => ({ number: c.number, name: nameMap[c.number] || '' }));
     if (recipients.length === 0) return;
-    await createBroadcast.mutateAsync({ message, recipients, min_delay: minDelay, max_delay: maxDelay, file });
+    const res = await createBroadcast.mutateAsync({ message, recipients, min_delay: minDelay, max_delay: maxDelay, file });
+    const started = res.data;
     setModalOpen(false);
+
+    // Bersihkan form agar user tahu broadcast sudah masuk proses
+    setMessage('');
+    setRecipientsText('');
+    setFile(null);
     setChecked(null);
-    setInfo(`Broadcast dimulai untuk ${recipients.length} nomor. Pantau progres di bawah.`);
+    setSummary(null);
+    setAckRisk(false);
+    setErrors({});
+
+    // Balik ke halaman 1 — broadcast terbaru di paling atas
+    setPage(1);
+    setLastStartedId(started?.id || null);
+
+    // Scroll ke riwayat
+    setTimeout(() => {
+      historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+
+    swalToast(`Broadcast dimulai untuk ${recipients.length} nomor. Form sudah dibersihkan agar tidak terkirim dua kali.`);
   };
 
   const checking = checkNumbers.isPending || checked === null;
@@ -159,7 +184,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
       <Card sx={{ mb: 2 }}>
         <CardContent>
           <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-            <Typography variant="subtitle2">Pesan</Typography>
+            <Stack direction="row" spacing={1} alignItems="center"><Typography variant="subtitle2">Pesan</Typography><Typography variant="caption" color="text.secondary">({message.length}/2000)</Typography></Stack>
             <TemplatePicker agentId={agentId} onPick={b => { setMessage(m => m ? m + '\n' + b : b); if (errors.message) setErrors(p => ({...p, message: ''})); }} />
           </Stack>
           <Box sx={{ mb: 1.25 }}>
@@ -181,16 +206,26 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
             Satu nomor per baris (format <code>nomor,nama</code> untuk personalisasi), atau impor dari sumber di bawah.
           </Typography>
           <RecipientField agentId={agentId} value={recipientsText} onChange={v => { setRecipientsText(v); setChecked(null); if (errors.recipients) setErrors(p => ({...p, recipients: ''})); }} error={errors.recipients} />
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, mb: 3, display: 'block' }}>
-            Disarankan pakai <b>"Pernah chat"</b> (hangat, aman). Sinkron WA / anggota grup lebih berisiko.
-          </Typography>
+          <Stack direction="row" spacing={1} sx={{ mt: 0.5, mb: 3, alignItems: 'center' }}>
+            <Button size="small" variant="outlined" onClick={() => {
+              const formatted = recipientsText.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+                const parts = line.split(/[\t,]/);
+                const num = parts.find(p => /\d/.test(p)) || parts[0];
+                const name = parts.filter(p => p !== num && p.trim()).join(' ').trim();
+                const n = normalizePhone(num);
+                return n ? `${n},${name}` : line;
+              }).join('\n');
+              setRecipientsText(formatted);
+            }}>Format Otomatis</Button>
+            <Typography variant="caption" color="text.secondary">
+              Disarankan pakai <b>"Pernah chat"</b> (hangat, aman). Sinkron WA / anggota grup lebih berisiko.
+            </Typography>
+          </Stack>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1.5 }}>
             <TextField type="number" size="small" label="Jeda min (detik)" value={minDelay} onChange={e => setMinDelay(Number(e.target.value))} sx={{ width: { xs: '100%', sm: 140 } }} />
             <TextField type="number" size="small" label="Jeda maks (detik)" value={maxDelay} onChange={e => setMaxDelay(Number(e.target.value))} sx={{ width: { xs: '100%', sm: 140 } }} />
           </Stack>
-
-          {info && <Alert severity="info" sx={{ mb: 1.5 }}>{info}</Alert>}
 
           <Button variant="contained" startIcon={<SendIcon />} onClick={openModal}>
             Cek Nomor &amp; Kirim ({parsed.length})
@@ -199,7 +234,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
       </Card>
 
       {broadcasts.length > 0 && (
-        <Card>
+        <Card ref={historyRef}>
           <CardContent sx={{ overflowX: 'auto' }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Riwayat Broadcast</Typography>
             <Table size="small">
@@ -209,15 +244,20 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                   <TableCell>Pesan</TableCell>
                   <TableCell align="center">Status</TableCell>
                   <TableCell sx={{ width: 210 }}>Progres</TableCell>
+                  <TableCell align="right">Aksi</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {broadcasts.map(b => {
                   const done = b.sent + b.failed + b.skipped;
                   const pct = b.total ? Math.round((done / b.total) * 100) : 0;
+                  const canCancel = ['pending', 'running', 'interrupted', 'cancel_requested'].includes(b.status);
                   return (
-                    <TableRow key={b.id} hover sx={{ cursor: 'pointer' }} onClick={() => setDetailId(b.id)}>
-                      <TableCell>{new Date(b.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</TableCell>
+                    <TableRow key={b.id} hover sx={{ cursor: 'pointer', bgcolor: b.id === lastStartedId ? 'action.hover' : 'inherit' }} onClick={() => setDetailId(b.id)}>
+                      <TableCell>
+                        {new Date(b.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        {b.id === lastStartedId && <Chip label="Baru dimulai" size="small" color="primary" sx={{ ml: 1 }} />}
+                      </TableCell>
                       <TableCell sx={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.message}</TableCell>
                       <TableCell align="center"><Chip label={b.status} size="small" color={STATUS_COLOR[b.status] ?? 'default'} /></TableCell>
                       <TableCell>
@@ -225,6 +265,20 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                         <Typography variant="caption" color="text.secondary">
                           {b.sent} terkirim · {b.failed} gagal · {b.skipped} dilewati / {b.total}
                         </Typography>
+                      </TableCell>
+                      <TableCell align="right" onClick={e => e.stopPropagation()}>
+                        {canCancel && (
+                          <Button size="small" color="error" variant="outlined"
+                            disabled={cancelBroadcast.isPending}
+                            onClick={async () => {
+                              if (await swalConfirm('Batalkan broadcast ini?', 'Pesan yang sudah terkirim tidak bisa ditarik.')) {
+                                if (b.id === lastStartedId) setLastStartedId(null);
+                                cancelBroadcast.mutate(b.id);
+                              }
+                            }}>
+                            Cancel
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -372,7 +426,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
           <Button variant="contained" color={level === 'red' ? 'error' : 'primary'} onClick={doSend}
             disabled={checking || registered.length === 0 || sendBlocked || createBroadcast.isPending}
             startIcon={createBroadcast.isPending ? <CircularProgress size={16} /> : <SendIcon />}>
-            Kirim ke {registered.length} nomor
+            {createBroadcast.isPending ? 'Memulai broadcast…' : `Kirim ke ${registered.length} nomor`}
           </Button>
         </DialogActions>
       </Dialog>
