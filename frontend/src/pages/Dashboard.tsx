@@ -362,9 +362,8 @@ export default function Dashboard() {
     ? Math.ceil((new Date(usage.tenant.trial_ends_at).getTime() - Date.now()) / 86400000)
     : null;
   const setupIssues = [
-    aiEnabled ? '' : 'AI sedang nonaktif',
-    knowledge.length ? '' : 'Knowledge masih kosong',
-    prompt.trim() ? '' : 'Persona belum diisi',
+    knowledge.length ? '' : 'Knowledge masih kosong — isi FAQ agar AI tidak asal jawab',
+    prompt.trim() ? '' : 'Persona belum diisi — atur system prompt agar AI tahu bisnis kamu',
   ].filter(Boolean);
   const dashboardStats = {
     utama: [
