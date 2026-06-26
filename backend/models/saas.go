@@ -24,19 +24,24 @@ type Tenant struct {
 
 // Plan = paket langganan. Penentu batas jumlah nomor & kuota balasan AI.
 type Plan struct {
-	ID                  uint      `gorm:"primaryKey" json:"id"`
-	Code                string    `gorm:"size:32;uniqueIndex;not null" json:"code"` // starter, growth, pro
-	Name                string    `gorm:"size:80;not null" json:"name"`
-	Description         string    `gorm:"type:text" json:"description"`
-	Price               int64     `gorm:"not null;default:0" json:"price"`               // rupiah
-	BillingPeriod       string    `gorm:"size:16;default:monthly" json:"billing_period"` // monthly, yearly
-	MaxNumbers          int       `gorm:"not null;default:1" json:"max_numbers"`
-	MaxAIRepliesMonthly int       `gorm:"not null;default:0" json:"max_ai_replies_monthly"` // 0 = tanpa batas
-	IsActive            bool      `gorm:"not null;default:true;index" json:"is_active"`
-	IsPopular           bool      `gorm:"not null;default:false" json:"is_popular"`
-	SortOrder           int       `gorm:"not null;default:0;index" json:"sort_order"`
-	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	ID                  uint   `gorm:"primaryKey" json:"id"`
+	Code                string `gorm:"size:32;uniqueIndex;not null" json:"code"` // starter, growth, pro
+	Name                string `gorm:"size:80;not null" json:"name"`
+	Description         string `gorm:"type:text" json:"description"`
+	Price               int64  `gorm:"not null;default:0" json:"price"`               // rupiah
+	BillingPeriod       string `gorm:"size:16;default:monthly" json:"billing_period"` // monthly, yearly
+	MaxNumbers          int    `gorm:"not null;default:1" json:"max_numbers"`
+	MaxAIRepliesMonthly int    `gorm:"not null;default:0" json:"max_ai_replies_monthly"` // 0 = tanpa batas
+	// Batasan "training" knowledge per agent (nomor). CATATAN: beda dari MaxAIRepliesMonthly —
+	// di sini 0 = belum diset (kode fallback ke default aman), BUKAN tanpa batas, karena crawl
+	// tanpa batas berisiko ke memori & biaya embedding.
+	MaxKnowledgeChars int       `gorm:"not null;default:0" json:"max_knowledge_chars"` // total karakter knowledge per agent
+	MaxCrawlPages     int       `gorm:"not null;default:0" json:"max_crawl_pages"`     // batas halaman per crawl
+	IsActive          bool      `gorm:"not null;default:true;index" json:"is_active"`
+	IsPopular         bool      `gorm:"not null;default:false" json:"is_popular"`
+	SortOrder         int       `gorm:"not null;default:0;index" json:"sort_order"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // Subscription = langganan berjalan milik sebuah tenant (1:1 dengan tenant).

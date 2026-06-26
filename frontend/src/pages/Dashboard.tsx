@@ -3,7 +3,7 @@ import {
   Box, Card, CardContent, Typography, Button, Chip, CircularProgress, TextField,
   Stack, IconButton, Paper, Grid, Select, MenuItem, FormControl, InputLabel, Divider,
   Switch, FormControlLabel, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions,
-  Badge, Popover, Avatar, Alert,
+  Badge, Popover, Avatar, Alert, LinearProgress,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AddIcon from '@mui/icons-material/Add';
@@ -52,6 +52,7 @@ import {
   useAddKnowledge, useDeleteKnowledge, useDeleteAllKnowledge, useGenerateKnowledge,
   useAgentHandoffs, useResumeHandoff, useAgentAIMetrics,
   useUsage,
+  useCrawlStatus, useKnowledgeUsage, useStartCrawl, useTrainCrawlPages, useDeleteWebKnowledge,
 } from '../hooks';
 import BillingPanel from '../components/BillingPanel';
 
@@ -169,6 +170,45 @@ export default function Dashboard() {
   const deleteKnowledgeMut = useDeleteKnowledge(agentId);
   const deleteAllKnowledgeMut = useDeleteAllKnowledge(agentId);
   const generateKnowledgeMut = useGenerateKnowledge(agentId);
+
+  // ---- Latih dari Website (crawl) ----
+  const { data: crawlData } = useCrawlStatus(agentId);
+  const { data: kbUsage } = useKnowledgeUsage(agentId);
+  const startCrawlMut = useStartCrawl(agentId);
+  const trainCrawlMut = useTrainCrawlPages(agentId);
+  const deleteWebMut = useDeleteWebKnowledge(agentId);
+  const [crawlUrl, setCrawlUrl] = useState('');
+  const [selectedPages, setSelectedPages] = useState<number[]>([]);
+  const crawlJob = crawlData?.job ?? null;
+  const crawlPages = crawlData?.pages ?? [];
+
+  const startCrawl = async () => {
+    const u = crawlUrl.trim();
+    if (!u) return;
+    try {
+      await startCrawlMut.mutateAsync(u);
+      setSelectedPages([]);
+      swalToast('Crawl dimulai, tunggu hasilnya…', 'success');
+    } catch (e) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal memulai crawl';
+      swalToast(msg, 'error');
+    }
+  };
+
+  const trainSelected = async () => {
+    if (!crawlJob || selectedPages.length === 0) return;
+    try {
+      const res = await trainCrawlMut.mutateAsync({ jobId: crawlJob.id, pageIds: selectedPages });
+      setSelectedPages([]);
+      if (res.quota_exceeded) {
+        swalAlert('Kuota karakter knowledge paket ini sudah penuh. Sebagian halaman tidak dilatih. Upgrade paket atau hapus knowledge lama.', 'warning');
+      } else {
+        swalToast(`${res.trained} halaman dilatih (${res.chunks} bagian)`, 'success');
+      }
+    } catch {
+      swalToast('Gagal melatih halaman', 'error');
+    }
+  };
 
   // ---- QR modal (sambung WhatsApp) ----
   const [qrModalOpen, setQrModalOpen] = useState(false);
@@ -694,6 +734,96 @@ export default function Dashboard() {
         {tab === 'knowledge' && (
           <Box>
             <PageHeader title={<>Knowledge Base {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>} />
+
+            {/* Latih dari Website */}
+            <Card sx={{ mb: 1.5 }}>
+              <CardContent>
+                <Typography variant="subtitle2" sx={{ mb: 0.25 }}>🌐 Latih dari Website</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                  Masukkan alamat website bisnismu. Sistem menelusuri halaman-halamannya (tanpa biaya AI), lalu kamu pilih mana yang dijadikan pengetahuan AI nomor ini. Optimal untuk situs statis/WordPress; situs berbasis JavaScript berat mungkin terbaca sebagian.
+                </Typography>
+
+                <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                  <TextField size="small" fullWidth placeholder="https://websitebisnismu.com" value={crawlUrl}
+                    onChange={e => setCrawlUrl(e.target.value)}
+                    disabled={crawlJob?.status === 'crawling' || crawlJob?.status === 'pending'} />
+                  <Button variant="contained" size="small" onClick={startCrawl}
+                    disabled={startCrawlMut.isPending || crawlJob?.status === 'crawling' || crawlJob?.status === 'pending'}
+                    startIcon={(crawlJob?.status === 'crawling' || crawlJob?.status === 'pending') ? <CircularProgress size={14} /> : undefined}>
+                    {(crawlJob?.status === 'crawling' || crawlJob?.status === 'pending') ? 'Menelusuri…' : 'Mulai'}
+                  </Button>
+                </Stack>
+
+                {kbUsage && (
+                  <Box sx={{ mb: 1 }}>
+                    <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                      <Typography variant="caption" color="text.secondary">Pemakaian knowledge</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {kbUsage.used_chars.toLocaleString()} / {kbUsage.max_chars.toLocaleString()} karakter · maks {kbUsage.max_pages} halaman/crawl
+                      </Typography>
+                    </Stack>
+                    <LinearProgress variant="determinate"
+                      value={Math.min(100, kbUsage.max_chars ? (kbUsage.used_chars / kbUsage.max_chars) * 100 : 0)}
+                      sx={{ height: 6, borderRadius: 3, mt: 0.25 }} />
+                  </Box>
+                )}
+
+                {crawlJob && (
+                  <>
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.75, flexWrap: 'wrap' }}>
+                      <Chip size="small"
+                        label={crawlJob.status === 'crawling' || crawlJob.status === 'pending' ? 'Menelusuri…'
+                          : crawlJob.status === 'failed' ? 'Gagal' : `Selesai · ${crawlJob.pages_found} halaman`}
+                        color={crawlJob.status === 'failed' ? 'error' : crawlJob.status === 'done' ? 'success' : 'default'} />
+                      {crawlJob.domain && <Typography variant="caption" color="text.secondary">{crawlJob.domain}</Typography>}
+                      {crawlJob.error && <Typography variant="caption" color="error">{crawlJob.error}</Typography>}
+                    </Stack>
+
+                    {crawlPages.length > 0 && (
+                      <>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
+                          <Button size="small" onClick={() => {
+                            const trainable = crawlPages.filter(p => p.status === 'crawled' && p.char_count > 0).map(p => p.id);
+                            setSelectedPages(selectedPages.length === trainable.length ? [] : trainable);
+                          }}>{selectedPages.length > 0 ? 'Batal pilih' : 'Pilih semua'}</Button>
+                          <Button size="small" variant="contained" disabled={selectedPages.length === 0 || trainCrawlMut.isPending}
+                            onClick={trainSelected}
+                            startIcon={trainCrawlMut.isPending ? <CircularProgress size={14} /> : <AddIcon />}>
+                            Latih {selectedPages.length > 0 ? `(${selectedPages.length})` : ''}
+                          </Button>
+                        </Stack>
+                        <Paper variant="outlined" sx={{ maxHeight: 280, overflow: 'auto' }}>
+                          {crawlPages.map((p, i) => {
+                            const trainable = p.status === 'crawled' && p.char_count > 0;
+                            return (
+                              <Box key={p.id} sx={{ display: 'flex', gap: 0.5, px: 1, py: 0.5, borderBottom: i < crawlPages.length - 1 ? '1px solid' : 0, borderColor: 'divider', alignItems: 'center' }}>
+                                <Checkbox size="small" sx={{ p: 0.25 }} disabled={!trainable}
+                                  checked={selectedPages.includes(p.id)}
+                                  onChange={e => setSelectedPages(s => e.target.checked ? [...s, p.id] : s.filter(x => x !== p.id))} />
+                                <Box sx={{ minWidth: 0, flex: 1 }}>
+                                  <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.3, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title || p.url}</Typography>
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.url}</Typography>
+                                </Box>
+                                <Chip size="small" variant="outlined"
+                                  label={p.status === 'trained' ? 'Dilatih ✓' : p.status === 'failed' ? 'Gagal' : `${p.char_count.toLocaleString()} krkt`}
+                                  color={p.status === 'trained' ? 'success' : p.status === 'failed' ? 'error' : 'default'}
+                                  sx={{ fontSize: '0.6rem', height: 18, flexShrink: 0 }} />
+                              </Box>
+                            );
+                          })}
+                        </Paper>
+                        <Stack direction="row" sx={{ justifyContent: 'flex-end', mt: 0.5 }}>
+                          <Button size="small" color="error" disabled={deleteWebMut.isPending} onClick={async () => {
+                            if (!await swalConfirm('Hapus semua knowledge dari website?', 'Knowledge hasil crawl web akan dihapus (Q&A manual tetap aman).')) return;
+                            try { await deleteWebMut.mutateAsync(); swalToast('Knowledge web dihapus', 'success'); } catch { swalToast('Gagal', 'error'); }
+                          }}>Hapus knowledge web</Button>
+                        </Stack>
+                      </>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
             <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
               <Grid size={{ xs: 12, md: 6 }}>

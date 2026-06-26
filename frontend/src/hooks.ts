@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from './services/api';
-import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, Invoice, PaymentChannel, Analytics, AIMetrics, Contact, ChatMsg, CheckResult, Broadcast, BroadcastRecipient, WAGroup, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff } from './types';
+import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, Invoice, PaymentChannel, Analytics, AIMetrics, Contact, ChatMsg, CheckResult, Broadcast, BroadcastRecipient, WAGroup, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff, CrawlJob, CrawlPage, KnowledgeUsage } from './types';
 
 type ContactList = { number: string; name: string }[];
 
@@ -580,6 +580,61 @@ export function useGenerateKnowledge(agentId: number) {
     mutationFn: async (body: { text: string; count: number; biz_type?: string }) =>
       (await api.post(`/agents/${agentId}/knowledge/generate`, body)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['agent', agentId, 'knowledge'] }),
+  });
+}
+
+// ---- Latih dari Website (crawl) ----
+
+export function useCrawlStatus(agentId: number) {
+  return useQuery<{ job: CrawlJob | null; pages: CrawlPage[] }>({
+    queryKey: ['agent', agentId, 'crawl'],
+    queryFn: async () => (await api.get(`/agents/${agentId}/crawl`)).data,
+    enabled: !!agentId,
+    // Polling cepat selagi crawl berjalan, berhenti saat idle/selesai.
+    refetchInterval: (q) => {
+      const s = q.state.data?.job?.status;
+      return s === 'pending' || s === 'crawling' ? 2500 : false;
+    },
+  });
+}
+
+export function useKnowledgeUsage(agentId: number) {
+  return useQuery<KnowledgeUsage>({
+    queryKey: ['agent', agentId, 'knowledge-usage'],
+    queryFn: async () => (await api.get(`/agents/${agentId}/knowledge-usage`)).data,
+    enabled: !!agentId,
+  });
+}
+
+export function useStartCrawl(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (url: string) => (await api.post(`/agents/${agentId}/crawl`, { url })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['agent', agentId, 'crawl'] }),
+  });
+}
+
+export function useTrainCrawlPages(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { jobId: number; pageIds: number[] }) =>
+      (await api.post(`/agents/${agentId}/crawl/${vars.jobId}/train`, { page_ids: vars.pageIds })).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agent', agentId, 'crawl'] });
+      qc.invalidateQueries({ queryKey: ['agent', agentId, 'knowledge'] });
+      qc.invalidateQueries({ queryKey: ['agent', agentId, 'knowledge-usage'] });
+    },
+  });
+}
+
+export function useDeleteWebKnowledge(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await api.delete(`/agents/${agentId}/knowledge-web`)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agent', agentId, 'knowledge'] });
+      qc.invalidateQueries({ queryKey: ['agent', agentId, 'knowledge-usage'] });
+    },
   });
 }
 

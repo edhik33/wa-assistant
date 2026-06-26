@@ -136,6 +136,14 @@ func main() {
 			auth.DELETE("/agents/:id/knowledge-all", handlers.DeleteAllKnowledge)
 			auth.DELETE("/agents/:id/knowledge/:kid", handlers.DeleteKnowledge)
 
+			// Latih AI dari website: crawl (background) -> pilih halaman -> embed jadi knowledge.
+			auth.POST("/agents/:id/crawl", handlers.StartCrawl)
+			auth.GET("/agents/:id/crawl", handlers.LatestCrawl)
+			auth.GET("/agents/:id/crawl/:jobId", handlers.CrawlStatus)
+			auth.POST("/agents/:id/crawl/:jobId/train", handlers.TrainCrawlPages)
+			auth.GET("/agents/:id/knowledge-usage", handlers.KnowledgeUsage)
+			auth.DELETE("/agents/:id/knowledge-web", handlers.DeleteWebKnowledge)
+
 			// Fitur jualan: simulator, analitik, inbox.
 			auth.POST("/agents/:id/test-chat", handlers.TestChat)
 			auth.GET("/agents/:id/analytics", handlers.AgentAnalytics)

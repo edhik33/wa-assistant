@@ -56,6 +56,7 @@ func Init() {
 		&models.User{}, &models.LoginThrottle{}, &models.Agent{}, &models.ChatHistory{}, &models.Setting{},
 		&models.AITurn{},
 		&models.Knowledge{}, &models.Handoff{}, &models.Contact{}, &models.ConversationMemory{},
+		&models.CrawlJob{}, &models.CrawlPage{},
 		&models.Plan{}, &models.Tenant{}, &models.Subscription{}, &models.Invoice{}, &models.AIUsage{},
 		&models.Broadcast{}, &models.BroadcastRecipient{}, &models.OptOut{},
 		&models.ScheduledMessage{}, &models.Label{}, &models.ChatLabel{}, &models.AutoReply{},
@@ -67,6 +68,8 @@ func Init() {
 	)
 
 	seedPlans()
+	seedPlanCrawlLimits()
+	backfillKnowledgeCharCount()
 	seedSuperAdmin()
 	migrateLegacyTenant()
 
@@ -102,6 +105,36 @@ func seedPlans() {
 	}
 	DB.Create(&plans)
 	log.Println("Seeder: plans dibuat (starter, growth, pro)")
+}
+
+// seedPlanCrawlLimits mengisi batas crawl/knowledge per paket SEKALI (hanya yang masih 0),
+// agar tidak menimpa penyesuaian manual admin. Aman dijalankan tiap startup (idempoten).
+func seedPlanCrawlLimits() {
+	// code -> {maxKnowledgeChars, maxCrawlPages}
+	limits := map[string][2]int{
+		"starter": {200000, 50},
+		"growth":  {1000000, 150},
+		"pro":     {5000000, 500},
+	}
+	for code, l := range limits {
+		DB.Model(&models.Plan{}).
+			Where("code = ? AND max_knowledge_chars = 0", code).
+			Updates(map[string]any{"max_knowledge_chars": l[0], "max_crawl_pages": l[1]})
+	}
+}
+
+// backfillKnowledgeCharCount mengisi char_count knowledge lama (kolom baru) = panjang Answer,
+// agar perhitungan kuota karakter akurat. DB-agnostic, hanya menyentuh baris yang masih 0.
+func backfillKnowledgeCharCount() {
+	var rows []models.Knowledge
+	DB.Where("char_count = 0 AND answer <> ''").Find(&rows)
+	for i := range rows {
+		DB.Model(&models.Knowledge{}).Where("id = ?", rows[i].ID).
+			Update("char_count", len([]rune(rows[i].Answer)))
+	}
+	if len(rows) > 0 {
+		log.Printf("Backfill char_count untuk %d knowledge lama", len(rows))
+	}
 }
 
 // seedSuperAdmin memastikan ada satu operator platform (login ke /admin).

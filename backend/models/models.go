@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 // Agent merepresentasikan satu sesi WhatsApp yang tertaut — satu CS/AI per nomor.
 type Agent struct {
@@ -125,8 +129,49 @@ type Knowledge struct {
 	Embedding string `gorm:"type:longtext" json:"-"`
 	// EmbeddingModel = tanda tangan model+dimensi saat vektor dibuat (mis. "text-embedding-3-small"
 	// atau "...:512"). Dipakai mendeteksi perubahan model agar knowledge di-embed ulang otomatis.
-	EmbeddingModel string    `gorm:"size:80" json:"-"`
-	CreatedAt      time.Time `json:"created_at"`
+	EmbeddingModel string `gorm:"size:80" json:"-"`
+	// Source = asal knowledge: manual, wizard, web, dokumen. SourceURL = URL halaman asal (untuk web).
+	// Dipakai mengelompokkan & menghapus knowledge per sumber (mis. hapus semua dari 1 website).
+	Source    string    `gorm:"size:16;default:manual;index" json:"source"`
+	SourceURL string    `gorm:"type:text" json:"source_url"`
+	CharCount int       `gorm:"not null;default:0" json:"char_count"` // panjang Answer, untuk hitung kuota karakter
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// BeforeSave menjaga CharCount selalu = panjang Answer (dipakai untuk kuota karakter),
+// otomatis di semua jalur Create/Save tanpa perlu set manual di tiap handler.
+func (k *Knowledge) BeforeSave(*gorm.DB) error {
+	k.CharCount = len([]rune(k.Answer))
+	return nil
+}
+
+// CrawlJob = satu sesi crawl website untuk satu agent (nomor). Berjalan di background;
+// frontend polling statusnya. Semua data crawl di-scope ke agent_id agar tidak kecampur antar-nomor.
+type CrawlJob struct {
+	ID         uint       `gorm:"primaryKey" json:"id"`
+	AgentID    uint       `gorm:"index;not null" json:"agent_id"`
+	RootURL    string     `gorm:"type:text" json:"root_url"`
+	Domain     string     `gorm:"size:255" json:"domain"`
+	Status     string     `gorm:"size:16;index;default:pending" json:"status"` // pending, crawling, done, failed
+	PagesFound int        `gorm:"not null;default:0" json:"pages_found"`
+	Error      string     `gorm:"type:text" json:"error"`
+	CreatedAt  time.Time  `json:"created_at"`
+	FinishedAt *time.Time `json:"finished_at"`
+}
+
+// CrawlPage = satu halaman hasil crawl. content disimpan agar bisa dilatih nanti tanpa fetch ulang.
+type CrawlPage struct {
+	ID        uint       `gorm:"primaryKey" json:"id"`
+	JobID     uint       `gorm:"index;not null" json:"job_id"`
+	AgentID   uint       `gorm:"index;not null" json:"agent_id"`
+	URL       string     `gorm:"type:text" json:"url"`
+	Title     string     `gorm:"type:text" json:"title"`
+	Status    string     `gorm:"size:16;index;default:found" json:"status"` // found, crawled, failed, trained
+	CharCount int        `gorm:"not null;default:0" json:"char_count"`
+	Content   string     `gorm:"type:longtext" json:"-"` // teks bersih (tidak dikirim ke frontend, bisa besar)
+	Error     string     `gorm:"type:text" json:"error"`
+	TrainedAt *time.Time `json:"trained_at"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 type User struct {

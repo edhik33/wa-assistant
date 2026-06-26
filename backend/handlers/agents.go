@@ -932,6 +932,8 @@ func DeleteAgent(c *gin.Context) {
 	database.DB.Where("agent_id = ?", id).Delete(&models.Handoff{})
 	database.DB.Where("agent_id = ?", id).Delete(&models.AutoReply{})
 	database.DB.Where("agent_id = ?", id).Delete(&models.ConversationMemory{})
+	database.DB.Where("agent_id = ?", id).Delete(&models.CrawlJob{})
+	database.DB.Where("agent_id = ?", id).Delete(&models.CrawlPage{})
 	database.DB.Where("tenant_id = ?", currentTenantID(c)).Delete(&models.Agent{}, id)
 	c.JSON(200, gin.H{"message": "Deleted"})
 }

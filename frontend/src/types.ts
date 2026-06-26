@@ -286,6 +286,33 @@ export interface KnowledgeItem {
   question: string;
   answer: string;
   tags?: string;
+  source?: string;
+  source_url?: string;
+}
+
+export interface CrawlJob {
+  id: number;
+  root_url: string;
+  domain: string;
+  status: 'pending' | 'crawling' | 'done' | 'failed';
+  pages_found: number;
+  error?: string;
+}
+
+export interface CrawlPage {
+  id: number;
+  url: string;
+  title: string;
+  status: 'found' | 'crawled' | 'failed' | 'trained';
+  char_count: number;
+  error?: string;
+}
+
+export interface KnowledgeUsage {
+  used_chars: number;
+  max_chars: number;
+  max_pages: number;
+  total_knowledge: number;
 }
 
 export interface Handoff {
