@@ -1,12 +1,30 @@
 package services
 
 import (
+	"encoding/xml"
 	"net/url"
 	"strings"
 	"testing"
 
 	"golang.org/x/net/html"
 )
+
+func TestSitemapDecode(t *testing.T) {
+	var us sitemapDoc
+	if err := xml.Unmarshal([]byte(`<urlset><url><loc>https://x.com/a</loc></url><url><loc>https://x.com/b</loc></url></urlset>`), &us); err != nil {
+		t.Fatal(err)
+	}
+	if len(us.URLs) != 2 || us.URLs[0].Loc != "https://x.com/a" {
+		t.Errorf("urlset decode salah: %+v", us.URLs)
+	}
+	var idx sitemapDoc
+	if err := xml.Unmarshal([]byte(`<sitemapindex><sitemap><loc>https://x.com/sm1.xml</loc></sitemap></sitemapindex>`), &idx); err != nil {
+		t.Fatal(err)
+	}
+	if len(idx.Sitemaps) != 1 || idx.Sitemaps[0].Loc != "https://x.com/sm1.xml" {
+		t.Errorf("sitemapindex decode salah: %+v", idx.Sitemaps)
+	}
+}
 
 func TestChunkText(t *testing.T) {
 	if ChunkText("   ") != nil {
