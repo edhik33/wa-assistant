@@ -361,9 +361,8 @@ func SetupWizard(c *gin.Context) {
 	}
 	services.InvalidateKB(aid)
 
-	// Reset conversation summary — bisnis udah ganti, konteks lama gak relevan.
-	database.DB.Model(&models.Agent{}).Where("id = ?", aid).
-		Updates(map[string]any{"conversation_summary": "", "last_summary_at": nil})
+	// Reset ringkasan percakapan semua kontak — bisnis udah ganti, konteks lama gak relevan.
+	database.DB.Where("agent_id = ?", aid).Delete(&models.ConversationMemory{})
 
 	c.JSON(200, gin.H{
 		"message":       "Setup selesai! Knowledge lama dihapus & diganti.",

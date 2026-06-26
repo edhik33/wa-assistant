@@ -55,7 +55,7 @@ func Init() {
 	DB.AutoMigrate(
 		&models.User{}, &models.LoginThrottle{}, &models.Agent{}, &models.ChatHistory{}, &models.Setting{},
 		&models.AITurn{},
-		&models.Knowledge{}, &models.Handoff{}, &models.Contact{},
+		&models.Knowledge{}, &models.Handoff{}, &models.Contact{}, &models.ConversationMemory{},
 		&models.Plan{}, &models.Tenant{}, &models.Subscription{}, &models.Invoice{}, &models.AIUsage{},
 		&models.Broadcast{}, &models.BroadcastRecipient{}, &models.OptOut{},
 		&models.ScheduledMessage{}, &models.Label{}, &models.ChatLabel{}, &models.AutoReply{},

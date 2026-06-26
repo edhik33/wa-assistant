@@ -185,10 +185,12 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 		if agent.Tone != "" {
 			tone = agent.Tone
 		}
-		// Long-term memory: inject ringkasan percakapan lama ke prompt.
-		if agent.ConversationSummary != "" {
-			prompt = "PERCAKAPAN SEBELUMNYA: " + agent.ConversationSummary + "\n\n" + prompt
-		}
+	}
+	// Long-term memory: inject ringkasan percakapan lama KONTAK INI saja (per-sender,
+	// bukan global agar konteks customer lain tidak bocor ke percakapan ini).
+	var mem models.ConversationMemory
+	if database.DB.Where("agent_id = ? AND sender = ?", agentID, num).First(&mem).Error == nil && mem.Summary != "" {
+		prompt = "PERCAKAPAN SEBELUMNYA DENGAN KONTAK INI: " + mem.Summary + "\n\n" + prompt
 	}
 
 	// Simpan media ke disk dulu (kalau ada).
@@ -871,9 +873,13 @@ func UpdateAgent(c *gin.Context) {
 }
 
 // maybeSummarize: trigger ringkasan percakapan kalau jeda >30 menit dari summary terakhir.
+// Ringkasan disimpan per (agent, kontak) di ConversationMemory — bukan global per agent —
+// supaya konteks satu customer tidak bocor ke customer lain.
 // Dijalankan di background goroutine supaya tidak blocking reply ke user.
 func maybeSummarize(agent models.Agent, senderNum string) {
-	if agent.LastSummaryAt != nil && time.Since(*agent.LastSummaryAt) < 30*time.Minute {
+	var mem models.ConversationMemory
+	database.DB.Where("agent_id = ? AND sender = ?", agent.ID, senderNum).First(&mem)
+	if mem.LastSummaryAt != nil && time.Since(*mem.LastSummaryAt) < 30*time.Minute {
 		return // belum waktunya
 	}
 	// Ambil 30 pesan terakhir untuk konteks ringkasan.
@@ -888,23 +894,28 @@ func maybeSummarize(agent models.Agent, senderNum string) {
 		log.Printf("Summarize gagal (agent %d, %s): %v", agent.ID, senderNum, err)
 		return
 	}
-	// Merge dengan summary lama (kalau ada) -> prepend.
-	if agent.ConversationSummary != "" {
-		summary = summary + " | " + agent.ConversationSummary
+	// Merge dengan summary lama kontak ini (kalau ada) -> prepend.
+	if mem.Summary != "" {
+		summary = summary + " | " + mem.Summary
 	}
-	// Potong max 300 karakter.
-	if len(summary) > 300 {
-		summary = summary[:300]
-	}
+	summary = truncateRunes(summary, 300)
 	now := time.Now()
-	if err := database.DB.Model(&agent).Updates(map[string]any{
-		"conversation_summary": summary,
-		"last_summary_at":      now,
-	}).Error; err != nil {
-		log.Printf("Gagal menyimpan summary agent %d: %v", agent.ID, err)
+	mem.AgentID, mem.Sender, mem.Summary, mem.LastSummaryAt = agent.ID, senderNum, summary, &now
+	if err := database.DB.Save(&mem).Error; err != nil {
+		log.Printf("Gagal menyimpan summary (agent %d, %s): %v", agent.ID, senderNum, err)
 		return
 	}
 	log.Printf("Summarized (agent %d, %s): %s", agent.ID, senderNum, summary)
+}
+
+// truncateRunes memotong string ke maksimal n rune (aman untuk UTF-8/emoji,
+// tidak membelah karakter multibyte seperti slice byte biasa).
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
 }
 
 func DeleteAgent(c *gin.Context) {
@@ -920,6 +931,7 @@ func DeleteAgent(c *gin.Context) {
 	database.DB.Where("agent_id = ?", id).Delete(&models.Contact{})
 	database.DB.Where("agent_id = ?", id).Delete(&models.Handoff{})
 	database.DB.Where("agent_id = ?", id).Delete(&models.AutoReply{})
+	database.DB.Where("agent_id = ?", id).Delete(&models.ConversationMemory{})
 	database.DB.Where("tenant_id = ?", currentTenantID(c)).Delete(&models.Agent{}, id)
 	c.JSON(200, gin.H{"message": "Deleted"})
 }

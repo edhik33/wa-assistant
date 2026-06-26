@@ -21,6 +21,8 @@ type Agent struct {
 	BusinessEnd          string `gorm:"size:5;default:'21:00'" json:"business_end"`
 	AwayMessage          string `gorm:"type:text" json:"away_message"`
 
+	// Deprecated: ringkasan percakapan kini disimpan per-kontak di ConversationMemory
+	// (dulu global per agent -> bocor antar-customer). Kolom ini tidak lagi dibaca/ditulis.
 	ConversationSummary string     `gorm:"type:text" json:"conversation_summary"`
 	LastSummaryAt       *time.Time `json:"last_summary_at"`
 
@@ -86,6 +88,17 @@ type Contact struct {
 	Notes     string    `gorm:"type:text" json:"notes"`
 	Tags      string    `gorm:"type:text" json:"tags"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ConversationMemory menyimpan ringkasan percakapan jangka panjang per (agent, kontak).
+// Dipisah per pengirim agar konteks satu customer tidak bocor ke customer lain.
+type ConversationMemory struct {
+	ID            uint       `gorm:"primaryKey" json:"id"`
+	AgentID       uint       `gorm:"uniqueIndex:idx_convmem_agent_sender;not null" json:"agent_id"`
+	Sender        string     `gorm:"uniqueIndex:idx_convmem_agent_sender;size:32;not null" json:"sender"`
+	Summary       string     `gorm:"type:text" json:"summary"`
+	LastSummaryAt *time.Time `json:"last_summary_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 type Handoff struct {

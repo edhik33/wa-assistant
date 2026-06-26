@@ -14,9 +14,14 @@ import (
 )
 
 // simThreshold = ambang minimal kemiripan kosinus agar sebuah knowledge dianggap relevan.
-// topK = jumlah maksimal knowledge yang disisipkan ke prompt.
+// simFloor = bila tak ada yang lolos simThreshold, ambil 1 kandidat terbaik asalkan kemiripannya
+// minimal sebesar ini (lebih baik beri bahan daripada AI buta). topK = maksimal knowledge ke prompt.
+//
+// 0.55 dulu terlalu ketat untuk text-embedding-3-small di bahasa Indonesia: parafrase yang
+// relevan sering jatuh di 0.40-0.55, jadi banyak knowledge yang ada malah tidak ke-retrieve.
 const (
-	simThreshold = 0.55
+	simThreshold = 0.45
+	simFloor     = 0.32
 	topK         = 5
 )
 
@@ -147,7 +152,7 @@ func buildSystemPrompt(agentID uint, persona string) string {
 
 // ChatWithKnowledge mengembalikan (balasan, perlu eskalasi ke manusia, nama model, jumlah knowledge, error).
 func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history []models.ChatHistory) (string, bool, string, int, error) {
-	relevant := searchKnowledge(agentID, userMsg)
+	relevant := searchKnowledge(agentID, buildRetrievalQuery(userMsg, history))
 
 	enhancedPrompt := buildSystemPrompt(agentID, systemPrompt) +
 		"\n\nGAYA JAWABAN: Balas seperti chat WhatsApp yang natural dan manusiawi—mengalir, tidak kaku, jangan seperti template. " +
@@ -256,6 +261,24 @@ func toneInstruction(tone string) string {
 	}
 }
 
+// buildRetrievalQuery menyiapkan teks yang dipakai untuk mencari knowledge.
+// Pesan pendek/follow-up ("berapa?", "yang merah", "iya itu") nyaris tanpa makna kalau
+// di-embed sendirian, sehingga retrieval meleset. Untuk pesan pendek, gabungkan dengan
+// pesan customer sebelumnya agar konteksnya ikut terbawa ke pencarian semantik.
+// history diasumsikan urut lama->baru (sesuai pemanggil) dan belum memuat pesan saat ini.
+func buildRetrievalQuery(userMsg string, history []models.ChatHistory) string {
+	q := strings.TrimSpace(userMsg)
+	if len([]rune(q)) >= 25 || len(strings.Fields(q)) > 4 {
+		return q // pesan sudah cukup kaya konteks
+	}
+	for i := len(history) - 1; i >= 0; i-- {
+		if prev := strings.TrimSpace(history[i].Message); prev != "" {
+			return prev + " " + q
+		}
+	}
+	return q
+}
+
 func searchKnowledge(agentID uint, msg string) []models.Knowledge {
 	items := KnowledgeFor(agentID) // dari cache memori (embedding sudah di-parse)
 	if len(items) == 0 {
@@ -300,6 +323,11 @@ func semanticSearch(msg string, items []KBItem) ([]models.Knowledge, bool) {
 			break
 		}
 		relevant = append(relevant, r.k)
+	}
+	// Tidak ada yang lolos ambang utama, tapi kandidat terbaik masih cukup mirip ->
+	// sertakan satu saja sebagai bahan jawaban (mengurangi "tidak tahu" palsu).
+	if len(relevant) == 0 && ranked[0].sim >= simFloor {
+		relevant = append(relevant, ranked[0].k)
 	}
 	return relevant, true
 }

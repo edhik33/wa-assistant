@@ -143,8 +143,9 @@ func buildExtractorPrompt(agentID uint, sender string, agent models.Agent, form 
 	sb.WriteString("Schema data yang harus diekstrak:\n")
 	sb.WriteString(form.SchemaJSON)
 	sb.WriteString("\n\nRingkasan percakapan sebelumnya:\n")
-	if agent.ConversationSummary != "" {
-		sb.WriteString(agent.ConversationSummary)
+	var mem models.ConversationMemory
+	if database.DB.Where("agent_id = ? AND sender = ?", agentID, sender).First(&mem).Error == nil && mem.Summary != "" {
+		sb.WriteString(mem.Summary)
 	}
 	sb.WriteString("\n\n10 chat terakhir:\n")
 	for i := len(chats) - 1; i >= 0; i-- {
