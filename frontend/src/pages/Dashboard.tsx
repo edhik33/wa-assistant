@@ -361,7 +361,7 @@ export default function Dashboard() {
     ? Math.ceil((new Date(usage.tenant.trial_ends_at).getTime() - Date.now()) / 86400000)
     : null;
   const setupIssues = [
-    (knowledge.length > 0 || prompt.trim() !== '') ? '' : 'Isi profil bisnis lewat Setup Cepat — AI akan generate FAQ + System Prompt otomatis',
+    (knowledge.length > 0 || prompt.trim() !== '') ? '' : 'Sebelum mengaktifkan Balasan AI, isi profil bisnis lewat Setup Cepat — AI akan generate FAQ + System Prompt otomatis.',
   ].filter(Boolean);
   const dashboardStats = {
     utama: [
@@ -596,8 +596,8 @@ export default function Dashboard() {
                           <Typography variant="body2">
                             {setupIssues[0]}{setupIssues.length > 1 ? ` dan ${setupIssues.length - 1} hal lain perlu dicek.` : '.'}
                           </Typography>
-                          <Button size="small" variant="outlined" onClick={() => setTab(!knowledge.length ? 'knowledge' : 'settings')}>
-                            Bereskan
+                          <Button size="small" variant="contained" onClick={() => setWizardOpen(true)}>
+                            Setup
                           </Button>
                         </Stack>
                       </Alert>
