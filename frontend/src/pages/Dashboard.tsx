@@ -362,7 +362,6 @@ export default function Dashboard() {
     ? Math.ceil((new Date(usage.tenant.trial_ends_at).getTime() - Date.now()) / 86400000)
     : null;
   const setupIssues = [
-    status === 'connected' ? '' : 'WhatsApp belum tersambung',
     aiEnabled ? '' : 'AI sedang nonaktif',
     knowledge.length ? '' : 'Knowledge masih kosong',
     prompt.trim() ? '' : 'Persona belum diisi',
@@ -570,13 +569,15 @@ export default function Dashboard() {
                         <Typography variant="h6" sx={{ lineHeight: 1.25 }}>
                           {status === 'connected'
                             ? `${waName || 'WhatsApp'} siap membalas`
-                            : 'WhatsApp belum tersambung'}
+                            : ''}
                         </Typography>
+                        {status === 'connected' && (
                         <Typography variant="body2" color="text.secondary">
-                          {status === 'connected' && waNumber
+                          {waNumber
                             ? `Nomor +${waNumber}. ${aiEnabled ? 'AI akan membalas chat otomatis.' : 'AI mati, chat masuk perlu dibalas manual.'}`
-                            : 'Sambungkan WhatsApp agar inbox, broadcast, jadwal, dan AI bisa dipakai penuh.'}
+                            : ''}
                         </Typography>
+                        )}
                       </Box>
                       <Stack direction="row" spacing={1} sx={{ flexShrink: 0, flexWrap: 'wrap', gap: 0.75 }}>
                         <Button variant={status === 'connected' ? 'outlined' : 'contained'} size="small" onClick={connect} disabled={connectMut.isPending}
