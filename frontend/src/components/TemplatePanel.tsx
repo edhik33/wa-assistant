@@ -45,7 +45,7 @@ export default function TemplatePanel({ agentId }: { agentId: number }) {
   return (
     <Box>
       <PageHeader title="Template Pesan"
-        subtitle="Pesan siap-pakai yang bisa dipanggil cepat di Inbox, Broadcast, dan Kalender. Pakai {nama} untuk menyapa otomatis dengan nama kontak."
+        subtitle="Pesan siap-pakai yang bisa dipanggil cepat di Inbox, Broadcast, dan Jadwal. Pakai {nama} untuk menyapa otomatis dengan nama kontak."
         action={<Button variant="contained" startIcon={<AddIcon />} onClick={openNew}>Tambah Template</Button>} />
 
       {(!templates || templates.length === 0) ? (
@@ -87,7 +87,7 @@ export default function TemplatePanel({ agentId }: { agentId: number }) {
             <Box>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>Isi pesan</Typography>
               <WhatsAppEditor value={form.body ?? ''} onChange={v => { setForm({ ...form, body: v }); if (errors.body) setErrors(p => ({ ...p, body: '' })); }}
-                placeholder="Halo {nama}, terima kasih sudah order 🙏" rows={4} error={!!errors.body} helperText={errors.body || 'Tips: {nama} otomatis diganti nama kontak saat dikirim lewat Broadcast/Kalender.'} />
+                placeholder="Halo {nama}, terima kasih sudah order 🙏" rows={4} error={!!errors.body} helperText={errors.body || 'Tips: {nama} otomatis diganti nama kontak saat dikirim lewat Broadcast/Jadwal.'} />
             </Box>
           </Stack>
         </DialogContent>

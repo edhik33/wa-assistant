@@ -41,11 +41,25 @@ func TestChat(c *gin.Context) {
 	if tone == "" {
 		tone = "ramah"
 	}
-	reply, escalate, model, err := services.ChatWithKnowledge(id, prompt, tone, req.Message, nil)
+	start := time.Now()
+	shippingCtx := maybeBuildShippingContext(agent, req.Message, nil)
+	usedShippingTool := strings.Contains(shippingCtx, "ONGKIR_")
+	turnError := shippingTurnError(shippingCtx)
+	if shippingCtx != "" {
+		prompt += shippingCtx
+	}
+	reply, escalate, model, knowledgeCount, err := services.ChatWithKnowledge(id, prompt, tone, req.Message, nil)
+	latencyMs := time.Since(start).Milliseconds()
 	if err != nil {
+		if turnError != "" {
+			turnError += "; "
+		}
+		turnError += "ai: " + err.Error()
+		logAITurn(id, testAITurnSender, req.Message, "", model, knowledgeCount, usedShippingTool, false, turnError, latencyMs)
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
+	logAITurn(id, testAITurnSender, req.Message, reply, model, knowledgeCount, usedShippingTool, escalate, turnError, latencyMs)
 	incrementAIUsage(agent.TenantID)
 	c.JSON(200, gin.H{"reply": reply, "escalate": escalate, "model": model})
 }
@@ -207,7 +221,9 @@ func InboxSend(c *gin.Context) {
 // ChatPresence mengirim indikator "mengetik" ke kontak (dipanggil dari Inbox saat CS mengetik).
 func ChatPresence(c *gin.Context) {
 	id, ok := resolveAgent(c)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	var req struct {
 		To     string `json:"to"`
 		Active bool   `json:"active"`
@@ -223,7 +239,9 @@ func ChatPresence(c *gin.Context) {
 // RevokeMessage menghapus (unsend) pesan yang sudah dikirim.
 func RevokeMessage(c *gin.Context) {
 	id, ok := resolveAgent(c)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	msgID := c.Param("msgId")
 	if msgID == "" {
 		c.JSON(400, gin.H{"error": "msgId wajib"})

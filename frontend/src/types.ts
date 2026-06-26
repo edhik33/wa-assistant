@@ -89,12 +89,17 @@ export interface ChatMsg {
   media_type: string; // "", image, document, audio, video, sticker
   file_name: string;
   mimetype: string;
+  wa_msg_id?: string;
+  reply_to?: string;
+  reply_text?: string;
+  revoked?: boolean;
   created_at: string;
 }
 
 export interface Contact {
   sender: string;
   last_at: string;
+  last_msg?: string;
   needs_human: boolean;
   name?: string;
 }
@@ -107,6 +112,19 @@ export interface Analytics {
   open_handoffs: number;
   ai_handled_pct: number;
   trend: { day: string; count: number }[];
+}
+
+export interface AIMetrics {
+  total_incoming: number;
+  ai_replies: number;
+  escalated: number;
+  escalation_rate: number;
+  tool_shipping_success: number;
+  tool_shipping_error: number;
+  closing_detected: number;
+  closing_exported: number;
+  ai_errors: number;
+  trend: { date: string; total: number; escalated: number }[];
 }
 
 export interface NumberCheck {
@@ -254,6 +272,13 @@ export interface Agent {
   business_start?: string;
   business_end?: string;
   away_message?: string;
+  spreadsheet_url?: string;
+  spreadsheet_sheet_name?: string;
+  sheet_sync_enabled?: boolean;
+  origin_city_id?: number;
+  origin_city_name?: string;
+  default_weight_gram?: number;
+  enabled_couriers?: string;
 }
 
 export interface KnowledgeItem {

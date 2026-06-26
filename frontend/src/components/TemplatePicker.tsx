@@ -11,7 +11,7 @@ interface Props {
 }
 
 // TemplatePicker = tombol kecil untuk menyisipkan isi template ke composer pesan.
-// Dipakai di Inbox, Broadcast, dan Kalender.
+// Dipakai di Inbox, Broadcast, dan Jadwal.
 export default function TemplatePicker({ agentId, onPick, size = 'small', variant = 'outlined' }: Props) {
   const { data: templates } = useTemplates(agentId);
   const [anchor, setAnchor] = useState<null | HTMLElement>(null);

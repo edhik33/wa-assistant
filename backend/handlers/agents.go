@@ -306,16 +306,21 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 	}
 
 	// Inject konteks ongkir realtime kalau user tanya ongkir.
+	turnStart := time.Now()
 	enhancedPrompt := prompt
-	if shippingCtx := maybeBuildShippingContext(agent, in.Text); shippingCtx != "" {
+	shippingCtx := maybeBuildShippingContext(agent, in.Text, history)
+	usedShippingTool := strings.Contains(shippingCtx, "ONGKIR_")
+	turnError := shippingTurnError(shippingCtx)
+	if shippingCtx != "" {
 		enhancedPrompt = prompt + "\n\n" + shippingCtx
 	}
 
-	reply, escalate, _, err := services.ChatWithKnowledge(agentID, enhancedPrompt, tone, in.Text, history)
+	reply, escalate, modelName, knowledgeCount, err := services.ChatWithKnowledge(agentID, enhancedPrompt, tone, in.Text, history)
 	if err != nil {
 		log.Printf("AI error (agent %d) dari %s: %v", agentID, num, err)
 		reply = "Maaf, ada kendala teknis."
 		escalate = false
+		turnError = "ai: " + err.Error()
 	}
 	if escalate {
 		// Ganti fallback generik dengan AI call kontekstual — biar nyambung topik.
@@ -328,11 +333,13 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 		_ = database.DB.Create(&models.Handoff{AgentID: agentID, Sender: num, LastMsg: displayText}).Error
 		log.Printf("Eskalasi (agent %d) dari %s: %q", agentID, num, in.Text)
 	}
+	latencyMs := time.Since(turnStart).Milliseconds()
 	sendErr := sendChunked(agentID, sender, reply) // balasan panjang dipecah jadi beberapa bubble (lebih manusiawi)
 	if sendErr != nil {
 		log.Printf("WA send chunked gagal (agent %d, %s): %v", agentID, num, sendErr)
 	}
 	logRow(displayText, reply, sendErr)
+	logAITurn(agentID, num, displayText, reply, modelName, knowledgeCount, usedShippingTool, escalate, turnError, latencyMs)
 	incrementAIUsage(agent.TenantID) // hitung pemakaian kuota bulanan tenant
 
 	// Long-term memory: auto-summary setelah percakapan (jeda >30 menit).
@@ -468,16 +475,41 @@ func detectShippingIntent(msg string) bool {
 func extractDestinationCity(msg string) string {
 	msg = strings.ToLower(msg)
 	patterns := []string{"ke ", "tujuan ", "ongkir ", "kirim "}
-	stopWords := map[string]bool{"berapa": true, "kak": true, "ya": true, "berapa?": true, "dong": true, "sih": true, "nih": true}
+	stopWords := map[string]bool{
+		"berapa": true, "kak": true, "ya": true, "dong": true, "sih": true, "nih": true,
+		"brp": true, "gan": true, "min": true, "bro": true, "bang": true, "mas": true,
+		"mbak": true, "mba": true, "om": true, "bos": true, "koh": true, "deh": true,
+		"yah": true, "weh": true, "lur": true, "boss": true, "kuy": true, "guy": true,
+		"brapa": true, "berape": true, "kaka": true, "abang": true, "kanda": true,
+		"yaa": true, "sihh": true, "dehh": true, "ap": true, "berap": true,
+		"berapa?": true, "brp?": true, "dong?": true, "ya?": true, "kak?": true,
+		"untuk": true, "produk": true, "barang": true, "paket": true, "aja": true,
+	}
 	for _, p := range patterns {
 		if idx := strings.Index(msg, p); idx >= 0 {
 			rest := msg[idx+len(p):]
-			words := strings.Fields(rest)
+			rawWords := strings.Fields(rest)
+			var words []string
+			for _, w := range rawWords {
+				if w = cleanShippingWord(w); w != "" {
+					words = append(words, w)
+				}
+			}
 			if len(words) > 0 {
-				candidate := words[0]
+				start := 0
+				if words[0] == "ke" || words[0] == "di" {
+					start = 1
+				}
+				for start < len(words) && stopWords[words[start]] {
+					start++
+				}
+				if start >= len(words) {
+					return ""
+				}
+				candidate := words[start]
 				// Ambil kata kedua kalau bukan stop word
-				if len(words) > 1 && !stopWords[words[1]] {
-					candidate = words[0] + " " + words[1]
+				if start+1 < len(words) && !stopWords[words[start+1]] {
+					candidate = words[start] + " " + words[start+1]
 				}
 				return strings.TrimSpace(candidate)
 			}
@@ -486,12 +518,42 @@ func extractDestinationCity(msg string) string {
 	return ""
 }
 
-func maybeBuildShippingContext(agent models.Agent, msg string) string {
-	if agent.OriginCityID == 0 || !detectShippingIntent(msg) {
+func cleanShippingWord(w string) string {
+	return strings.Trim(strings.ToLower(w), " \t\n\r.,?!:;\"'()[]{}")
+}
+
+func maybeBuildShippingContext(agent models.Agent, msg string, history []models.ChatHistory) string {
+	if agent.OriginCityID == 0 {
 		return ""
 	}
-	destText := extractDestinationCity(msg)
+
+	hasIntent := detectShippingIntent(msg)
+	destText := ""
+	if hasIntent {
+		destText = extractDestinationCity(msg)
+	} else {
+		if !lastReplyAskedShippingFollowup(history) {
+			return ""
+		}
+		lower := strings.ToLower(msg)
+		for _, qw := range []string{"kenapa", "kok", "gimana", "bagaimana", "apa ", "apakah", "lama", "banget", "resp", "respon"} {
+			if strings.Contains(lower, qw) {
+				return ""
+			}
+		}
+		cleaned := strings.TrimSpace(msg)
+		for _, suffix := range []string{" kak", " gan", " min", " bro", " bang", " mas", " mbak", " mba", " ya", " dong"} {
+			cleaned = strings.TrimSuffix(cleaned, suffix)
+			cleaned = strings.TrimSpace(cleaned)
+		}
+		if len(cleaned) >= 3 {
+			destText = cleaned
+		}
+	}
 	if destText == "" {
+		if hasIntent {
+			return "\n\nONGKIR_NEED_DESTINATION: Customer tanya ongkir tapi belum menyebut kota/kabupaten tujuan. JANGAN eskalasi. Tanya singkat: \"Boleh info kota/kabupaten tujuannya, kak?\""
+		}
 		return ""
 	}
 
@@ -511,27 +573,102 @@ func maybeBuildShippingContext(agent models.Agent, msg string) string {
 	}
 
 	city := cities[0]
-	couriers := strings.Split(agent.EnabledCouriers, ",")
-	if len(couriers) == 0 || couriers[0] == "" {
+	couriers := normalizeCouriers(agent.EnabledCouriers)
+	if len(couriers) == 0 {
 		couriers = []string{"jne", "jnt", "sicepat"}
 	}
+	weight := agent.DefaultWeightGram
+	if weight <= 0 {
+		weight = 1000
+	}
 
-	results, err := services.CheckShippingCost(agent.OriginCityID, city.RajaOngkirID, agent.DefaultWeightGram, couriers)
+	results, err := services.CheckShippingCost(agent.OriginCityID, city.RajaOngkirID, weight, couriers)
 	if err != nil {
 		// API gagal (rate limit / error) — kasih konteks ke AI biar jawab jujur, bukan eskalasi.
 		return "\n\nONGKIR_ERROR: Cek ongkir realtime sedang gangguan. JANGAN eskalasi. Bilang ke customer: \"Maaf kak, cek ongkir realtime sedang gangguan. Boleh kirim detail pesanan (produk + alamat), nanti kami bantu cek manual ya.\""
+	}
+	if len(results) == 0 {
+		return "\n\nONGKIR_EMPTY: RajaOngkir tidak mengembalikan tarif untuk tujuan ini. JANGAN eskalasi. Bilang ke customer: \"Maaf kak, ongkir ke " + city.FullName + " belum muncul dari sistem. Boleh kirim detail pesanan + alamat lengkap, nanti kami bantu cek manual ya.\""
 	}
 
 	var sb strings.Builder
 	sb.WriteString("\n\nONGKIR_REALTIME:\n")
 	sb.WriteString(fmt.Sprintf("Kota asal: %s\n", agent.OriginCityName))
 	sb.WriteString(fmt.Sprintf("Tujuan: %s\n", city.FullName))
-	sb.WriteString(fmt.Sprintf("Berat: %dg\n", agent.DefaultWeightGram))
+	sb.WriteString(fmt.Sprintf("Berat: %dg\n", weight))
 	for _, r := range results {
-		sb.WriteString(fmt.Sprintf("%s %s: Rp%d (%s hari)\n", r.Courier, r.Service, r.Cost, r.Estimate))
+		estimate := strings.TrimSpace(r.Estimate)
+		if estimate == "" {
+			estimate = "-"
+		}
+		sb.WriteString(fmt.Sprintf("%s %s: %s (estimasi %s hari)\n", r.Courier, r.Service, formatRupiah(r.Cost), estimate))
 	}
-	sb.WriteString("\nAturan: jawab hanya berdasarkan data ini. Jangan mengarang ekspedisi atau harga lain. Bilang 'estimasi' dan bisa berubah.")
+	sb.WriteString("\nAturan: data ONGKIR_REALTIME ini adalah sumber resmi untuk menjawab pertanyaan ongkir. Jawab langsung dengan daftar tarif di atas, jangan mengarang ekspedisi atau harga lain, jangan eskalasi, dan sebutkan bahwa tarif adalah estimasi dan bisa berubah.")
 	return sb.String()
+}
+
+func lastReplyAskedShippingFollowup(history []models.ChatHistory) bool {
+	for i := len(history) - 1; i >= 0 && i >= len(history)-3; i-- {
+		reply := strings.ToLower(history[i].Reply)
+		if reply == "" {
+			continue
+		}
+		if strings.Contains(reply, "ongkir") && (strings.Contains(reply, "kota") || strings.Contains(reply, "tujuan") || strings.Contains(reply, "alamat")) {
+			return true
+		}
+		if strings.Contains(reply, "kota/kabupaten") || strings.Contains(reply, "pilih yang mana") || strings.Contains(reply, "sebutkan kota") {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeCouriers(raw string) []string {
+	allowed := map[string]bool{"jne": true, "jnt": true, "sicepat": true, "pos": true, "tiki": true, "anteraja": true, "wahana": true}
+	seen := map[string]bool{}
+	var out []string
+	for _, p := range strings.Split(raw, ",") {
+		code := strings.ToLower(strings.TrimSpace(p))
+		code = strings.ReplaceAll(code, "&", "n")
+		code = strings.ReplaceAll(code, " ", "")
+		if code == "j&t" || code == "jntcargo" {
+			code = "jnt"
+		}
+		if allowed[code] && !seen[code] {
+			out = append(out, code)
+			seen[code] = true
+		}
+	}
+	return out
+}
+
+func formatRupiah(n int) string {
+	s := strconv.Itoa(n)
+	if len(s) <= 3 {
+		return "Rp" + s
+	}
+	var parts []string
+	for len(s) > 3 {
+		parts = append([]string{s[len(s)-3:]}, parts...)
+		s = s[:len(s)-3]
+	}
+	if s != "" {
+		parts = append([]string{s}, parts...)
+	}
+	return "Rp" + strings.Join(parts, ".")
+}
+
+func shippingTurnError(ctx string) string {
+	switch {
+	case strings.Contains(ctx, "ONGKIR_ERROR"):
+		return "shipping: error"
+	case strings.Contains(ctx, "ONGKIR_EMPTY"):
+		return "shipping: empty"
+	case strings.Contains(ctx, "ONGKIR_NOTFOUND"):
+		return "shipping: not_found"
+	default:
+		return ""
+	}
 }
 
 // ListHandoffs: daftar kontak yang sedang butuh ditangani manusia (bot pause).

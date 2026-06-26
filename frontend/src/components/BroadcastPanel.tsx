@@ -1,13 +1,19 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import {
   Box, Typography, Card, CardContent, TextField, Button, Stack, Alert, AlertTitle, Chip,
   Table, TableBody, TableCell, TableHead, TableRow, LinearProgress, CircularProgress,
   Dialog, DialogTitle, DialogContent, DialogActions, Checkbox, FormControlLabel,
+  Divider,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import EditNoteIcon from '@mui/icons-material/EditNoteOutlined';
+import PeopleAltIcon from '@mui/icons-material/PeopleAltOutlined';
+import ScheduleIcon from '@mui/icons-material/ScheduleOutlined';
+import HistoryIcon from '@mui/icons-material/HistoryOutlined';
+import InfoIcon from '@mui/icons-material/InfoOutlined';
 import { useCheckNumbers, useCreateBroadcast, useBroadcasts, useBroadcastDetail, useCancelBroadcast } from '../hooks';
 import { swalToast, swalConfirm } from '../services/swal';
 import RecipientField from './RecipientField';
@@ -28,9 +34,48 @@ const STATUS_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> 
   done: 'success', running: 'warning', pending: 'default', failed: 'error', interrupted: 'error',
   cancel_requested: 'warning', cancelled: 'default',
 };
+const STATUS_LABEL: Record<string, string> = {
+  done: 'Selesai', running: 'Berjalan', pending: 'Antre', failed: 'Gagal', interrupted: 'Terhenti',
+  cancel_requested: 'Membatalkan', cancelled: 'Dibatalkan',
+};
 const RCP_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
   sent: 'success', failed: 'error', skipped: 'default', pending: 'warning',
 };
+const RCP_LABEL: Record<string, string> = {
+  sent: 'Terkirim', failed: 'Gagal', skipped: 'Dilewati', pending: 'Antre',
+};
+
+function SectionTitle({ icon, title, subtitle, action }: { icon: ReactNode; title: string; subtitle?: string; action?: ReactNode }) {
+  return (
+    <Stack direction="row" sx={{ alignItems: 'center', gap: 1, mb: 1 }}>
+      <Box sx={{
+        width: 30, height: 30, display: 'grid', placeItems: 'center', borderRadius: 1,
+        bgcolor: 'action.hover', color: 'primary.main', flexShrink: 0,
+      }}>
+        {icon}
+      </Box>
+      <Box sx={{ minWidth: 0, flex: 1 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{title}</Typography>
+        {subtitle && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{subtitle}</Typography>}
+      </Box>
+      {action}
+    </Stack>
+  );
+}
+
+function ReviewRow({ label, value, good, warning }: { label: string; value: string; good?: boolean; warning?: boolean }) {
+  return (
+    <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+      <Typography variant="body2" color="text.secondary">{label}</Typography>
+      <Chip
+        size="small"
+        label={value}
+        color={warning ? 'warning' : good ? 'success' : 'default'}
+        variant={good || warning ? 'filled' : 'outlined'}
+      />
+    </Stack>
+  );
+}
 
 export default function BroadcastPanel({ agentId, seed }: { agentId: number; seed?: { value: string; n: number } | null }) {
   const [message, setMessage] = useState('');
@@ -74,11 +119,19 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   parsed.forEach(p => { nameMap[p.number] = p.name; });
 
   const registered = (checked || []).filter(c => c.registered);
+  const uniqueParsedCount = new Set(parsed.map(p => p.number)).size;
+  const duplicateCount = parsed.length - uniqueParsedCount;
+  const delayProblem = minDelay < 1 || maxDelay < 1
+    ? 'Jeda harus minimal 1 detik'
+    : maxDelay < minDelay
+      ? 'Jeda maksimal harus lebih besar atau sama dengan jeda minimal'
+      : '';
 
   const openModal = () => {
     const e: Record<string, string> = {};
     if (!message.trim()) e.message = 'Pesan tidak boleh kosong';
     if (parsed.length === 0) e.recipients = 'Masukkan minimal satu nomor';
+    if (delayProblem) e.delay = delayProblem;
     setErrors(e);
     if (Object.keys(e).length > 0) return;
     setChecked(null);
@@ -103,29 +156,33 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   const doSend = async () => {
     const recipients = registered.map(c => ({ number: c.number, name: nameMap[c.number] || '' }));
     if (recipients.length === 0) return;
-    const res = await createBroadcast.mutateAsync({ message, recipients, min_delay: minDelay, max_delay: maxDelay, file });
-    const started = res.data;
-    setModalOpen(false);
+    try {
+      const res = await createBroadcast.mutateAsync({ message, recipients, min_delay: minDelay, max_delay: maxDelay, file });
+      const started = res.data;
+      setModalOpen(false);
 
-    // Bersihkan form agar user tahu broadcast sudah masuk proses
-    setMessage('');
-    setRecipientsText('');
-    setFile(null);
-    setChecked(null);
-    setSummary(null);
-    setAckRisk(false);
-    setErrors({});
+      // Bersihkan form agar user tahu broadcast sudah masuk proses
+      setMessage('');
+      setRecipientsText('');
+      setFile(null);
+      setChecked(null);
+      setSummary(null);
+      setAckRisk(false);
+      setErrors({});
 
-    // Balik ke halaman 1 — broadcast terbaru di paling atas
-    setPage(1);
-    setLastStartedId(started?.id || null);
+      // Balik ke halaman 1 — broadcast terbaru di paling atas
+      setPage(1);
+      setLastStartedId(started?.id || null);
 
-    // Scroll ke riwayat
-    setTimeout(() => {
-      historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+      // Scroll ke riwayat
+      setTimeout(() => {
+        historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
 
-    swalToast(`Broadcast dimulai untuk ${recipients.length} nomor. Form sudah dibersihkan agar tidak terkirim dua kali.`);
+      swalToast(`Broadcast dimulai untuk ${recipients.length} nomor. Form sudah dibersihkan agar tidak terkirim dua kali.`);
+    } catch {
+      swalToast('Broadcast belum bisa dimulai. Cek koneksi WhatsApp dan coba lagi.', 'error');
+    }
   };
 
   const checking = checkNumbers.isPending || checked === null;
@@ -145,11 +202,11 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
 
   type Finding = { sev: 'red' | 'yellow'; msg: string; tip?: string };
   const findings: Finding[] = [];
-  if (unregRatio > 0.3) findings.push({ sev: 'red', msg: `${unreg} nomor tidak terdaftar WhatsApp (${pct(unregRatio)})`, tip: 'Buang nomor tak terdaftar dulu — nomor mati menaikkan sinyal spam.' });
+  if (unregRatio > 0.3) findings.push({ sev: 'red', msg: `${unreg} nomor tidak terdaftar WhatsApp (${pct(unregRatio)})`, tip: 'Buang nomor tak terdaftar dulu. Nomor mati menaikkan sinyal spam.' });
   else if (unreg > 0) findings.push({ sev: 'yellow', msg: `${unreg} nomor tak terdaftar akan dilewati`, tip: 'Sebaiknya dibuang biar daftar bersih.' });
   if (coldRatio > 0.7 && batch > 100) findings.push({ sev: 'red', msg: `${coldCount} nomor (${pct(coldRatio)}) belum pernah chat denganmu`, tip: 'Utamakan kontak yang pernah chat, atau pecah jadi beberapa hari.' });
   else if (coldRatio > 0.4) findings.push({ sev: 'yellow', msg: `${coldCount} nomor (${pct(coldRatio)}) belum pernah chat`, tip: 'Lebih aman kirim ke yang pernah chat dulu.' });
-  if (batch > remaining) findings.push({ sev: 'red', msg: `Batch ${batch} melebihi sisa jatah hari ini (${remaining})`, tip: `Kurangi jadi ≤ ${remaining} atau lanjut besok.` });
+  if (batch > remaining) findings.push({ sev: 'red', msg: `Batch ${batch} melebihi sisa jatah hari ini (${remaining})`, tip: `Kurangi jadi maksimal ${remaining} atau lanjut besok.` });
   else if (remaining > 0 && batch > remaining * 0.5) findings.push({ sev: 'yellow', msg: `Batch ini memakai sebagian besar jatah harian (sisa ${remaining})` });
 
   const level: 'green' | 'yellow' | 'red' =
@@ -157,87 +214,150 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
 
   // ---- Lint pesan ----
   const lint: string[] = [];
-  if (batch > 10 && !/\{nama\}/.test(message)) lint.push('Belum pakai {nama} — semua pesan identik, lebih mudah terdeteksi spam. Tambahkan {nama}.');
-  if (/(https?:\/\/|www\.)/i.test(message)) lint.push('Pesan mengandung link — bisa menaikkan risiko. Pastikan domain tepercaya & relevan.');
+  if (batch > 10 && !/\{nama\}/.test(message)) lint.push('Belum pakai {nama}. Semua pesan identik lebih mudah terdeteksi spam.');
+  if (/(https?:\/\/|www\.)/i.test(message)) lint.push('Pesan mengandung link. Pastikan domain tepercaya dan relevan.');
   const letters = message.replace(/[^a-zA-Z]/g, '');
-  if (letters.length >= 10 && letters === letters.toUpperCase()) lint.push('Pesan HURUF BESAR semua — terkesan berteriak/spam.');
-  if (message.length > 700) lint.push('Pesan sangat panjang (>700 karakter) — pertimbangkan dipersingkat.');
+  if (letters.length >= 10 && letters === letters.toUpperCase()) lint.push('Pesan huruf besar semua terasa seperti spam.');
+  if (message.length > 700) lint.push('Pesan sangat panjang. Pertimbangkan dipersingkat.');
 
   const VERDICT = {
-    green: { sev: 'success' as const, title: '🟢 Aman dikirim' },
-    yellow: { sev: 'warning' as const, title: '🟡 Hati-hati' },
-    red: { sev: 'error' as const, title: '🔴 Tahan dulu' },
+    green: { sev: 'success' as const, title: 'Aman dikirim' },
+    yellow: { sev: 'warning' as const, title: 'Perlu hati-hati' },
+    red: { sev: 'error' as const, title: 'Tahan dulu' },
   }[level];
   const sendBlocked = level === 'red' && !ackRisk;
+  const formIssueCount = (message.trim() ? 0 : 1) + (parsed.length ? 0 : 1) + (delayProblem ? 1 : 0);
+  const readyToReview = formIssueCount === 0;
 
   return (
     <Box>
       <PageHeader title="Broadcast"
-        subtitle="Kirim pesan (bisa dengan gambar/file) ke banyak kontak dengan jeda aman. Nomor dicek dulu sebelum dikirim." />
+        subtitle="Susun pesan, pilih penerima, cek risiko, lalu kirim dengan jeda aman." />
 
-      <Alert severity="warning" sx={{ mb: 2 }}>
-        <b>Biar nomor tidak diblokir WhatsApp:</b> kirim hanya ke kontak yang sudah pernah berinteraksi,
-        jangan ke nomor dingin. Mulai dari sedikit dulu (warm up), pakai jeda, dan sisipkan
-        <code> {'{nama}'} </code> agar pesan tidak identik. Kontak yang membalas STOP otomatis berhenti.
+      <Alert severity="info" icon={<InfoIcon fontSize="small" />} sx={{ mb: 2 }}>
+        <Typography variant="body2">
+          Pakai kontak yang pernah chat, tambah <code>{'{nama}'}</code> bila tersedia, dan mulai dari batch kecil untuk menjaga reputasi nomor.
+        </Typography>
       </Alert>
 
-      <Card sx={{ mb: 2 }}>
-        <CardContent>
-          <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-            <Stack direction="row" spacing={1} alignItems="center"><Typography variant="subtitle2">Pesan</Typography><Typography variant="caption" color="text.secondary">({message.length}/2000)</Typography></Stack>
-            <TemplatePicker agentId={agentId} onPick={b => { setMessage(m => m ? m + '\n' + b : b); if (errors.message) setErrors(p => ({...p, message: ''})); }} />
-          </Stack>
-          <Box sx={{ mb: 1.25 }}>
-            <WhatsAppEditor value={message} onChange={v => { setMessage(v); if (errors.message) setErrors(p => ({...p, message: ''})); }}
-              placeholder="Halo {nama}, ada promo spesial untuk kamu hari ini…" error={!!errors.message} helperText={errors.message} />
-          </Box>
+      <Box sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.55fr) minmax(300px, 0.85fr)' },
+        gap: 2,
+        alignItems: 'start',
+      }}>
+        <Card>
+          <CardContent>
+            <Stack spacing={2.25}>
+              <Box>
+                <SectionTitle
+                  icon={<EditNoteIcon fontSize="small" />}
+                  title="Pesan"
+                  subtitle={`${message.length}/2000 karakter`}
+                  action={<TemplatePicker agentId={agentId} onPick={b => { setMessage(m => m ? m + '\n' + b : b); if (errors.message) setErrors(p => ({ ...p, message: '' })); }} />}
+                />
+                <WhatsAppEditor value={message} onChange={v => { setMessage(v); if (errors.message) setErrors(p => ({ ...p, message: '' })); }}
+                  placeholder="Halo {nama}, ada promo spesial untuk kamu hari ini…" error={!!errors.message} helperText={errors.message} />
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 1, flexWrap: 'wrap', gap: 0.75 }}>
+                  <Button component="label" size="small" variant="outlined" startIcon={<AttachFileIcon />}>
+                    {file ? 'Ganti lampiran' : 'Lampirkan file'}
+                    <input type="file" hidden onChange={e => setFile(e.target.files?.[0] || null)} />
+                  </Button>
+                  {file && <Chip label={file.name} size="small" onDelete={() => setFile(null)} deleteIcon={<CloseIcon />} />}
+                </Stack>
+              </Box>
 
-          {/* Lampiran */}
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.5, flexWrap: 'wrap' }}>
-            <Button component="label" size="small" variant="outlined" startIcon={<AttachFileIcon />}>
-              Lampirkan gambar/file
-              <input type="file" hidden onChange={e => setFile(e.target.files?.[0] || null)} />
-            </Button>
-            {file && <Chip label={file.name} size="small" onDelete={() => setFile(null)} deleteIcon={<CloseIcon />} />}
-          </Stack>
+              <Divider />
 
-          <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Daftar Nomor</Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-            Satu nomor per baris (format <code>nomor,nama</code> untuk personalisasi), atau impor dari sumber di bawah.
-          </Typography>
-          <RecipientField agentId={agentId} value={recipientsText} onChange={v => { setRecipientsText(v); setChecked(null); if (errors.recipients) setErrors(p => ({...p, recipients: ''})); }} error={errors.recipients} />
-          <Stack direction="row" spacing={1} sx={{ mt: 0.5, mb: 3, alignItems: 'center' }}>
-            <Button size="small" variant="outlined" onClick={() => {
-              const formatted = recipientsText.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
-                const parts = line.split(/[\t,]/);
-                const num = parts.find(p => /\d/.test(p)) || parts[0];
-                const name = parts.filter(p => p !== num && p.trim()).join(' ').trim();
-                const n = normalizePhone(num);
-                return n ? `${n},${name}` : line;
-              }).join('\n');
-              setRecipientsText(formatted);
-            }}>Format Otomatis</Button>
-            <Typography variant="caption" color="text.secondary">
-              Disarankan pakai <b>"Pernah chat"</b> (hangat, aman). Sinkron WA / anggota grup lebih berisiko.
-            </Typography>
-          </Stack>
+              <Box>
+                <SectionTitle
+                  icon={<PeopleAltIcon fontSize="small" />}
+                  title="Penerima"
+                  subtitle={`${uniqueParsedCount} nomor unik${duplicateCount > 0 ? `, ${duplicateCount} duplikat terdeteksi` : ''}`}
+                />
+                <RecipientField agentId={agentId} value={recipientsText} onChange={v => { setRecipientsText(v); setChecked(null); if (errors.recipients) setErrors(p => ({ ...p, recipients: '' })); }} error={errors.recipients} />
+                <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: 'center', flexWrap: 'wrap', gap: 0.75 }}>
+                  <Button size="small" variant="outlined" onClick={() => {
+                    const formatted = recipientsText.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+                      const parts = line.split(/[\t,]/);
+                      const num = parts.find(p => /\d/.test(p)) || parts[0];
+                      const name = parts.filter(p => p !== num && p.trim()).join(' ').trim();
+                      const n = normalizePhone(num);
+                      return n ? `${n},${name}` : line;
+                    }).join('\n');
+                    setRecipientsText(formatted);
+                  }}>Format otomatis</Button>
+                  <Chip size="small" label="Pernah chat paling aman" color="success" variant="outlined" />
+                  <Chip size="small" label="Sinkron WA lebih berisiko" color="warning" variant="outlined" />
+                </Stack>
+              </Box>
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1.5 }}>
-            <TextField type="number" size="small" label="Jeda min (detik)" value={minDelay} onChange={e => setMinDelay(Number(e.target.value))} sx={{ width: { xs: '100%', sm: 140 } }} />
-            <TextField type="number" size="small" label="Jeda maks (detik)" value={maxDelay} onChange={e => setMaxDelay(Number(e.target.value))} sx={{ width: { xs: '100%', sm: 140 } }} />
-          </Stack>
+              <Divider />
 
-          <Button variant="contained" startIcon={<SendIcon />} onClick={openModal}>
-            Cek Nomor &amp; Kirim ({parsed.length})
-          </Button>
-        </CardContent>
-      </Card>
+              <Box>
+                <SectionTitle
+                  icon={<ScheduleIcon fontSize="small" />}
+                  title="Jeda Kirim"
+                  subtitle="Broadcast akan dikirim satu per satu sesuai rentang jeda ini."
+                />
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <TextField type="number" size="small" label="Jeda min (detik)" value={minDelay}
+                    onChange={e => { setMinDelay(Number(e.target.value)); if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
+                    error={!!(errors.delay || delayProblem)}
+                    sx={{ width: { xs: '100%', sm: 150 } }} />
+                  <TextField type="number" size="small" label="Jeda maks (detik)" value={maxDelay}
+                    onChange={e => { setMaxDelay(Number(e.target.value)); if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
+                    error={!!(errors.delay || delayProblem)}
+                    helperText={errors.delay || delayProblem || ' '}
+                    sx={{ width: { xs: '100%', sm: 150 } }} />
+                </Stack>
+              </Box>
+            </Stack>
+          </CardContent>
+        </Card>
 
-      {broadcasts.length > 0 && (
-        <Card ref={historyRef}>
-          <CardContent sx={{ overflowX: 'auto' }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Riwayat Broadcast</Typography>
-            <Table size="small">
+        <Card sx={{ position: { lg: 'sticky' }, top: 16 }}>
+          <CardContent>
+            <SectionTitle
+              icon={<CheckCircleIcon fontSize="small" />}
+              title="Review"
+              subtitle="Ringkasan sebelum cek nomor."
+            />
+            <Stack spacing={1.1}>
+              <ReviewRow label="Pesan" value={message.trim() ? 'Siap' : 'Kosong'} good={!!message.trim()} warning={!message.trim()} />
+              <ReviewRow label="Penerima" value={parsed.length ? `${uniqueParsedCount} nomor` : 'Belum ada'} good={parsed.length > 0} warning={parsed.length === 0} />
+              <ReviewRow label="Lampiran" value={file ? 'Ada' : 'Tidak ada'} good={!!file} />
+              <ReviewRow label="Jeda" value={`${minDelay}-${maxDelay} detik`} good={!delayProblem} warning={!!delayProblem} />
+              {message.length > 700 && <Alert severity="warning" icon={false}>Pesan cukup panjang. Pertimbangkan dipersingkat agar lebih mudah dibaca.</Alert>}
+              {duplicateCount > 0 && <Alert severity="info" icon={false}>{duplicateCount} nomor duplikat terdeteksi. Sistem akan menggabungkan saat daftar diproses.</Alert>}
+              {formIssueCount > 0 && (
+                <Alert severity="warning" icon={false}>
+                  Lengkapi pesan, penerima, dan jeda sebelum lanjut cek nomor.
+                </Alert>
+              )}
+              <Button fullWidth variant="contained" startIcon={<SendIcon />} onClick={openModal} disabled={createBroadcast.isPending}>
+                {readyToReview ? `Cek nomor & lanjut (${parsed.length})` : 'Cek kelengkapan'}
+              </Button>
+              <Typography variant="caption" color="text.secondary">
+                Nomor akan dicek dulu. Broadcast baru dimulai setelah kamu konfirmasi di layar berikutnya.
+              </Typography>
+            </Stack>
+          </CardContent>
+        </Card>
+      </Box>
+
+      <Card ref={historyRef} sx={{ mt: 2 }}>
+        <CardContent sx={{ overflowX: 'auto' }}>
+          <SectionTitle
+            icon={<HistoryIcon fontSize="small" />}
+            title="Riwayat Broadcast"
+            subtitle={broadcasts.length ? 'Klik baris untuk melihat status per penerima.' : 'Broadcast yang sudah dimulai akan muncul di sini.'}
+          />
+          {broadcasts.length === 0 ? (
+            <Alert severity="info" icon={false}>Belum ada broadcast yang tercatat untuk agent ini.</Alert>
+          ) : (
+            <>
+              <Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell>Waktu</TableCell>
@@ -259,7 +379,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                         {b.id === lastStartedId && <Chip label="Baru dimulai" size="small" color="primary" sx={{ ml: 1 }} />}
                       </TableCell>
                       <TableCell sx={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.message}</TableCell>
-                      <TableCell align="center"><Chip label={b.status} size="small" color={STATUS_COLOR[b.status] ?? 'default'} /></TableCell>
+                      <TableCell align="center"><Chip label={STATUS_LABEL[b.status] ?? b.status} size="small" color={STATUS_COLOR[b.status] ?? 'default'} /></TableCell>
                       <TableCell>
                         <LinearProgress variant="determinate" value={pct} color={b.status === 'done' ? 'success' : 'primary'} sx={{ height: 6, borderRadius: 3, mb: 0.5 }} />
                         <Typography variant="caption" color="text.secondary">
@@ -276,7 +396,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                                 cancelBroadcast.mutate(b.id);
                               }
                             }}>
-                            Cancel
+                            Batalkan
                           </Button>
                         )}
                       </TableCell>
@@ -290,9 +410,10 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
               <Typography variant="caption">Hal {page} / {totalPages}</Typography>
               <Button size="small" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Berikutnya</Button>
             </Stack>
-          </CardContent>
-        </Card>
-      )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Detail broadcast: status per penerima */}
       <Dialog open={!!detailId} onClose={closeDetail} fullWidth maxWidth="sm">
@@ -313,7 +434,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
               <>
                 <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>{detail.broadcast.message}</Typography>
                 {detail.broadcast.media_type && (
-                  <Chip size="small" label={`📎 ${detail.broadcast.file_name || detail.broadcast.media_type}`} sx={{ mb: 1.5 }} />
+                  <Chip size="small" icon={<AttachFileIcon />} label={detail.broadcast.file_name || detail.broadcast.media_type} sx={{ mb: 1.5 }} />
                 )}
                 <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
                   {FILTERS.map(f => (
@@ -338,7 +459,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                           <TableCell>+{r.number}</TableCell>
                           <TableCell>{r.name || '-'}</TableCell>
                           <TableCell align="right">
-                            <Chip size="small" label={r.status} color={RCP_COLOR[r.status] ?? 'default'} />
+                            <Chip size="small" label={RCP_LABEL[r.status] ?? r.status} color={RCP_COLOR[r.status] ?? 'default'} />
                             {r.error && <Typography variant="caption" color="error" sx={{ display: 'block' }}>{r.error}</Typography>}
                           </TableCell>
                         </TableRow>
@@ -379,7 +500,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                   <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
                     {findings.map((f, i) => (
                       <li key={i}>
-                        <Typography variant="body2">{f.msg}{f.tip && <Box component="span" sx={{ display: 'block', opacity: 0.85 }}>↳ {f.tip}</Box>}</Typography>
+                        <Typography variant="body2">{f.msg}{f.tip && <Box component="span" sx={{ display: 'block', opacity: 0.85 }}>Saran: {f.tip}</Box>}</Typography>
                       </li>
                     ))}
                   </Box>

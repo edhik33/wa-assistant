@@ -4,14 +4,14 @@ import "time"
 
 // Agent merepresentasikan satu sesi WhatsApp yang tertaut — satu CS/AI per nomor.
 type Agent struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	TenantID     uint      `gorm:"index;not null" json:"tenant_id"`
-	Name         string    `json:"name"`
-	SystemPrompt string    `gorm:"type:text" json:"system_prompt"`
-	Tone         string    `gorm:"default:ramah" json:"tone"`
-	AIEnabled    bool      `gorm:"not null;default:true" json:"ai_enabled"` // master switch balasan otomatis AI
-	DeviceJID    string    `json:"device_jid"`
-	Number       string    `json:"number"`
+	ID           uint   `gorm:"primaryKey" json:"id"`
+	TenantID     uint   `gorm:"index;not null" json:"tenant_id"`
+	Name         string `json:"name"`
+	SystemPrompt string `gorm:"type:text" json:"system_prompt"`
+	Tone         string `gorm:"default:ramah" json:"tone"`
+	AIEnabled    bool   `gorm:"not null;default:true" json:"ai_enabled"` // master switch balasan otomatis AI
+	DeviceJID    string `json:"device_jid"`
+	Number       string `json:"number"`
 
 	GreetingEnabled bool   `gorm:"not null;default:false" json:"greeting_enabled"`
 	GreetingMessage string `gorm:"type:text" json:"greeting_message"`
@@ -30,10 +30,10 @@ type Agent struct {
 	SheetSyncEnabled     bool   `gorm:"not null;default:false" json:"sheet_sync_enabled"`
 
 	// Cek ongkir realtime via RajaOngkir.
-	OriginCityID       int    `gorm:"default:0" json:"origin_city_id"`
-	OriginCityName     string `gorm:"size:100" json:"origin_city_name"`
-	DefaultWeightGram  int    `gorm:"default:1000" json:"default_weight_gram"`
-	EnabledCouriers    string `gorm:"size:100;default:'jne,jnt,sicepat'" json:"enabled_couriers"`
+	OriginCityID      int    `gorm:"default:0" json:"origin_city_id"`
+	OriginCityName    string `gorm:"size:100" json:"origin_city_name"`
+	DefaultWeightGram int    `gorm:"default:1000" json:"default_weight_gram"`
+	EnabledCouriers   string `gorm:"size:100;default:'jne,jnt,sicepat'" json:"enabled_couriers"`
 
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -59,6 +59,24 @@ type ChatHistory struct {
 	NextRetryAt    *time.Time `gorm:"index" json:"next_retry_at,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 }
+
+type AITurn struct {
+	ID                 uint      `gorm:"primaryKey" json:"id"`
+	AgentID            uint      `gorm:"index;not null" json:"agent_id"`
+	Sender             string    `gorm:"index;size:32" json:"sender"`
+	UserMessage        string    `gorm:"type:text" json:"user_message"`
+	AIReply            string    `gorm:"type:text" json:"ai_reply"`
+	Model              string    `gorm:"size:80" json:"model"`
+	PromptVersion      string    `gorm:"size:40;default:'legacy';index" json:"prompt_version"`
+	KnowledgeUsedCount int       `json:"knowledge_used_count"`
+	UsedShippingTool   bool      `gorm:"not null;default:false;index" json:"used_shipping_tool"`
+	Escalated          bool      `gorm:"not null;default:false;index" json:"escalated"`
+	Error              string    `gorm:"type:text" json:"error"`
+	LatencyMs          int64     `json:"latency_ms"`
+	CreatedAt          time.Time `gorm:"index" json:"created_at"`
+}
+
+func (AITurn) TableName() string { return "ai_turns" }
 
 type Contact struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
@@ -123,12 +141,12 @@ type LoginThrottle struct {
 
 // ClosingForm = skema data closing yang dikumpulkan AI per agent.
 type ClosingForm struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	AgentID   uint      `gorm:"uniqueIndex;not null" json:"agent_id"`
-	SchemaJSON string   `gorm:"type:text" json:"schema_json"` // JSON definisi field
-	Enabled   bool      `gorm:"not null;default:true" json:"enabled"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	AgentID    uint      `gorm:"uniqueIndex;not null" json:"agent_id"`
+	SchemaJSON string    `gorm:"type:text" json:"schema_json"` // JSON definisi field
+	Enabled    bool      `gorm:"not null;default:true" json:"enabled"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // ClosingRecord = satu data closing yang berhasil diekstrak AI.
@@ -148,11 +166,11 @@ type ClosingRecord struct {
 
 // ShippingCity = daftar kota/kabupaten dari RajaOngkir (cache lokal).
 type ShippingCity struct {
-	ID              uint   `gorm:"primaryKey" json:"id"`
-	RajaOngkirID    int    `gorm:"uniqueIndex" json:"rajaongkir_id"`
-	Province        string `gorm:"size:100" json:"province"`
-	Type            string `gorm:"size:20" json:"type"` // Kota / Kabupaten
-	CityName        string `gorm:"size:100" json:"city_name"`
-	FullName        string `gorm:"size:200" json:"full_name"` // "Kota Bandung"
-	SearchText      string `gorm:"type:text" json:"-"`        // lowercase untuk search
+	ID           uint   `gorm:"primaryKey" json:"id"`
+	RajaOngkirID int    `gorm:"uniqueIndex" json:"rajaongkir_id"`
+	Province     string `gorm:"size:100" json:"province"`
+	Type         string `gorm:"size:20" json:"type"` // Kota / Kabupaten
+	CityName     string `gorm:"size:100" json:"city_name"`
+	FullName     string `gorm:"size:200" json:"full_name"` // "Kota Bandung"
+	SearchText   string `gorm:"type:text" json:"-"`        // lowercase untuk search
 }

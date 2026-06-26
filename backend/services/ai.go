@@ -121,16 +121,20 @@ func SetActivePreset(key string) bool {
 }
 
 // buildSystemPrompt merakit system prompt berlapis:
-//   Layer 1 — Constitution (hardcoded, tidak bisa diubah user)
-//   Layer 2 — Tenant Context (dari DB, TODO: nama bisnis, jam kerja, dll)
-//   Layer 3 — Persona (dari input user, opsional — kalau kosong dilewati)
-//   Layer 4 — Tone (ditangani ChatWithKnowledge via toneInstruction)
+//
+//	Layer 1 — Constitution (hardcoded, tidak bisa diubah user)
+//	Layer 2 — Tenant Context (dari DB, TODO: nama bisnis, jam kerja, dll)
+//	Layer 3 — Persona (dari input user, opsional — kalau kosong dilewati)
+//	Layer 4 — Tone (ditangani ChatWithKnowledge via toneInstruction)
 func buildSystemPrompt(agentID uint, persona string) string {
 	var sb strings.Builder
 	sb.WriteString("Kamu adalah asisten customer service dari ChatLoop, platform WhatsApp CRM. ")
 	sb.WriteString("Kamu mewakili bisnis pengguna. Jawablah seperti staf CS profesional bisnis tersebut.\n")
-	sb.WriteString("\nATURAN MUTLAK:\n")
+	sb.WriteString("\nATURAN MUTLAK (urutan prioritas, yang atas lebih kuat):\n")
+	sb.WriteString("- Untuk SAPAAN/HALO/HAI/GREETING: jawab singkat ramah natural (1-2 kalimat), jangan tanya balik, jangan eskalasi.\n")
+	sb.WriteString("- Untuk OBROLAN UMUM (terima kasih, oke, siap, basa-basi): jawab singkat ramah, jangan eskalasi.\n")
 	sb.WriteString("- Jawab HANYA berdasarkan basis pengetahuan yang disediakan. Kalau info tidak ada, bilang jujur tidak tahu.\n")
+	sb.WriteString("- JANGAN pura-pura 'menghitung', 'diproses', atau 'nanti dikabari' — kamu tidak bisa menghitung. Setelah order dicatat, akhiri dengan tawaran bantuan lain.\n")
 	sb.WriteString("- JANGAN MENGARANG detail spesifik (harga, syarat, jam, kebijakan) yang tidak ada di basis pengetahuan.\n")
 	sb.WriteString("- Tolak pertanyaan di luar topik bisnis dengan sopan — jangan bahas topik tidak relevan.\n")
 	sb.WriteString("- JANGAN sebut dirimu AI/model bahasa — kamu adalah staf CS bisnis ini.\n")
@@ -141,8 +145,8 @@ func buildSystemPrompt(agentID uint, persona string) string {
 	return sb.String()
 }
 
-// ChatWithKnowledge mengembalikan (balasan, perlu eskalasi ke manusia, nama model yang menjawab, error).
-func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history []models.ChatHistory) (string, bool, string, error) {
+// ChatWithKnowledge mengembalikan (balasan, perlu eskalasi ke manusia, nama model, jumlah knowledge, error).
+func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history []models.ChatHistory) (string, bool, string, int, error) {
 	relevant := searchKnowledge(agentID, userMsg)
 
 	enhancedPrompt := buildSystemPrompt(agentID, systemPrompt) +
@@ -154,6 +158,10 @@ func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history
 		"JANGAN menebak dan JANGAN menyuruh menghubungi admin—cukup balas PERSIS dengan token ini saja tanpa teks lain: [[ESCALATE]]" +
 		"\n\nPENGECUALIAN: Jika pelanggan ingin ORDER/BELI/PESAN/CLOSING, JANGAN eskalasi! Itu bukan pertanyaan informasi spesifik — itu adalah niat membeli. Tanyakan langsung: nama customer, produk yang dipilih, dan nomor WA. Kamu hanya mengumpulkan data order, bukan mengarang detail produk." +
 		toneInstruction(tone)
+
+	if strings.Contains(systemPrompt, "ONGKIR_") {
+		enhancedPrompt += "\n\nATURAN ONGKIR REALTIME: Jika ada blok ONGKIR_REALTIME, ONGKIR_NEED_DESTINATION, ONGKIR_AMBIGUOUS, ONGKIR_NOTFOUND, ONGKIR_EMPTY, atau ONGKIR_ERROR di system prompt/persona, blok itu adalah data operasional resmi yang boleh dipakai. Untuk pertanyaan ongkir, JANGAN balas [[ESCALATE]]. Jawab sesuai instruksi dalam blok ongkir tersebut."
+	}
 
 	if len(relevant) > 0 {
 		var kb strings.Builder
@@ -183,7 +191,7 @@ func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history
 	temp := float32(0.7)
 	maxTok := 800
 	if len(relevant) > 0 {
-		temp = 0.4  // faktual & konsisten menjawab dari knowledge base
+		temp = 0.4   // faktual & konsisten menjawab dari knowledge base
 		maxTok = 900 // ruang cukup untuk knowledge panjang (daftar harga, syarat, dsb.)
 	}
 
@@ -199,10 +207,10 @@ func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history
 		resp, err = clientForPreset(p).CreateChatCompletion(context.Background(), req)
 	}
 	if err != nil {
-		return "", false, "", err
+		return "", false, "", len(relevant), err
 	}
 	if len(resp.Choices) == 0 {
-		return "Maaf, saya tidak bisa menjawab.", false, p.Short, nil
+		return "Maaf, saya tidak bisa menjawab.", false, p.Short, len(relevant), nil
 	}
 	if string(resp.Choices[0].FinishReason) == "length" {
 		log.Printf("WARN: jawaban kemungkinan terpotong (finish_reason=length) — pertimbangkan naikkan MaxTokens. Pesan: %q", userMsg)
@@ -211,11 +219,11 @@ func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history
 	log.Printf("AI raw reply (agent=%d, model=%s, len=%d): %q", agentID, p.Short, len(reply), truncateForLog(reply, 200))
 	// Model menandai dirinya tidak bisa menjawab pertanyaan spesifik -> eskalasi ke manusia.
 	if strings.Contains(reply, "[[ESCALATE]]") {
-		return "", true, p.Short, nil
+		return "", true, p.Short, len(relevant), nil
 	}
 	if reply == "" {
 		// Model sesekali balas kosong; jangan kirim pesan kosong ke WhatsApp.
-		return "Maaf kak, boleh diulang pertanyaannya?", false, p.Short, nil
+		return "Maaf kak, boleh diulang pertanyaannya?", false, p.Short, len(relevant), nil
 	}
 
 	// Verifikasi jawaban terhadap knowledge source (keyword overlap) — deteksi dini halusinasi.
@@ -226,7 +234,7 @@ func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history
 		}
 	}
 
-	return reply, false, p.Short, nil
+	return reply, false, p.Short, len(relevant), nil
 }
 
 // searchKnowledge mencari knowledge paling relevan dengan pesan user.

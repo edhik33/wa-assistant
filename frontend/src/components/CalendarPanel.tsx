@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Box, Typography, Card, CardContent, Button, Stack, IconButton, Chip, TextField,
   Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Divider, Alert,
@@ -11,12 +11,16 @@ import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import VisibilityIcon from '@mui/icons-material/VisibilityOutlined';
+import EventAvailableIcon from '@mui/icons-material/EventAvailableOutlined';
+import AccessTimeIcon from '@mui/icons-material/AccessTimeOutlined';
+import PeopleAltIcon from '@mui/icons-material/PeopleAltOutlined';
+import InfoIcon from '@mui/icons-material/InfoOutlined';
 import { useSchedules, useCreateSchedule, useCancelSchedule, useBroadcastDetail } from '../hooks';
 import RecipientField from './RecipientField';
 import WhatsAppEditor from './WhatsAppEditor';
 import TemplatePicker from './TemplatePicker';
 import PageHeader from './PageHeader';
-import { swalConfirm } from '../services/swal';
+import { swalConfirm, swalToast } from '../services/swal';
 import type { ScheduledMessage } from '../types';
 
 const DOW = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
@@ -25,12 +29,39 @@ const STATUS_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> 
   scheduled: 'warning', running: 'warning', done: 'success', failed: 'error', cancelled: 'default', interrupted: 'error',
 };
 const STATUS_LABEL: Record<string, string> = {
-  scheduled: 'Terjadwal', running: 'Mengirim...', done: 'Terkirim', failed: 'Gagal', interrupted: 'Tertunda', cancelled: 'Dibatalkan',
+  scheduled: 'Terjadwal', running: 'Sedang kirim', done: 'Selesai', failed: 'Gagal', interrupted: 'Tertunda', cancelled: 'Dibatalkan',
 };
 const RCP_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
   sent: 'success', failed: 'error', skipped: 'default', pending: 'warning',
 };
+const RCP_LABEL: Record<string, string> = {
+  sent: 'Terkirim', failed: 'Gagal', skipped: 'Dilewati', pending: 'Antre',
+};
 const pad = (n: number) => String(n).padStart(2, '0');
+
+function SectionHeader({ icon, title, subtitle }: { icon: ReactNode; title: string; subtitle?: string }) {
+  return (
+    <Stack direction="row" sx={{ alignItems: 'center', gap: 1, mb: 1 }}>
+      <Box sx={{
+        width: 30, height: 30, display: 'grid', placeItems: 'center', borderRadius: 1,
+        bgcolor: 'action.hover', color: 'primary.main', flexShrink: 0,
+      }}>
+        {icon}
+      </Box>
+      <Box sx={{ minWidth: 0 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{title}</Typography>
+        {subtitle && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{subtitle}</Typography>}
+      </Box>
+    </Stack>
+  );
+}
+
+function statusTone(status: string) {
+  if (status === 'done') return 'success.main';
+  if (status === 'failed' || status === 'interrupted') return 'error.main';
+  if (status === 'cancelled') return 'text.disabled';
+  return 'warning.main';
+}
 
 function errorMessage(error: unknown, fallback: string) {
   if (typeof error === 'object' && error && 'response' in error) {
@@ -93,6 +124,20 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
   const isToday = (day: number) => dateKey(day) === dateKeyFromDate(today);
   const daySchedules = byDate[selDate] || [];
   const activeCount = daySchedules.filter(s => s.status === 'scheduled' || s.status === 'running').length;
+  const monthSchedules = (schedules || []).filter(s => {
+    const d = new Date(s.run_at);
+    return d.getFullYear() === year && d.getMonth() === month;
+  });
+  const monthActive = monthSchedules.filter(s => s.status === 'scheduled' || s.status === 'running').length;
+  const monthDone = monthSchedules.filter(s => s.status === 'done').length;
+  const monthIssues = monthSchedules.filter(s => s.status === 'failed' || s.status === 'interrupted').length;
+  const formRecipients = recipients.split('\n').map(l => l.trim()).filter(Boolean);
+  const formRecipientCount = formRecipients.length;
+  const delayProblem = minDelay < 1 || maxDelay < 1
+    ? 'Jeda harus minimal 1 detik'
+    : maxDelay < minDelay
+      ? 'Jeda maksimal harus lebih besar atau sama dengan jeda minimal'
+      : '';
 
   const prevMonth = () => {
     if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1);
@@ -120,18 +165,25 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
 
   const cancel = async (s: ScheduledMessage) => {
     const ok = await swalConfirm('Batalkan jadwal ini?', `${scheduledTime(s)} - ${s.recipient_count} nomor`);
-    if (ok) await cancelSchedule.mutateAsync(s.id);
+    if (!ok) return;
+    try {
+      await cancelSchedule.mutateAsync(s.id);
+      swalToast('Jadwal dibatalkan');
+    } catch {
+      swalToast('Jadwal belum bisa dibatalkan', 'error');
+    }
   };
 
   const save = async () => {
     setErr('');
     const e: Record<string, string> = {};
     if (!message.trim()) e.message = 'Pesan wajib diisi';
-    const recList = recipients.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+    const recList = formRecipients.map(line => {
       const [num, ...rest] = line.split(',');
       return { number: num, name: rest.join(',').trim() };
     });
     if (recList.length === 0) e.recipients = 'Penerima wajib diisi';
+    if (delayProblem) e.delay = delayProblem;
     setErrors(e);
     if (Object.keys(e).length > 0) return;
 
@@ -152,6 +204,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
       await createSchedule.mutateAsync(fd);
       setFormOpen(false);
       resetForm();
+      swalToast(`Jadwal tersimpan untuk ${recList.length} nomor`);
     } catch (e) {
       setErr(errorMessage(e, 'Gagal menjadwalkan'));
     }
@@ -161,16 +214,43 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
 
   return (
     <Box>
-      <PageHeader title="Kalender"
-        subtitle="Pilih tanggal untuk melihat jadwal. Jadwal yang sudah berjalan bisa dibuka detail hasil pengirimannya langsung dari sini." />
+      <PageHeader title="Jadwal"
+        subtitle="Atur broadcast yang akan dikirim nanti, pantau statusnya, dan buka hasil pengiriman dari satu tempat." />
+
+      <Alert severity="info" icon={<InfoIcon fontSize="small" />} sx={{ mb: 2 }}>
+        <Typography variant="body2">
+          Pilih tanggal, lalu buat jadwal. Jika jadwal sudah berjalan, tombol hasil akan membuka detail broadcast per penerima.
+        </Typography>
+      </Alert>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.1fr) 380px' }, gap: 1.5, alignItems: 'start' }}>
         <Card>
           <CardContent>
-            <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-              <IconButton onClick={prevMonth}><ChevronLeftIcon /></IconButton>
-              <Typography sx={{ fontWeight: 700 }}>{MONTHS[month]} {year}</Typography>
-              <IconButton onClick={nextMonth}><ChevronRightIcon /></IconButton>
+            <SectionHeader
+              icon={<EventAvailableIcon fontSize="small" />}
+              title="Pilih Tanggal"
+              subtitle="Klik tanggal untuk melihat daftar jadwal di sisi kanan."
+            />
+            <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ justifyContent: 'space-between', alignItems: { xs: 'stretch', sm: 'center' }, gap: 1, mb: 1.25 }}>
+              <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                <IconButton onClick={prevMonth} aria-label="Bulan sebelumnya"><ChevronLeftIcon /></IconButton>
+                <Typography sx={{ fontWeight: 800, minWidth: 160, textAlign: 'center' }}>{MONTHS[month]} {year}</Typography>
+                <IconButton onClick={nextMonth} aria-label="Bulan berikutnya"><ChevronRightIcon /></IconButton>
+              </Stack>
+              <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75, justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
+                <Chip size="small" label={`${monthSchedules.length} jadwal bulan ini`} />
+                <Chip size="small" label={`${monthActive} aktif`} color={monthActive ? 'warning' : 'default'} />
+                <Chip size="small" label={`${monthDone} selesai`} color={monthDone ? 'success' : 'default'} variant="outlined" />
+                {monthIssues > 0 && <Chip size="small" label={`${monthIssues} perlu dicek`} color="error" />}
+                <Button size="small" variant="outlined" onClick={() => {
+                  const now = new Date();
+                  setYear(now.getFullYear());
+                  setMonth(now.getMonth());
+                  setSelDate(dateKeyFromDate(now));
+                }}>
+                  Hari ini
+                </Button>
+              </Stack>
             </Stack>
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 0.5, mb: 0.5 }}>
               {DOW.map(d => <Typography key={d} variant="caption" sx={{ textAlign: 'center', fontWeight: 700, color: 'text.secondary' }}>{d}</Typography>)}
@@ -186,7 +266,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
                   <Box key={i} onClick={() => setSelDate(key)}
                     sx={{
                       cursor: 'pointer', border: '1px solid', borderColor: selected ? 'primary.main' : 'divider', borderRadius: 1,
-                      minHeight: { xs: 52, sm: 64 }, p: 0.75, bgcolor: selected ? 'rgba(31,138,80,0.10)' : isToday(day) ? '#e8f5e9' : '#fff',
+                      minHeight: { xs: 58, sm: 72 }, p: 0.75, bgcolor: selected ? 'rgba(31,138,80,0.10)' : isToday(day) ? 'success.light' : 'background.paper',
                       boxShadow: selected ? 'inset 0 0 0 1px #1F8A50' : 'none',
                       '&:hover': { bgcolor: '#f1f8f4' },
                     }}>
@@ -195,14 +275,16 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
                       {items.length > 0 && <Chip size="small" label={items.length} color={failed ? 'error' : done ? 'success' : 'warning'} sx={{ height: 18, minWidth: 22, fontSize: 11 }} />}
                     </Stack>
                     {items.length > 0 && (
-                      <Box sx={{ mt: 0.75, display: 'flex', gap: 0.35, flexWrap: 'wrap' }}>
-                        {items.slice(0, 3).map(s => (
-                          <Box key={s.id} sx={{
-                            width: 7, height: 7, borderRadius: '50%',
-                            bgcolor: s.status === 'done' ? 'success.main' : s.status === 'failed' || s.status === 'interrupted' ? 'error.main' : 'warning.main',
-                          }} />
-                        ))}
-                      </Box>
+                      <>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' }, mt: 0.65, lineHeight: 1.2 }}>
+                          {scheduledTime(items[0])}{items.length > 1 ? ` +${items.length - 1}` : ''}
+                        </Typography>
+                        <Box sx={{ mt: 0.6, display: 'flex', gap: 0.35, flexWrap: 'wrap' }}>
+                          {items.slice(0, 4).map(s => (
+                            <Box key={s.id} sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: statusTone(s.status) }} />
+                          ))}
+                        </Box>
+                      </>
                     )}
                   </Box>
                 );
@@ -213,51 +295,62 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
 
         <Card sx={{ position: { lg: 'sticky' }, top: { lg: 12 } }}>
           <CardContent>
-            <Stack direction="row" sx={{ alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, mb: 1 }}>
-              <Box sx={{ minWidth: 0 }}>
-                <Typography variant="subtitle2">Jadwal Tanggal Ini</Typography>
-                <Typography variant="body2" color="text.secondary">{shortDate(selDate)}</Typography>
-              </Box>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={() => openCreate()}>
-                Jadwalkan
+            <Stack direction="row" sx={{ alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+              <SectionHeader
+                icon={<AccessTimeIcon fontSize="small" />}
+                title="Agenda Tanggal Ini"
+                subtitle={shortDate(selDate)}
+              />
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => openCreate()} sx={{ flexShrink: 0 }}>
+                Buat Jadwal
               </Button>
             </Stack>
             <Stack direction="row" spacing={0.75} sx={{ mb: 1.25, flexWrap: 'wrap', gap: 0.75 }}>
               <Chip size="small" label={`${daySchedules.length} total`} />
               <Chip size="small" label={`${activeCount} aktif`} color={activeCount ? 'warning' : 'default'} />
+              <Chip size="small" label={`${daySchedules.filter(s => s.status === 'done').length} selesai`} color={daySchedules.some(s => s.status === 'done') ? 'success' : 'default'} variant="outlined" />
+              {daySchedules.some(s => s.status === 'failed' || s.status === 'interrupted') && (
+                <Chip size="small" label="Ada yang perlu dicek" color="error" />
+              )}
             </Stack>
             <Divider sx={{ mb: 1 }} />
 
             {daySchedules.length === 0 ? (
-              <Box sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>
-                <Typography variant="body2">Belum ada jadwal di tanggal ini.</Typography>
-                <Button sx={{ mt: 1 }} startIcon={<AddIcon />} onClick={() => openCreate()}>Buat Jadwal</Button>
+              <Box sx={{ py: 4, px: 1, textAlign: 'center', color: 'text.secondary' }}>
+                <EventAvailableIcon sx={{ fontSize: 34, color: 'text.disabled', mb: 1 }} />
+                <Typography variant="body2" sx={{ fontWeight: 700, color: 'text.primary' }}>Belum ada jadwal.</Typography>
+                <Typography variant="caption" sx={{ display: 'block', mt: 0.25 }}>
+                  Buat jadwal broadcast untuk tanggal ini agar terkirim otomatis nanti.
+                </Typography>
+                <Button sx={{ mt: 1.25 }} variant="outlined" startIcon={<AddIcon />} onClick={() => openCreate()}>Buat Jadwal</Button>
               </Box>
             ) : (
               <Stack spacing={1} sx={{ maxHeight: { xs: 420, lg: 'calc(100vh - 250px)' }, overflowY: 'auto', pr: 0.25 }}>
                 {daySchedules.map(s => (
-                  <Box key={s.id} sx={{ p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: '#fff' }}>
+                  <Box key={s.id} sx={{ p: 1.1, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'background.paper' }}>
                     <Stack direction="row" sx={{ alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
                       <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 800 }}>
-                          {scheduledTime(s)} · {s.recipient_count} nomor
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {s.media_type && 'Lampiran · '}{s.message}
+                        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', mb: 0.35, flexWrap: 'wrap', gap: 0.5 }}>
+                          <Chip size="small" icon={<AccessTimeIcon />} label={scheduledTime(s)} variant="outlined" />
+                          <Chip size="small" icon={<PeopleAltIcon />} label={`${s.recipient_count} nomor`} variant="outlined" />
+                          {s.media_type && <Chip size="small" icon={<AttachFileIcon />} label={s.file_name || 'Lampiran'} variant="outlined" />}
+                        </Stack>
+                        <Typography variant="body2" sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {s.message}
                         </Typography>
                       </Box>
                       <Chip size="small" label={STATUS_LABEL[s.status] ?? s.status} color={STATUS_COLOR[s.status] ?? 'default'} />
                     </Stack>
-                    <Stack direction="row" spacing={0.75} sx={{ mt: 1, justifyContent: 'flex-end' }}>
+                    <Stack direction="row" spacing={0.75} sx={{ mt: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
                       {s.broadcast_id && (
                         <Button size="small" variant="outlined" startIcon={<VisibilityIcon />} onClick={() => setDetailId(s.broadcast_id || null)}>
                           Lihat Hasil
                         </Button>
                       )}
                       {s.status === 'scheduled' && (
-                        <IconButton color="error" onClick={() => cancel(s)} aria-label="Batalkan jadwal">
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                        <Button size="small" color="error" variant="text" startIcon={<DeleteIcon />} onClick={() => cancel(s)}>
+                          Batalkan
+                        </Button>
                       )}
                     </Stack>
                   </Box>
@@ -269,44 +362,82 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
       </Box>
 
       <Dialog open={formOpen} onClose={() => setFormOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Jadwalkan Broadcast · {shortDate(selDate)}</DialogTitle>
+        <DialogTitle>Buat Jadwal Broadcast</DialogTitle>
         <DialogContent dividers>
           {err && <Alert severity="error" sx={{ mb: 1.5 }}>{err}</Alert>}
-          <TextField type="time" label="Jam" size="small" value={time} onChange={e => setTime(e.target.value)}
-            slotProps={{ inputLabel: { shrink: true } }} sx={{ mb: 1.5 }} />
-          <Box sx={{ mb: 1.25 }}>
-            <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-              <Typography variant="caption" color="text.secondary">Pesan</Typography>
-              <TemplatePicker agentId={agentId} onPick={b => { setMessage(m => m ? m + '\n' + b : b); if (errors.message) setErrors(p => ({...p, message: ''})); }} />
-            </Stack>
+          <Alert severity="info" icon={false} sx={{ mb: 1.5 }}>
+            <Typography variant="body2">
+              Jadwal untuk <b>{shortDate(selDate)}</b>. Pesan akan dikirim otomatis sesuai jam dan jeda yang dipilih.
+            </Typography>
+          </Alert>
+
+          <Box sx={{ mb: 1.75 }}>
+            <SectionHeader icon={<AccessTimeIcon fontSize="small" />} title="Waktu Kirim" subtitle="Pilih jam mulai pengiriman." />
+            <TextField type="time" label="Jam mulai" size="small" value={time} onChange={e => setTime(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }} sx={{ width: { xs: '100%', sm: 180 } }} />
+          </Box>
+
+          <Divider sx={{ my: 1.5 }} />
+
+          <Box sx={{ mb: 1.5 }}>
+            <SectionHeader
+              icon={<EventAvailableIcon fontSize="small" />}
+              title="Pesan"
+              subtitle={`${message.length}/2000 karakter`}
+            />
+            <Box sx={{ mb: 0.75 }}>
+              <TemplatePicker agentId={agentId} onPick={b => { setMessage(m => m ? m + '\n' + b : b); if (errors.message) setErrors(p => ({ ...p, message: '' })); }} />
+            </Box>
             <WhatsAppEditor value={message} onChange={v => { setMessage(v); if (errors.message) setErrors(p => ({...p, message: ''})); }}
               placeholder="Halo {nama}, ..." rows={3} error={!!errors.message} helperText={errors.message} />
           </Box>
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.5 }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.5, flexWrap: 'wrap', gap: 0.75 }}>
             <Button component="label" size="small" variant="outlined" startIcon={<AttachFileIcon />}>
-              Lampiran
+              {file ? 'Ganti lampiran' : 'Tambah lampiran'}
               <input type="file" hidden onChange={e => setFile(e.target.files?.[0] || null)} />
             </Button>
             {file && <Chip label={file.name} size="small" onDelete={() => setFile(null)} deleteIcon={<CloseIcon />} />}
           </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>Penerima</Typography>
+
+          <Divider sx={{ my: 1.5 }} />
+
+          <SectionHeader
+            icon={<PeopleAltIcon fontSize="small" />}
+            title="Penerima"
+            subtitle={`${formRecipientCount} baris penerima siap diproses.`}
+          />
           <RecipientField agentId={agentId} value={recipients} onChange={v => { setRecipients(v); if (errors.recipients) setErrors(p => ({...p, recipients: ''})); }} error={errors.recipients} />
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.25 }}>
-            <TextField type="number" size="small" label="Jeda min (dtk)" value={minDelay} onChange={e => setMinDelay(Number(e.target.value))} sx={{ width: { xs: '100%', sm: 132 } }} />
-            <TextField type="number" size="small" label="Jeda maks (dtk)" value={maxDelay} onChange={e => setMaxDelay(Number(e.target.value))} sx={{ width: { xs: '100%', sm: 132 } }} />
+
+          <Divider sx={{ my: 1.5 }} />
+
+          <SectionHeader
+            icon={<AccessTimeIcon fontSize="small" />}
+            title="Jeda Kirim"
+            subtitle="Jeda membantu pengiriman terlihat lebih natural."
+          />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            <TextField type="number" size="small" label="Jeda min (detik)" value={minDelay}
+              onChange={e => { setMinDelay(Number(e.target.value)); if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
+              error={!!(errors.delay || delayProblem)}
+              sx={{ width: { xs: '100%', sm: 150 } }} />
+            <TextField type="number" size="small" label="Jeda maks (detik)" value={maxDelay}
+              onChange={e => { setMaxDelay(Number(e.target.value)); if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
+              error={!!(errors.delay || delayProblem)}
+              helperText={errors.delay || delayProblem || ' '}
+              sx={{ width: { xs: '100%', sm: 150 } }} />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setFormOpen(false)}>Tutup</Button>
+          <Button onClick={() => setFormOpen(false)}>Batal</Button>
           <Button variant="contained" onClick={save} disabled={createSchedule.isPending}
             startIcon={createSchedule.isPending ? <CircularProgress size={16} /> : null}>
-            Simpan Jadwal
+            {createSchedule.isPending ? 'Menyimpan...' : 'Simpan Jadwal'}
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={!!detailId} onClose={closeDetail} fullWidth maxWidth="sm">
-        <DialogTitle>Hasil Broadcast</DialogTitle>
+        <DialogTitle>Hasil Broadcast Terjadwal</DialogTitle>
         <DialogContent dividers>
           {detail ? (() => {
             const b = detail.broadcast;
@@ -337,7 +468,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
                           <TableCell>+{r.number}</TableCell>
                           <TableCell>{r.name || '-'}</TableCell>
                           <TableCell align="right">
-                            <Chip size="small" label={r.status} color={RCP_COLOR[r.status] ?? 'default'} />
+                            <Chip size="small" label={RCP_LABEL[r.status] ?? r.status} color={RCP_COLOR[r.status] ?? 'default'} />
                             {r.error && <Typography variant="caption" color="error" sx={{ display: 'block' }}>{r.error}</Typography>}
                           </TableCell>
                         </TableRow>

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from './services/api';
-import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, Invoice, PaymentChannel, Analytics, Contact, ChatMsg, CheckResult, Broadcast, BroadcastRecipient, WAGroup, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff } from './types';
+import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, Invoice, PaymentChannel, Analytics, AIMetrics, Contact, ChatMsg, CheckResult, Broadcast, BroadcastRecipient, WAGroup, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff } from './types';
 
 type ContactList = { number: string; name: string }[];
 
@@ -118,6 +118,15 @@ export function useAgentAnalytics(agentId: number) {
     queryKey: ['analytics', agentId],
     queryFn: async () => (await api.get(`/agents/${agentId}/analytics`)).data,
     enabled: !!agentId,
+  });
+}
+
+export function useAgentAIMetrics(agentId: number) {
+  return useQuery<AIMetrics>({
+    queryKey: ['ai-metrics', agentId],
+    queryFn: async () => (await api.get(`/agents/${agentId}/ai-metrics`)).data,
+    enabled: !!agentId,
+    refetchInterval: 10000,
   });
 }
 
@@ -375,7 +384,7 @@ export function useEnrollFollowUp(agentId: number) {
   });
 }
 
-// ---- Jadwal (kalender) ----
+// ---- Jadwal ----
 
 export function useSchedules(agentId: number) {
   return useQuery<ScheduledMessage[]>({

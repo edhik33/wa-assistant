@@ -3,7 +3,7 @@ import {
   Box, Card, CardContent, Typography, Button, Chip, CircularProgress, TextField,
   Stack, IconButton, Paper, Grid, Select, MenuItem, FormControl, InputLabel, Divider,
   Switch, FormControlLabel, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions,
-  Badge, Popover, Avatar, ToggleButtonGroup, ToggleButton,
+  Badge, Popover, Avatar, LinearProgress, Alert,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AddIcon from '@mui/icons-material/Add';
@@ -16,7 +16,7 @@ import InboxIcon from '@mui/icons-material/InboxOutlined';
 import ChatIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
 import KnowledgeIcon from '@mui/icons-material/MenuBookOutlined';
 import CampaignIcon from '@mui/icons-material/CampaignOutlined';
-import CalendarIcon from '@mui/icons-material/CalendarMonthOutlined';
+import CalendarIcon from '@mui/icons-material/EventAvailableOutlined';
 import RuleIcon from '@mui/icons-material/RuleOutlined';
 import TemplateIcon from '@mui/icons-material/TextSnippetOutlined';
 import FollowUpIcon from '@mui/icons-material/ScheduleSendOutlined';
@@ -31,7 +31,12 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import SmartToyIcon from '@mui/icons-material/SmartToyOutlined';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import UsageCard from '../components/UsageCard';
+import InsightsIcon from '@mui/icons-material/InsightsOutlined';
+import WarningIcon from '@mui/icons-material/WarningAmberOutlined';
+import ErrorIcon from '@mui/icons-material/ErrorOutlineOutlined';
+import ShippingIcon from '@mui/icons-material/LocalShippingOutlined';
+import ReceiptIcon from '@mui/icons-material/ReceiptLongOutlined';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForwardOutlined';
 import InboxPanel from '../components/InboxPanel';
 import TestChatPanel from '../components/TestChatPanel';
 import BroadcastPanel from '../components/BroadcastPanel';
@@ -45,7 +50,7 @@ import {
   useAgents, useAgentStatuses, useAgentStatus, useAgentKnowledge,
   useCreateAgent, useDeleteAgent, useSaveAgent, useAgentConnect, useAgentDisconnect,
   useAddKnowledge, useDeleteKnowledge, useGenerateKnowledge,
-  useAgentHandoffs, useResumeHandoff,
+  useAgentHandoffs, useResumeHandoff, useAgentAIMetrics,
   useUsage,
 } from '../hooks';
 import BillingPanel from '../components/BillingPanel';
@@ -75,7 +80,7 @@ const NAV_GROUPS = [
   ] },
   { section: 'Kampanye', items: [
     { id: 'broadcast', label: 'Broadcast', icon: <CampaignIcon fontSize="small" /> },
-    { id: 'kalender', label: 'Kalender', icon: <CalendarIcon fontSize="small" /> },
+    { id: 'kalender', label: 'Jadwal', icon: <CalendarIcon fontSize="small" /> },
     { id: 'follow-up', label: 'Follow-up', icon: <FollowUpIcon fontSize="small" /> },
   ] },
   { section: 'Akun', items: [
@@ -133,6 +138,7 @@ export default function Dashboard() {
   const [profileName, setProfileName] = useState(user.name || '');
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [dashboardMetricView, setDashboardMetricView] = useState<'utama' | 'ai' | 'operasional'>('utama');
 
   // ---- TanStack Query: data fetching + auto-polling, tanpa useEffect/setInterval manual ----
 
@@ -143,6 +149,7 @@ export default function Dashboard() {
   const { data: handoffs = [] } = useAgentHandoffs(agentId);
   const resumeHandoff = useResumeHandoff(agentId);
   const { data: usage } = useUsage();
+  const { data: aiMetrics, isLoading: aiMetricsLoading } = useAgentAIMetrics(agentId);
 
   const status = statusData?.status || '';
   const qr = statusData?.qr || '';
@@ -341,6 +348,45 @@ export default function Dashboard() {
   const sc = status === 'connected' ? 'success' : status === 'qr' || status === 'connecting' ? 'warning' : 'error';
   const sl = status === 'connected' ? 'Online' : status === 'connecting' ? 'Menyambung…' : status === 'qr' ? 'Scan QR' : 'Offline';
   const currentAgent = agents.find(a => a.id === agentId);
+  const trendMax = Math.max(1, ...(aiMetrics?.trend || []).map(d => d.total));
+  const totalIncoming = aiMetrics?.total_incoming ?? 0;
+  const aiReplies = aiMetrics?.ai_replies ?? 0;
+  const escalated = aiMetrics?.escalated ?? 0;
+  const aiErrors = aiMetrics?.ai_errors ?? 0;
+  const aiReplyRate = totalIncoming ? Math.round((aiReplies / totalIncoming) * 100) : 0;
+  const usageRepliesMax = usage?.ai_replies_max || 0;
+  const usageRepliesUsed = usage?.ai_replies_used || 0;
+  const usageReplyPct = usageRepliesMax ? Math.min(100, Math.round((usageRepliesUsed / usageRepliesMax) * 100)) : 0;
+  const numberUsagePct = usage?.max_numbers ? Math.min(100, Math.round((usage.numbers_used / usage.max_numbers) * 100)) : 0;
+  const trialDaysLeft = usage?.tenant?.trial_ends_at
+    ? Math.ceil((new Date(usage.tenant.trial_ends_at).getTime() - Date.now()) / 86400000)
+    : null;
+  const setupIssues = [
+    status === 'connected' ? '' : 'WhatsApp belum tersambung',
+    aiEnabled ? '' : 'AI sedang nonaktif',
+    knowledge.length ? '' : 'Knowledge masih kosong',
+    prompt.trim() ? '' : 'Persona belum diisi',
+  ].filter(Boolean);
+  const dashboardStats = {
+    utama: [
+      { label: 'Chat masuk', value: totalIncoming, icon: <ChatIcon fontSize="small" />, tone: 'primary.main', hint: '7 hari terakhir' },
+      { label: 'Dijawab AI', value: aiReplies, icon: <SmartToyIcon fontSize="small" />, tone: 'success.main', hint: `${aiReplyRate}% dari chat masuk` },
+      { label: 'Butuh CS', value: escalated, icon: <SupportAgentIcon fontSize="small" />, tone: 'warning.main', hint: 'Perlu ditangani manual' },
+      { label: 'AI error', value: aiErrors, icon: <ErrorIcon fontSize="small" />, tone: 'error.main', hint: 'Harus 0' },
+    ],
+    ai: [
+      { label: 'Escalation rate', value: aiMetrics ? `${aiMetrics.escalation_rate.toFixed(1)}%` : '-', icon: <WarningIcon fontSize="small" />, tone: 'warning.main', hint: 'Makin kecil makin baik' },
+      { label: 'Ongkir OK', value: aiMetrics?.tool_shipping_success ?? 0, icon: <ShippingIcon fontSize="small" />, tone: 'info.main', hint: 'Tool berhasil' },
+      { label: 'Ongkir error', value: aiMetrics?.tool_shipping_error ?? 0, icon: <ErrorIcon fontSize="small" />, tone: 'error.main', hint: 'Cek integrasi' },
+      { label: 'Closing detect', value: aiMetrics?.closing_detected ?? 0, icon: <ReceiptIcon fontSize="small" />, tone: 'primary.main', hint: `${aiMetrics?.closing_exported ?? 0} exported` },
+    ],
+    operasional: [
+      { label: 'Nomor aktif', value: usage ? `${usage.numbers_used}/${usage.max_numbers}` : '-', icon: <QrCodeIcon fontSize="small" />, tone: status === 'connected' ? 'success.main' : 'text.secondary', hint: sl },
+      { label: 'Kuota AI', value: usage ? `${usageReplyPct}%` : '-', icon: <InsightsIcon fontSize="small" />, tone: usageReplyPct > 85 ? 'warning.main' : 'success.main', hint: `${usageRepliesUsed}/${usageRepliesMax || '-'} reply` },
+      { label: 'Knowledge', value: knowledge.length, icon: <KnowledgeIcon fontSize="small" />, tone: knowledge.length ? 'success.main' : 'warning.main', hint: knowledge.length ? 'Siap dipakai' : 'Perlu diisi' },
+      { label: 'Handoff', value: handoffs.length, icon: <SupportAgentIcon fontSize="small" />, tone: handoffs.length ? 'warning.main' : 'success.main', hint: handoffs.length ? 'Ada antrean' : 'Bersih' },
+    ],
+  }[dashboardMetricView];
 
   return (
     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, minHeight: '100vh', height: { md: '100vh' }, overflow: { md: 'hidden' }, bgcolor: 'background.default' }}>
@@ -504,78 +550,195 @@ export default function Dashboard() {
       <Box component="main" sx={{ flex: 1, p: { xs: 1.25, md: 2 }, overflowY: 'auto', height: { md: '100vh' }, minHeight: 0, width: '100%', minWidth: 0 }}>
         {tab === 'dashboard' && (
           <Box>
-            <PageHeader title={<>Dashboard {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>} />
+            <PageHeader
+              title={<>Dashboard {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>}
+              subtitle="Yang penting dulu: koneksi, AI, chat yang perlu dibalas, dan kuota."
+              action={<Button size="small" variant="outlined" startIcon={<SettingsIcon />} onClick={() => setTab('settings')}>Atur CS</Button>}
+            />
 
-            <Card sx={{ mb: 1.5, borderLeft: '4px solid', borderColor: aiEnabled ? 'success.main' : 'grey.400', bgcolor: aiEnabled ? 'rgba(37,211,102,0.07)' : 'action.hover' }}>
-              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-                  <SmartToyIcon sx={{ fontSize: 30, color: aiEnabled ? 'success.main' : 'text.disabled', flexShrink: 0 }} />
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontWeight: 700 }}>Balasan Otomatis AI</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {aiEnabled
-                        ? 'Aktif — chat pelanggan dibalas otomatis oleh AI.'
-                        : 'Nonaktif — semua chat masuk Inbox untuk dibalas manual.'}
+            <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
+              <Grid size={{ xs: 12, lg: 8 }}>
+                <Card sx={{ height: '100%' }}>
+                  <CardContent>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between' }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.75, flexWrap: 'wrap', gap: 0.75 }}>
+                          <Chip size="small" label={sl} color={sc} sx={{ fontWeight: 700 }} />
+                          <Chip size="small" label={aiEnabled ? 'AI aktif' : 'AI mati'} color={aiEnabled ? 'success' : 'default'} variant={aiEnabled ? 'filled' : 'outlined'} />
+                          {usage?.tenant?.status && <Chip size="small" label={usage.tenant.status === 'trial' ? 'Trial' : usage.tenant.status} color={usage.tenant.status === 'active' ? 'success' : usage.tenant.status === 'trial' ? 'warning' : 'default'} variant="outlined" />}
+                        </Stack>
+                        <Typography variant="h6" sx={{ lineHeight: 1.25 }}>
+                          {status === 'connected'
+                            ? `${waName || 'WhatsApp'} siap membalas`
+                            : 'WhatsApp belum tersambung'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {status === 'connected' && waNumber
+                            ? `Nomor +${waNumber}. ${aiEnabled ? 'AI akan membalas chat otomatis.' : 'AI mati, chat masuk perlu dibalas manual.'}`
+                            : 'Sambungkan WhatsApp agar inbox, broadcast, jadwal, dan AI bisa dipakai penuh.'}
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" spacing={1} sx={{ flexShrink: 0, flexWrap: 'wrap', gap: 0.75 }}>
+                        <Button variant={status === 'connected' ? 'outlined' : 'contained'} size="small" onClick={connect} disabled={connectMut.isPending}
+                          startIcon={connectMut.isPending ? <CircularProgress size={14} /> : <QrCodeIcon />}>
+                          {status === 'connected' ? 'Reconnect' : 'Connect WA'}
+                        </Button>
+                        {status === 'connected' && (
+                          <Button variant="outlined" size="small" color="error" onClick={disconnectWA} disabled={disconnectMut.isPending}
+                            startIcon={disconnectMut.isPending ? <CircularProgress size={14} /> : <LogoutIcon />}>
+                            Putuskan
+                          </Button>
+                        )}
+                      </Stack>
+                    </Stack>
+
+                    {setupIssues.length > 0 && (
+                      <Alert severity="warning" icon={false} sx={{ mt: 1.5 }}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between' }}>
+                          <Typography variant="body2">
+                            {setupIssues[0]}{setupIssues.length > 1 ? ` dan ${setupIssues.length - 1} hal lain perlu dicek.` : '.'}
+                          </Typography>
+                          <Button size="small" variant="outlined" onClick={() => setTab(!knowledge.length ? 'knowledge' : 'settings')}>
+                            Bereskan
+                          </Button>
+                        </Stack>
+                      </Alert>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid size={{ xs: 12, lg: 4 }}>
+                <Card sx={{ height: '100%' }}>
+                  <CardContent>
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Balasan AI</Typography>
+                      <Switch checked={aiEnabled} onChange={e => toggleAI(e.target.checked)} color="success" disabled={!agentId || saveAgentMut.isPending} />
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
+                      {aiEnabled ? 'AI aktif untuk membalas pelanggan.' : 'AI mati, semua chat perlu dicek manual.'}
                     </Typography>
-                  </Box>
-                  <Stack sx={{ alignItems: 'center', flexShrink: 0 }}>
-                    <Switch checked={aiEnabled} onChange={e => toggleAI(e.target.checked)} color="success" disabled={!agentId || saveAgentMut.isPending} />
-                    <Typography variant="caption" sx={{ fontWeight: 800, color: aiEnabled ? 'success.main' : 'text.disabled' }}>
-                      {aiEnabled ? 'ON' : 'OFF'}
-                    </Typography>
-                  </Stack>
-                </Stack>
-              </CardContent>
-            </Card>
+                    <Stack spacing={1}>
+                      <Box>
+                        <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.4 }}>
+                          <Typography variant="caption" color="text.secondary">Kuota AI bulan ini</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 700 }}>{usageRepliesUsed}/{usageRepliesMax || '-'}</Typography>
+                        </Stack>
+                        <LinearProgress variant="determinate" value={usageReplyPct} color={usageReplyPct > 85 ? 'warning' : 'success'} sx={{ height: 7, borderRadius: 5 }} />
+                      </Box>
+                      <Box>
+                        <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.4 }}>
+                          <Typography variant="caption" color="text.secondary">Nomor terpakai</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 700 }}>{usage?.numbers_used ?? 0}/{usage?.max_numbers ?? '-'}</Typography>
+                        </Stack>
+                        <LinearProgress variant="determinate" value={numberUsagePct} sx={{ height: 7, borderRadius: 5 }} />
+                      </Box>
+                    </Stack>
+                    {usage?.tenant?.status === 'trial' && trialDaysLeft !== null && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                        Trial {trialDaysLeft > 0 ? `sisa ${trialDaysLeft} hari` : 'sudah berakhir'}.
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
 
             <Card sx={{ mb: 1.5 }}>
-              <CardContent sx={{ pb: 1, '&:last-child': { pb: 1 } }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', mb: 0.5, display: 'block' }}>
-                  Langganan
-                </Typography>
-                <UsageCard />
+              <CardContent>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'space-between', alignItems: { xs: 'stretch', sm: 'center' }, mb: 1.25 }}>
+                  <Box>
+                    <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+                      <InsightsIcon fontSize="small" color="primary" />
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Statistik 7 Hari</Typography>
+                      {aiMetricsLoading && <CircularProgress size={14} />}
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">Pilih tampilan sesuai yang sedang kamu cek.</Typography>
+                  </Box>
+                  <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
+                    {[
+                      { key: 'utama' as const, label: 'Utama' },
+                      { key: 'ai' as const, label: 'AI' },
+                      { key: 'operasional' as const, label: 'Operasional' },
+                    ].map(item => (
+                      <Chip key={item.key} label={item.label} clickable size="small"
+                        color={dashboardMetricView === item.key ? 'primary' : 'default'}
+                        variant={dashboardMetricView === item.key ? 'filled' : 'outlined'}
+                        onClick={() => setDashboardMetricView(item.key)} />
+                    ))}
+                  </Stack>
+                </Stack>
+
+                <Grid container spacing={1}>
+                  {dashboardStats.map(item => (
+                    <Grid key={item.label} size={{ xs: 6, md: 3 }}>
+                      <Paper variant="outlined" sx={{ p: 1.1, borderRadius: 1, height: '100%' }}>
+                        <Stack direction="row" sx={{ alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+                          <Box sx={{ color: item.tone, display: 'grid', placeItems: 'center' }}>{item.icon}</Box>
+                          <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>{item.label}</Typography>
+                        </Stack>
+                        <Typography sx={{ fontWeight: 900, color: item.tone, fontSize: { xs: 22, sm: 26 }, lineHeight: 1 }}>
+                          {item.value}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>{item.hint}</Typography>
+                      </Paper>
+                    </Grid>
+                  ))}
+                </Grid>
+
+                {!!aiMetrics?.trend?.length && (
+                  <Box sx={{ mt: 1.5 }}>
+                    <Stack direction="row" spacing={0.75} sx={{ alignItems: 'flex-end', height: 70 }}>
+                      {aiMetrics.trend.map(day => (
+                        <Box key={day.date} sx={{ flex: 1, minWidth: 0 }}>
+                          <Box sx={{ height: 46, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 0.45 }}>
+                            <Box title={`${day.total} chat masuk`} sx={{ width: 10, height: `${Math.max(6, (day.total / trendMax) * 46)}px`, bgcolor: 'primary.main', borderRadius: '4px 4px 0 0' }} />
+                            <Box title={`${day.escalated} butuh CS`} sx={{ width: 8, height: `${Math.max(day.escalated ? 5 : 0, (day.escalated / trendMax) * 46)}px`, bgcolor: 'warning.main', borderRadius: '4px 4px 0 0' }} />
+                          </Box>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', fontSize: '0.62rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {new Date(day.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                    <Stack direction="row" spacing={1.5} sx={{ mt: 0.75 }}>
+                      <Typography variant="caption" color="text.secondary"><Box component="span" sx={{ display: 'inline-block', width: 8, height: 8, bgcolor: 'primary.main', borderRadius: '50%', mr: 0.5 }} />Chat masuk</Typography>
+                      <Typography variant="caption" color="text.secondary"><Box component="span" sx={{ display: 'inline-block', width: 8, height: 8, bgcolor: 'warning.main', borderRadius: '50%', mr: 0.5 }} />Butuh CS</Typography>
+                    </Stack>
+                  </Box>
+                )}
               </CardContent>
             </Card>
 
-            <Card>
-              <CardContent sx={{ pb: 1.5, '&:last-child': { pb: 1.5 } }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', mb: 1, display: 'block' }}>
-                  WhatsApp
-                </Typography>
-                <Stack spacing={1.25}>
-                  <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: status === 'connected' ? '#25D366' : status === 'qr' || status === 'connecting' ? '#ffa726' : '#bdbdbd', flexShrink: 0 }} />
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      {status === 'connected' && waNumber ? (
-                        <>
-                          <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
-                            {waName || 'Tanpa nama'}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            +{waNumber}
-                          </Typography>
-                        </>
-                      ) : (
-                        <Typography variant="body2" color="text.secondary">Belum tersambung</Typography>
-                      )}
-                    </Box>
-                    <Chip label={sl} color={sc} size="small" sx={{ fontWeight: 600 }} />
-                  </Stack>
-                  <Stack direction="row" spacing={1}>
-                    <Button variant="contained" size="small" onClick={connect} disabled={connectMut.isPending}
-                      startIcon={connectMut.isPending ? <CircularProgress size={14} /> : <QrCodeIcon />}>
-                      {status === 'connected' ? 'Reconnect' : 'Connect'}
+            <Grid container spacing={1.5}>
+              <Grid size={{ xs: 12, md: 5 }}>
+                <Card sx={{ height: '100%' }}>
+                  <CardContent>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>Aksi Cepat</Typography>
+                    <Stack spacing={0.75}>
+                      {[
+                        { label: 'Buka Inbox', icon: <InboxIcon fontSize="small" />, tab: 'inbox' },
+                        { label: 'Coba Chat AI', icon: <ChatIcon fontSize="small" />, tab: 'coba-chat' },
+                        { label: 'Broadcast', icon: <CampaignIcon fontSize="small" />, tab: 'broadcast' },
+                        { label: 'Buat Jadwal', icon: <CalendarIcon fontSize="small" />, tab: 'kalender' },
+                      ].map(item => (
+                        <Button key={item.label} variant="outlined" size="small" fullWidth
+                          startIcon={item.icon}
+                          endIcon={<ArrowForwardIcon />}
+                          onClick={() => setTab(item.tab)}
+                          sx={{ justifyContent: 'space-between', px: 1.25 }}>
+                          <Box component="span" sx={{ flex: 1, textAlign: 'left' }}>{item.label}</Box>
+                        </Button>
+                      ))}
+                    </Stack>
+                    <Divider sx={{ my: 1.25 }} />
+                    <Button size="small" fullWidth variant="text" startIcon={<CreditCardIcon />} onClick={() => setBillingOpen(true)}>
+                      Lihat langganan
                     </Button>
-                    {status === 'connected' && (
-                      <Button variant="outlined" size="small" color="error" onClick={disconnectWA} disabled={disconnectMut.isPending}
-                        startIcon={disconnectMut.isPending ? <CircularProgress size={14} /> : <LogoutIcon />}>
-                        Putuskan
-                      </Button>
-                    )}
-                  </Stack>
-                </Stack>
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
           </Box>
         )}
 

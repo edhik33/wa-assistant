@@ -92,6 +92,28 @@ func ResolveCity(query string) []models.ShippingCity {
 	if len(cities) > 0 {
 		return cities
 	}
+	// Fallback 1: coba per kata (mis. "jakarta utara" tetap menemukan "jakarta").
+	words := strings.Fields(query)
+	if len(words) > 1 {
+		for _, w := range words {
+			if len(w) < 3 {
+				continue
+			}
+			database.DB.Where("search_text LIKE ?", "%"+w+"%").Order("city_name asc").Limit(5).Find(&cities)
+			if len(cities) > 0 {
+				return cities
+			}
+		}
+	}
+	// Fallback 2: coba empat karakter awal untuk toleransi typo ringan.
+	runes := []rune(query)
+	if len(runes) >= 4 {
+		prefix := string(runes[:4])
+		database.DB.Where("search_text LIKE ?", "%"+prefix+"%").Order("city_name asc").Limit(5).Find(&cities)
+		if len(cities) > 0 {
+			return cities
+		}
+	}
 	// Fallback: search via API langsung (kalau DB belum di-seed)
 	return SearchCityViaAPI(query)
 }
@@ -173,13 +195,13 @@ func SeedShippingCities() {
 
 		var apiResp struct {
 			Data []struct {
-				ID         int    `json:"id"`
-				Label      string `json:"label"`
-				CityName   string `json:"city_name"`
-				Province   string `json:"province_name"`
-				District   string `json:"district_name"`
+				ID          int    `json:"id"`
+				Label       string `json:"label"`
+				CityName    string `json:"city_name"`
+				Province    string `json:"province_name"`
+				District    string `json:"district_name"`
 				Subdistrict string `json:"subdistrict_name"`
-				ZipCode    string `json:"zip_code"`
+				ZipCode     string `json:"zip_code"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(body, &apiResp); err != nil {

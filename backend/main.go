@@ -138,6 +138,7 @@ func main() {
 			// Fitur jualan: simulator, analitik, inbox.
 			auth.POST("/agents/:id/test-chat", handlers.TestChat)
 			auth.GET("/agents/:id/analytics", handlers.AgentAnalytics)
+			auth.GET("/agents/:id/ai-metrics", handlers.AgentAIMetrics)
 			auth.GET("/agents/:id/contacts", handlers.InboxContacts)
 			auth.GET("/agents/:id/conversation", handlers.InboxConversation)
 			auth.POST("/agents/:id/send", handlers.InboxSend)
@@ -156,7 +157,7 @@ func main() {
 			auth.POST("/agents/:id/crm/contacts", handlers.CreateSavedContact)
 			auth.PUT("/agents/:id/crm/contacts/:cid", handlers.UpdateSavedContact)
 			auth.DELETE("/agents/:id/crm/contacts/:cid", handlers.DeleteSavedContact)
-		auth.POST("/agents/:id/crm/contacts/bulk-tag", handlers.BulkTagSavedContacts)
+			auth.POST("/agents/:id/crm/contacts/bulk-tag", handlers.BulkTagSavedContacts)
 			auth.GET("/agents/:id/follow-ups", handlers.ListFollowUps)
 			auth.POST("/agents/:id/follow-ups", handlers.CreateFollowUp)
 			auth.PUT("/agents/:id/follow-ups/:fid", handlers.UpdateFollowUp)
