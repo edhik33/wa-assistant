@@ -117,13 +117,16 @@ type Setting struct {
 }
 
 type Knowledge struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	AgentID   uint      `gorm:"index" json:"agent_id"`
-	Question  string    `gorm:"type:text" json:"question"`
-	Answer    string    `gorm:"type:text" json:"answer"`
-	Tags      string    `json:"tags"`
-	Embedding string    `gorm:"type:longtext" json:"-"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        uint   `gorm:"primaryKey" json:"id"`
+	AgentID   uint   `gorm:"index" json:"agent_id"`
+	Question  string `gorm:"type:text" json:"question"`
+	Answer    string `gorm:"type:text" json:"answer"`
+	Tags      string `json:"tags"`
+	Embedding string `gorm:"type:longtext" json:"-"`
+	// EmbeddingModel = tanda tangan model+dimensi saat vektor dibuat (mis. "text-embedding-3-small"
+	// atau "...:512"). Dipakai mendeteksi perubahan model agar knowledge di-embed ulang otomatis.
+	EmbeddingModel string    `gorm:"size:80" json:"-"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type User struct {

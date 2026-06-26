@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode"
 	"wa-assistant/backend/config"
 	"wa-assistant/backend/database"
 	"wa-assistant/backend/models"
@@ -305,14 +306,25 @@ func semanticSearch(msg string, items []KBItem) ([]models.Knowledge, bool) {
 		sim float32
 	}
 	var ranked []scored
+	dimMismatch := 0
 	for _, it := range items {
 		if len(it.Vec) == 0 {
+			continue
+		}
+		// Dimensi beda = embedding dibuat dgn model/dimensi lain (cosineSim-nya 0, tak berguna).
+		if len(it.Vec) != len(qVec) {
+			dimMismatch++
 			continue
 		}
 		ranked = append(ranked, scored{it.K, cosineSim(qVec, it.Vec)})
 	}
 	if len(ranked) == 0 {
-		return nil, false // belum ada yang ter-embed -> biar keyword yang jalan
+		// Bedakan "belum ada embedding" (wajar) dari "semua dimensi mismatch" (model berubah,
+		// retrieval bisa mati senyap) — yang kedua perlu disuarakan + biar BackfillEmbeddings re-index.
+		if dimMismatch > 0 {
+			log.Printf("Embedding: %d knowledge dimensinya beda dgn query (model embedding berubah?) — fallback keyword sementara re-index berjalan", dimMismatch)
+		}
+		return nil, false // biar keyword yang jalan
 	}
 
 	sort.Slice(ranked, func(i, j int) bool { return ranked[i].sim > ranked[j].sim })
@@ -332,27 +344,85 @@ func semanticSearch(msg string, items []KBItem) ([]models.Knowledge, bool) {
 	return relevant, true
 }
 
+// kwStopwords = kata umum bahasa Indonesia yang tidak membawa makna untuk pencocokan.
+var kwStopwords = map[string]bool{
+	"yang": true, "dan": true, "atau": true, "dengan": true, "untuk": true,
+	"dari": true, "pada": true, "ini": true, "itu": true, "ada": true,
+	"apa": true, "apakah": true, "saya": true, "kamu": true, "kak": true,
+	"nya": true, "dong": true, "sih": true, "deh": true, "aja": true,
+	"gak": true, "nggak": true, "tidak": true, "juga": true, "sudah": true,
+	"akan": true, "bisa": true, "mau": true, "yg": true, "min": true,
+}
+
+// tokenizeQuery memecah teks jadi kata bermakna (huruf kecil, ≥3 huruf, bukan stopword).
+func tokenizeQuery(s string) []string {
+	fields := strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	})
+	out := make([]string, 0, len(fields))
+	for _, w := range fields {
+		if len([]rune(w)) >= 3 && !kwStopwords[w] {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// keywordSearch = fallback saat semantic search nonaktif/gagal. Skornya berbasis overlap
+// kata kunci antara pesan user dan teks knowledge (question+answer+tags), plus bobot ekstra
+// bila tag (dikurasi manual = sinyal kuat) muncul persis di pesan. Versi lama nyaris tak pernah
+// cocok karena menuntut pesan memuat SELURUH teks pertanyaan.
 func keywordSearch(msg string, items []KBItem) []models.Knowledge {
-	var relevant []models.Knowledge
-	lower := strings.ToLower(msg)
+	qTokens := tokenizeQuery(msg)
+	if len(qTokens) == 0 {
+		return nil
+	}
+	type scored struct {
+		k     models.Knowledge
+		score float64
+	}
+	var ranked []scored
 	for _, it := range items {
 		k := it.K
-		tagMatch := false
-		for _, tag := range strings.Split(k.Tags, ",") {
-			t := strings.ToLower(strings.TrimSpace(tag))
-			if t != "" && strings.Contains(lower, t) {
-				tagMatch = true
-				break
+		kbSet := map[string]bool{}
+		for _, t := range tokenizeQuery(k.Question + " " + k.Answer + " " + k.Tags) {
+			kbSet[t] = true
+		}
+		score := 0.0
+		for _, qt := range qTokens {
+			if kbSet[qt] {
+				score++
 			}
 		}
-		if tagMatch || strings.Contains(lower, strings.ToLower(k.Question)) {
-			relevant = append(relevant, k)
+		// Bobot ekstra bila salah satu tag persis cocok dengan token pesan.
+		for _, tag := range strings.Split(k.Tags, ",") {
+			t := strings.ToLower(strings.TrimSpace(tag))
+			if t == "" {
+				continue
+			}
+			for _, qt := range qTokens {
+				if qt == t {
+					score += 2
+					break
+				}
+			}
+		}
+		if score > 0 {
+			ranked = append(ranked, scored{k, score})
 		}
 	}
-	if len(relevant) > topK {
-		relevant = relevant[:topK]
+	if len(ranked) == 0 {
+		return nil
 	}
-	return relevant
+	sort.Slice(ranked, func(i, j int) bool { return ranked[i].score > ranked[j].score })
+	out := make([]models.Knowledge, 0, topK)
+	for _, r := range ranked {
+		if len(out) >= topK {
+			break
+		}
+		out = append(out, r.k)
+	}
+	return out
 }
 
 // answerKnowledgeOverlap menghitung seberapa banyak kata dari knowledge muncul di jawaban AI.

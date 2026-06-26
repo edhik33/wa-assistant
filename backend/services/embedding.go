@@ -96,6 +96,16 @@ func InitEmbedding() {
 
 func EmbeddingEnabled() bool { return embEnabled }
 
+// embSignature mengidentifikasi konfigurasi embedding aktif (model + dimensi). Disimpan
+// bersama tiap vektor agar perubahan model/dimensi terdeteksi & knowledge di-embed ulang
+// otomatis — mencegah retrieval "mati senyap" karena dimensi vektor tak cocok.
+func embSignature() string {
+	if embDims > 0 {
+		return fmt.Sprintf("%s:%d", embModel, embDims)
+	}
+	return embModel
+}
+
 // Embed menghitung vektor embedding untuk satu teks.
 func Embed(text string) ([]float32, error) {
 	req := openai.EmbeddingRequest{
@@ -149,22 +159,29 @@ func IndexKnowledge(k *models.Knowledge) {
 	}
 	b, _ := json.Marshal(vec)
 	k.Embedding = string(b)
-	if err := database.DB.Model(k).Update("embedding", k.Embedding).Error; err != nil {
+	k.EmbeddingModel = embSignature()
+	if err := database.DB.Model(k).Updates(map[string]any{
+		"embedding":       k.Embedding,
+		"embedding_model": k.EmbeddingModel,
+	}).Error; err != nil {
 		log.Printf("Embedding: gagal simpan embedding knowledge #%d: %v", k.ID, err)
 	}
 }
 
-// BackfillEmbeddings mengisi embedding untuk knowledge lama yang belum punya.
+// BackfillEmbeddings mengisi embedding untuk knowledge yang belum punya, ATAU yang dibuat
+// dengan model/dimensi berbeda dari konfigurasi sekarang (mis. EMBEDDING_MODEL diganti) —
+// supaya retrieval tidak mati senyap akibat dimensi vektor tak cocok. Dipanggil di startup.
 func BackfillEmbeddings() {
 	if !embEnabled {
 		return
 	}
+	sig := embSignature()
 	var rows []models.Knowledge
-	database.DB.Where("embedding = '' OR embedding IS NULL").Find(&rows)
+	database.DB.Where("embedding = '' OR embedding IS NULL OR embedding_model IS NULL OR embedding_model <> ?", sig).Find(&rows)
 	if len(rows) == 0 {
 		return
 	}
-	log.Printf("Embedding: backfill %d knowledge...", len(rows))
+	log.Printf("Embedding: backfill/re-index %d knowledge (signature=%s)...", len(rows), sig)
 	for i := range rows {
 		IndexKnowledge(&rows[i])
 	}
