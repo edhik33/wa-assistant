@@ -1,0 +1,121 @@
+import { useEffect, useRef, useState } from 'react';
+import { Box, Card, CardContent, TextField, Button, Typography, Alert, CircularProgress, Link } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
+import logo from '../assets/logo-chatloop-login.png';
+
+const TURNSTILE_SITE_KEY = '0x4AAAAAADrLaq7r2pyIGOYs';
+
+function responseStatus(error: unknown) {
+  if (typeof error === 'object' && error && 'response' in error) {
+    return (error as { response?: { status?: number; headers?: Record<string, string> } }).response;
+  }
+  return undefined;
+}
+
+export default function Login() {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const navigate = useNavigate();
+  const turnstileRef = useRef<string | null>(null);
+  const turnstileWidgetId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = window.setInterval(() => setCooldown((v) => Math.max(0, v - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldown]);
+
+  useEffect(() => {
+    const checkTurnstile = () => {
+      if ((window as any).turnstile) {
+        const id = (window as any).turnstile.render('#turnstile-login', {
+          sitekey: TURNSTILE_SITE_KEY,
+          callback: (token: string) => { turnstileRef.current = token; },
+          'expired-callback': () => { turnstileRef.current = null; },
+        });
+        turnstileWidgetId.current = id;
+      } else {
+        setTimeout(checkTurnstile, 200);
+      }
+    };
+    checkTurnstile();
+    return () => {
+      if (turnstileWidgetId.current && (window as any).turnstile) {
+        (window as any).turnstile.remove(turnstileWidgetId.current);
+      }
+    };
+  }, []);
+
+  const handleLogin = async () => {
+    if (loading || cooldown > 0) return;
+    const cleanUsername = username.trim();
+    const e: Record<string, string> = {};
+    if (!cleanUsername) e.username = 'Wajib diisi';
+    if (!password) e.password = 'Wajib diisi';
+    setErrors(e);
+    if (Object.keys(e).length > 0) return;
+    setError('');
+    setLoading(true);
+    try {
+      const res = await api.post('/login', { username: cleanUsername, password, turnstile: turnstileRef.current || '' });
+      localStorage.setItem('token', res.data.token);
+      localStorage.setItem('user', JSON.stringify(res.data.user));
+      navigate(res.data.user?.is_super_admin ? '/admin' : '/app');
+    } catch (e) {
+      const response = responseStatus(e);
+      if (response?.status === 429) {
+        const retryAfter = Number(response.headers?.['retry-after'] || 60);
+        setCooldown(Number.isFinite(retryAfter) ? Math.min(Math.max(retryAfter, 30), 300) : 60);
+        setError('Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.');
+      } else if (!response || (response.status ?? 0) >= 500) {
+        setError('Server belum siap. Coba lagi sebentar lagi.');
+      } else {
+        setError('Login belum berhasil. Periksa kembali data yang kamu masukkan.');
+      }
+      setLoading(false);
+      if ((window as any).turnstile && turnstileWidgetId.current) {
+        (window as any).turnstile.reset(turnstileWidgetId.current);
+      }
+    }
+  };
+
+  return (
+    <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'background.default', p: 2 }}>
+      <Card sx={{ width: '100%', maxWidth: 400 }}>
+        <Box sx={{ textAlign: 'center', pt: 3, pb: 0, px: { xs: 3, sm: 4 } }}>
+          <img src={logo} alt="ChatLoop" style={{ width: '55%', maxWidth: 200, height: 'auto', display: 'block', margin: '0 auto' }} />
+        </Box>
+        <CardContent sx={{ pt: 1, px: { xs: 3, sm: 4 }, pb: { xs: 3, sm: 4 }, '&:last-child': { pb: { xs: 3, sm: 4 } } }}>
+            {error && <Alert severity={cooldown > 0 ? 'warning' : 'error'} sx={{ mb: 2 }}>{error}</Alert>}
+          <TextField fullWidth label="Username" value={username} disabled={loading || cooldown > 0}
+            autoComplete="username"
+            onChange={e => { setUsername(e.target.value); if (errors.username) setErrors(p => ({...p, username: ''})); }}
+            error={!!errors.username} helperText={errors.username}
+            sx={{ mb: 1.5 }} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+          <TextField fullWidth label="Password" type="password" value={password} disabled={loading || cooldown > 0}
+            autoComplete="current-password"
+            onChange={e => { setPassword(e.target.value); if (errors.password) setErrors(p => ({...p, password: ''})); }}
+            error={!!errors.password} helperText={errors.password}
+            sx={{ mb: 2 }} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+          <Box id="turnstile-login" sx={{ mb: 2, display: 'flex', justifyContent: 'center' }} />
+          <Button fullWidth variant="contained" onClick={handleLogin} disabled={loading || cooldown > 0}
+            startIcon={loading ? <CircularProgress size={18} color="inherit" /> : null}
+            sx={{ py: 1.5, fontWeight: 700 }}>
+            {loading ? 'Masuk…' : cooldown > 0 ? `Coba lagi ${cooldown}d` : 'Masuk'}
+          </Button>
+          <Typography variant="body2" sx={{ mt: 2, textAlign: 'center' }}>
+            <Link href="/lupa-password" underline="hover">Lupa password?</Link>
+          </Typography>
+          <Typography variant="body2" sx={{ textAlign: 'center' }}>
+            Belum punya akun? <Link href="/daftar" underline="hover">Daftar gratis</Link>
+          </Typography>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+}
