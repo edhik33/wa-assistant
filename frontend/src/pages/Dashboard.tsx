@@ -73,7 +73,6 @@ const NAV_GROUPS = [
     { id: 'handoff', label: 'Butuh CS', icon: <SupportAgentIcon fontSize="small" /> },
   ] },
   { section: 'AI & Otomasi', items: [
-    { id: 'knowledge', label: 'Knowledge', icon: <KnowledgeIcon fontSize="small" /> },
     { id: 'auto-reply', label: 'Auto-Reply', icon: <RuleIcon fontSize="small" /> },
     { id: 'template', label: 'Template', icon: <TemplateIcon fontSize="small" /> },
     { id: 'coba-chat', label: 'Coba Chat', icon: <ChatIcon fontSize="small" /> },
@@ -362,8 +361,7 @@ export default function Dashboard() {
     ? Math.ceil((new Date(usage.tenant.trial_ends_at).getTime() - Date.now()) / 86400000)
     : null;
   const setupIssues = [
-    knowledge.length ? '' : 'Knowledge masih kosong — isi FAQ agar AI tidak asal jawab',
-    prompt.trim() ? '' : 'Persona belum diisi — atur system prompt agar AI tahu bisnis kamu',
+    (knowledge.length > 0 || prompt.trim() !== '') ? '' : 'Isi profil bisnis lewat Setup Cepat — AI akan generate FAQ + System Prompt otomatis',
   ].filter(Boolean);
   const dashboardStats = {
     utama: [
@@ -908,6 +906,13 @@ export default function Dashboard() {
                   onChange={e => setPrompt(e.target.value)}
                   placeholder='Opsional. Contoh: Kamu admin "Toko Maju Jaya", jual sparepart motor. Bantu pelanggan soal stok, harga, & cara order.'
                   sx={{ mb: 1.5 }} />
+
+                <Stack direction="row" spacing={1} sx={{ mb: 1.5, alignItems: 'center' }}>
+                  <Button size="small" variant="outlined" startIcon={<KnowledgeIcon />} onClick={() => setTab('knowledge')}>
+                    Kelola Knowledge Base / FAQ
+                  </Button>
+                  <Typography variant="caption" color="text.secondary">{knowledge.length} Q&A tersimpan</Typography>
+                </Stack>
 
                 <Divider sx={{ mb: 1.5 }} />
 
