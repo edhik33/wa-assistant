@@ -1231,7 +1231,7 @@ export default function Dashboard() {
       </Dialog>
 
       {/* Setup Wizard */}
-      <Dialog open={wizardOpen} onClose={() => setWizardOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={wizardOpen} onClose={() => setWizardOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <AutoAwesomeIcon sx={{ color: '#25D366' }} /> Setup Cepat — Isi Profil Bisnis
         </DialogTitle>
@@ -1258,7 +1258,7 @@ export default function Dashboard() {
             <Grid size={12}>
               <TextField fullWidth size="small" label="Produk/Layanan" value={wizardBiz.products}
                 onChange={e => setWizardBiz({...wizardBiz, products: e.target.value})}
-                placeholder="mis: Baju muslim, gamis, hijab" />
+                placeholder="mis: Baju muslim, gamis, hijab..." multiline rows={3} />
             </Grid>
             <Grid size={6}>
               <TextField fullWidth size="small" label="Range Harga" value={wizardBiz.price_range}
