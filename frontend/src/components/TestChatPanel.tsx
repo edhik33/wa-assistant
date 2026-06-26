@@ -27,7 +27,7 @@ export default function TestChatPanel({ agentId }: { agentId: number }) {
 
   return (
     <Box>
-      <PageHeader title="Coba Chat"
+      <PageHeader title="Coba Chat AI"
         subtitle="Uji jawaban AI di sini tanpa perlu konek WhatsApp. Sempurnakan persona & knowledge dulu sebelum pelanggan asli datang." />
       <Card>
         <CardContent>

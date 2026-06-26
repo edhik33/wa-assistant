@@ -110,3 +110,10 @@ func DeleteKnowledge(c *gin.Context) {
 	services.InvalidateKB(aid) // refresh cache memori
 	c.JSON(200, gin.H{"message": "Deleted"})
 }
+
+func DeleteAllKnowledge(c *gin.Context) {
+	aid := currentAgentID(c)
+	result := database.DB.Where("agent_id = ?", aid).Delete(&models.Knowledge{})
+	services.InvalidateKB(aid)
+	c.JSON(200, gin.H{"message": "Deleted", "count": result.RowsAffected})
+}

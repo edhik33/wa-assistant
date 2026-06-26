@@ -133,6 +133,7 @@ func main() {
 			auth.POST("/agents/:id/knowledge/generate", handlers.GenerateKnowledge)
 			auth.POST("/agents/:id/knowledge/import", handlers.ImportKnowledge)
 			auth.PUT("/agents/:id/knowledge/:kid", handlers.UpdateKnowledge)
+			auth.DELETE("/agents/:id/knowledge-all", handlers.DeleteAllKnowledge)
 			auth.DELETE("/agents/:id/knowledge/:kid", handlers.DeleteKnowledge)
 
 			// Fitur jualan: simulator, analitik, inbox.

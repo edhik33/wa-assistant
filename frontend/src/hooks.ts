@@ -566,6 +566,14 @@ export function useDeleteKnowledge(agentId: number) {
   });
 }
 
+export function useDeleteAllKnowledge(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await api.delete(`/agents/${agentId}/knowledge-all`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['agent', agentId, 'knowledge'] }),
+  });
+}
+
 export function useGenerateKnowledge(agentId: number) {
   const qc = useQueryClient();
   return useMutation({

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 	"wa-assistant/backend/config"
 	"wa-assistant/backend/database"
 	"wa-assistant/backend/models"
@@ -155,7 +157,146 @@ type SetupWizardReq struct {
 	CSName     string `json:"cs_name"`
 }
 
-// SetupWizard — satu form profil bisnis, auto-generate System Prompt + Knowledge 15 Q&A.
+// extractJSONArray — robust extraction: cari '[' pertama dan ']' terakhir, lalu unmarshal.
+func extractJSONArray(raw string) ([]struct {
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
+	Tags     string `json:"tags"`
+}, error) {
+	content := strings.TrimSpace(raw)
+	// Hapus markdown wrapper
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+
+	// Cari [ pertama dan ] terakhir — handle extra text sebelum/sesudah array
+	start := strings.Index(content, "[")
+	end := strings.LastIndex(content, "]")
+	if start == -1 || end == -1 || start >= end {
+		return nil, fmt.Errorf("tidak menemukan JSON array dalam response")
+	}
+	content = content[start : end+1]
+
+	var items []struct {
+		Question string `json:"question"`
+		Answer   string `json:"answer"`
+		Tags     string `json:"tags"`
+	}
+	if err := json.Unmarshal([]byte(content), &items); err != nil {
+		return nil, fmt.Errorf("gagal parse JSON: %w", err)
+	}
+	return items, nil
+}
+
+// buildFallbackFAQ — generate FAQ dari template kalau AI gagal total.
+func buildFallbackFAQ(req SetupWizardReq) []struct {
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
+	Tags     string `json:"tags"`
+} {
+	items := []struct {
+		Question string `json:"question"`
+		Answer   string `json:"answer"`
+		Tags     string `json:"tags"`
+	}{
+		{Question: "Halo, ini benar " + req.BizName + "?", Answer: "Halo kak! Benar, ini " + req.BizName + ". Ada yang bisa kami bantu?", Tags: "sapaan"},
+		{Question: "Produk apa aja yang tersedia?", Answer: "Kami menyediakan " + req.Products + ". Info lengkap bisa ditanyakan ya kak.", Tags: "produk"},
+		{Question: "Berapa harganya?", Answer: "Harga produk kami " + req.PriceRange + ". Untuk detail harga per produk bisa ditanyakan langsung ya kak.", Tags: "harga"},
+		{Question: "Gimana cara ordernya?", Answer: "Cara ordernya gampang kak: " + req.OrderFlow, Tags: "order"},
+		{Question: "Pengiriman pakai apa dan berapa lama?", Answer: "Kami kirim via " + req.Shipping + ". Estimasi sampai tergantung lokasi kak.", Tags: "pengiriman"},
+		{Question: "Jam operasionalnya jam berapa?", Answer: "Kami beroperasi setiap hari jam " + req.Hours + " ya kak.", Tags: "jam"},
+		{Question: "Bisa bayar pakai apa aja?", Answer: "Bisa transfer bank ya kak. Nanti kami infokan nomor rekeningnya setelah order.", Tags: "pembayaran"},
+		{Question: "Ada garansinya nggak?", Answer: "Garansi tergantung produk ya kak. Bisa ditanyakan detailnya ke admin kami.", Tags: "garansi"},
+		{Question: "Mau tanya-tanya dulu boleh?", Answer: "Boleh banget kak! Silakan tanya apa aja yang mau diketahui.", Tags: "bantuan"},
+		{Question: "Bisa COD nggak?", Answer: "Untuk COD kami belum tersedia kak, masih transfer dulu ya.", Tags: "pembayaran"},
+	}
+	// Filter yang relevan — kalau field kosong, skip item yg bergantung field itu
+	var filtered []struct {
+		Question string `json:"question"`
+		Answer   string `json:"answer"`
+		Tags     string `json:"tags"`
+	}
+	for _, item := range items {
+		if item.Tags == "produk" && req.Products == "" {
+			continue
+		}
+		if item.Tags == "harga" && req.PriceRange == "" {
+			continue
+		}
+		if item.Tags == "order" && req.OrderFlow == "" {
+			continue
+		}
+		if item.Tags == "pengiriman" && req.Shipping == "" {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
+}
+
+// tryGenerateFAQ — panggil AI untuk generate FAQ, dengan retry.
+func tryGenerateFAQ(client *openai.Client, req SetupWizardReq) ([]struct {
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
+	Tags     string `json:"tags"`
+}, error) {
+	kbPrompt := fmt.Sprintf(`Buatkan 15 pasangan Tanya-Jawab FAQ knowledge base dari profil bisnis berikut.
+Gunakan bahasa Indonesia natural dan ramah.
+Fokus pada pertanyaan yang sering ditanyakan pelanggan.
+Format output HARUS JSON array, tanpa teks lain: [{"question": "...", "answer": "...", "tags": "kata,kunci"}]
+
+Profil bisnis:
+Nama: %s | Produk: %s | Harga: %s | Order: %s | Kirim: %s | Jam: %s`, req.BizName, req.Products, req.PriceRange, req.OrderFlow, req.Shipping, req.Hours)
+
+	maxRetries := 3
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * time.Second) // backoff: 1s, 2s
+			log.Printf("[SetupWizard] Retry %d/%d untuk agent %d", attempt+1, maxRetries, 0)
+		}
+
+		resp, err := client.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
+			Model:  config.Env("OPENAI_MODEL", "deepseek-v4-pro"),
+			Messages: []openai.ChatCompletionMessage{
+				{Role: openai.ChatMessageRoleSystem, Content: "Kamu adalah generator knowledge base FAQ. Output HANYA JSON array. JANGAN sertakan teks apapun selain JSON."},
+				{Role: openai.ChatMessageRoleUser, Content: kbPrompt},
+			},
+			MaxTokens: 6000,
+		})
+		if err != nil {
+			lastErr = fmt.Errorf("API error: %w", err)
+			log.Printf("[SetupWizard] API call gagal attempt %d: %v", attempt+1, err)
+			continue
+		}
+
+		if len(resp.Choices) == 0 {
+			lastErr = fmt.Errorf("AI tidak mengembalikan response")
+			log.Printf("[SetupWizard] Empty response attempt %d", attempt+1)
+			continue
+		}
+
+		raw := resp.Choices[0].Message.Content
+		items, err := extractJSONArray(raw)
+		if err != nil {
+			lastErr = fmt.Errorf("parse error: %w", err)
+			log.Printf("[SetupWizard] JSON parse gagal attempt %d: %v\nRaw: %s", attempt+1, err, raw)
+			continue
+		}
+
+		if len(items) == 0 {
+			lastErr = fmt.Errorf("AI mengembalikan array kosong")
+			continue
+		}
+
+		return items, nil
+	}
+
+	return nil, lastErr
+}
+
+// SetupWizard — satu form profil bisnis, auto-generate System Prompt + Knowledge.
 func SetupWizard(c *gin.Context) {
 	aid, ok := resolveAgent(c)
 	if !ok {
@@ -194,41 +335,11 @@ func SetupWizard(c *gin.Context) {
 			Update("system_prompt", systemPrompt)
 	}
 
-	// 2. Generate Knowledge FAQ (15 Q&A)
-	kbPrompt := fmt.Sprintf(`Buatkan 15 pasangan Tanya-Jawab FAQ knowledge base dari profil bisnis berikut.
-Gunakan bahasa Indonesia natural dan ramah.
-Fokus pada pertanyaan yang sering ditanyakan pelanggan.
-Format output HARUS JSON array: [{"question": "...", "answer": "...", "tags": "kata,kunci"}]
-
-Profil bisnis:
-Nama: %s | Produk: %s | Harga: %s | Order: %s | Kirim: %s | Jam: %s`, req.BizName, req.Products, req.PriceRange, req.OrderFlow, req.Shipping, req.Hours)
-
-	resp2, err := client.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-		Model:  config.Env("OPENAI_MODEL", "deepseek-v4-pro"),
-		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleSystem, Content: "Kamu adalah generator knowledge base FAQ. Output HANYA JSON array."},
-			{Role: openai.ChatMessageRoleUser, Content: kbPrompt},
-		},
-		MaxTokens: 3000,
-	})
+	// 2. Generate Knowledge FAQ — dengan retry + fallback
+	items, err := tryGenerateFAQ(client, req)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Gagal generate knowledge: " + err.Error()})
-		return
-	}
-
-	content := strings.TrimSpace(resp2.Choices[0].Message.Content)
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-
-	var items []struct {
-		Question string `json:"question"`
-		Answer   string `json:"answer"`
-		Tags     string `json:"tags"`
-	}
-	if err := json.Unmarshal([]byte(content), &items); err != nil {
-		c.JSON(500, gin.H{"error": "Format AI tidak valid", "raw": content})
-		return
+		log.Printf("[SetupWizard] AI FAQ gagal setelah retry, pakai fallback. Error: %v", err)
+		items = buildFallbackFAQ(req)
 	}
 
 	// Hapus knowledge lama (mode replace, bukan append).
@@ -248,7 +359,6 @@ Nama: %s | Produk: %s | Harga: %s | Order: %s | Kirim: %s | Jam: %s`, req.BizNam
 			services.IndexKnowledge(&k)
 		}
 	}
-	// Invalidate setelah embed selesai (biar cache reload final).
 	services.InvalidateKB(aid)
 
 	// Reset conversation summary — bisnis udah ganti, konteks lama gak relevan.
