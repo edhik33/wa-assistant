@@ -16,7 +16,17 @@ import (
 	"wa-assistant/backend/services"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
+
+// minBroadcastDelay = jeda minimum antar pesan (detik) yang dipaksakan demi keamanan nomor,
+// berapa pun yang dikirim pengguna.
+const minBroadcastDelay = 8
+
+// broadcastWarmupSchedule = batas harian bertahap untuk nomor yang belum lama dipakai broadcast.
+// Indeks ke-0 = hari aktif broadcast pertama, dst. Setelah daftar habis, pakai batas penuh
+// (BROADCAST_DAILY_CAP). Tujuannya meniru pemanasan manual nomor baru agar tidak langsung blast.
+var broadcastWarmupSchedule = []int{20, 40, 80, 120, 160}
 
 // CheckNumbers memeriksa daftar nomor apakah terdaftar di WhatsApp sebelum broadcast.
 func CheckNumbers(c *gin.Context) {
@@ -78,7 +88,7 @@ func CheckNumbers(c *gin.Context) {
 		"data": data,
 		"summary": gin.H{
 			"sent_today": dailySentCount(id),
-			"daily_cap":  config.EnvInt("BROADCAST_DAILY_CAP", 200),
+			"daily_cap":  effectiveDailyCap(id),
 		},
 	})
 }
@@ -96,10 +106,7 @@ func CreateBroadcast(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Pesan wajib diisi"})
 		return
 	}
-	var reqRecipients []struct {
-		Number string `json:"number"`
-		Name   string `json:"name"`
-	}
+	var reqRecipients []broadcastGuardRecipient
 	if err := json.Unmarshal([]byte(c.PostForm("recipients")), &reqRecipients); err != nil || len(reqRecipients) == 0 {
 		c.JSON(400, gin.H{"error": "Penerima wajib diisi"})
 		return
@@ -115,16 +122,59 @@ func CreateBroadcast(c *gin.Context) {
 
 	minD, _ := strconv.Atoi(c.PostForm("min_delay"))
 	maxD, _ := strconv.Atoi(c.PostForm("max_delay"))
-	if minD < 5 {
-		minD = 10
-	}
-	if maxD < minD {
-		maxD = minD + 20
+	minD, maxD = normalizeBroadcastDelay(minD, maxD)
+
+	consent := parseConsentAttestation(
+		c.PostForm("consent_category"), c.PostForm("consent_source"),
+		c.PostForm("consent_granted_at"), c.PostForm("consent_note"),
+		c.PostForm("consent_confirmed") == "true",
+	)
+	b := models.Broadcast{}
+
+	guardRecipients := normalizeGuardRecipients(reqRecipients)
+	if len(guardRecipients) == 0 {
+		c.JSON(400, gin.H{"error": "Tidak ada nomor valid"})
+		return
 	}
 
-	b := models.Broadcast{TenantID: tid, AgentID: id, Message: message, Status: "pending"}
+	assessment := assessBroadcast(id, message, guardRecipients, consent, nil)
+	if assessment.Level == "high" && !canOverrideBroadcastRisk(c) {
+		c.JSON(403, gin.H{"error": "Hanya owner yang dapat melanjutkan broadcast dengan risiko tinggi", "assessment": assessment})
+		return
+	}
+	acknowledged := c.PostForm("risk_acknowledged") == "true"
+	overridePhrase := c.PostForm("override_phrase")
+	overrideReason := strings.TrimSpace(c.PostForm("override_reason"))
+	if confirmationError := validateRiskConfirmation(assessment, acknowledged, overridePhrase, overrideReason); confirmationError != "" {
+		c.JSON(422, gin.H{"error": confirmationError, "assessment": assessment})
+		return
+	}
 
-	// Lampiran opsional (gambar/file) untuk semua penerima.
+	var overrideBy *uint
+	var overrideAt *time.Time
+	if assessment.Level == "high" {
+		uid := c.GetUint("user_id")
+		now := time.Now()
+		overrideBy = &uid
+		overrideAt = &now
+	}
+	b.TenantID = tid
+	b.AgentID = id
+	b.Message = message
+	b.Status = "pending"
+	b.ConsentCategory = consent.Category
+	b.ConsentSource = consent.Source
+	b.RiskLevel = assessment.Level
+	b.RiskReasons = assessmentReasonsJSON(assessment)
+	b.RiskAcknowledged = acknowledged || assessment.Level == "high"
+	b.OverrideReason = overrideReason
+	b.OverrideBy = overrideBy
+	b.OverrideAt = overrideAt
+	b.Total = len(guardRecipients)
+	b.MinDelay = minD
+	b.MaxDelay = maxD
+
+	// Simpan lampiran setelah guard lolos agar request yang diblokir tidak meninggalkan file yatim.
 	if fh, err := c.FormFile("file"); err == nil {
 		if f, ferr := fh.Open(); ferr == nil {
 			defer f.Close()
@@ -142,30 +192,37 @@ func CreateBroadcast(c *gin.Context) {
 		}
 	}
 
-	// Normalisasi + dedupe penerima.
-	seen := map[string]bool{}
 	var recipients []models.BroadcastRecipient
-	for _, r := range reqRecipients {
-		num := services.NormalizePhone(r.Number)
-		if num == "" || seen[num] {
-			continue
+	for _, r := range guardRecipients {
+		status := "pending"
+		reason := ""
+		if !assessment.eligibleNumbers[r.Number] {
+			status = "skipped"
+			reason = assessment.excludedReasons[r.Number]
+			b.Skipped++
 		}
-		seen[num] = true
-		recipients = append(recipients, models.BroadcastRecipient{Number: num, Name: strings.TrimSpace(r.Name), Status: "pending"})
+		recipients = append(recipients, models.BroadcastRecipient{Number: r.Number, Name: r.Name, Status: status, Error: reason})
 	}
-	if len(recipients) == 0 {
-		c.JSON(400, gin.H{"error": "Tidak ada nomor valid"})
+
+	if err := database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := recordAttestedConsents(tx, id, c.GetUint("user_id"), guardRecipients, consent, assessment.eligibleNumbers); err != nil {
+			return err
+		}
+		if err := tx.Create(&b).Error; err != nil {
+			return err
+		}
+		for i := range recipients {
+			recipients[i].BroadcastID = b.ID
+		}
+		return tx.Create(&recipients).Error
+	}); err != nil {
+		log.Printf("Gagal Create Broadcast: %v", err)
+		c.JSON(500, gin.H{"error": "Broadcast belum bisa dibuat"})
 		return
 	}
-	b.Total = len(recipients)
-	if err := database.DB.Create(&b).Error; err != nil { log.Printf("Gagal Create Broadcast: %v", err); c.JSON(500, gin.H{"error": "Gagal"}); return }
-	for i := range recipients {
-		recipients[i].BroadcastID = b.ID
-	}
-	database.DB.Create(&recipients)
 
 	go runBroadcast(b.ID, id, minD, maxD)
-	c.JSON(200, gin.H{"data": b})
+	c.JSON(200, gin.H{"data": b, "assessment": assessment})
 }
 
 // CancelBroadcast membatalkan broadcast yang belum selesai.
@@ -278,8 +335,9 @@ func ResumeBroadcasts() {
 func resumeBroadcast(broadcastID, agentID uint) {
 	for i := 0; i < 18; i++ {
 		if services.WA(agentID).IsConnected() {
-			log.Printf("Melanjutkan broadcast %d (agent %d)", broadcastID, agentID)
-			runBroadcast(broadcastID, agentID, 10, 30) // delay default (min/max tidak dipersistensikan)
+			minD, maxD := resumeBroadcastDelay(broadcastID)
+			log.Printf("Melanjutkan broadcast %d (agent %d), jeda %d-%d dtk", broadcastID, agentID, minD, maxD)
+			runBroadcast(broadcastID, agentID, minD, maxD)
 			return
 		}
 		time.Sleep(5 * time.Second)
@@ -288,7 +346,7 @@ func resumeBroadcast(broadcastID, agentID uint) {
 	log.Printf("Broadcast %d belum dilanjutkan: WA agent %d tidak tersambung", broadcastID, agentID)
 }
 
-// runBroadcast mengirim pesan ke tiap penerima dengan jeda acak (anti-banned).
+// runBroadcast mengirim pesan satu per satu dengan jeda ritme yang dipilih pengguna.
 func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 	_ = database.DB.Model(&models.Broadcast{}).Where("id = ?", broadcastID).Update("status", "running").Error
 
@@ -303,11 +361,20 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 		mediaBytes, _ = os.ReadFile(b.MediaPath)
 	}
 
-	dailyCap := config.EnvInt("BROADCAST_DAILY_CAP", 200)
-	sent, failed, skipped := 0, 0, 0
+	dailyCap := effectiveDailyCap(agentID)
+	var sentCount, failedCount, skippedCount int64
+	database.DB.Model(&models.BroadcastRecipient{}).Where("broadcast_id = ? AND status = ?", broadcastID, "sent").Count(&sentCount)
+	database.DB.Model(&models.BroadcastRecipient{}).Where("broadcast_id = ? AND status = ?", broadcastID, "failed").Count(&failedCount)
+	database.DB.Model(&models.BroadcastRecipient{}).Where("broadcast_id = ? AND status = ?", broadcastID, "skipped").Count(&skippedCount)
+	sent, failed, skipped := int(sentCount), int(failedCount), int(skippedCount)
 
 	// Muat sekali di awal (bukan query per-penerima): himpunan opt-out + jumlah terkirim hari ini.
+	recipientNumbers := make([]string, 0, len(recipients))
+	for _, recipient := range recipients {
+		recipientNumbers = append(recipientNumbers, recipient.Number)
+	}
 	optedOut := optedOutSet(agentID)
+	consented := activeConsentSet(agentID, b.ConsentCategory, recipientNumbers)
 	daily := int(dailySentCount(agentID))
 
 	for i, r := range recipients {
@@ -328,6 +395,7 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 		// Segarkan daftar opt-out berkala agar pelanggan yang baru kirim STOP di tengah jalan tetap dihormati.
 		if i > 0 && i%25 == 0 {
 			optedOut = optedOutSet(agentID)
+			consented = activeConsentSet(agentID, b.ConsentCategory, recipientNumbers)
 		}
 		// Lewati yang sudah opt-out.
 		if optedOut[r.Number] {
@@ -336,7 +404,15 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 			updateBroadcastCounters(broadcastID, sent, failed, skipped)
 			continue
 		}
-		// Hormati batas harian (anti-banned).
+		// Broadcast baru wajib tetap punya consent aktif saat benar-benar dikirim.
+		// Kategori kosong hanya terjadi pada data legacy sebelum guard consent tersedia.
+		if b.ConsentCategory != "" && !consented[r.Number] {
+			markRecipient(r.ID, "skipped", "consent sudah tidak aktif")
+			skipped++
+			updateBroadcastCounters(broadcastID, sent, failed, skipped)
+			continue
+		}
+		// Hormati batas operasional harian milik aplikasi.
 		if daily >= dailyCap {
 			markRecipient(r.ID, "skipped", "batas harian tercapai")
 			skipped++
@@ -432,6 +508,64 @@ func markRecipient(id uint, status, errMsg string) {
 func updateBroadcastCounters(broadcastID uint, sent, failed, skipped int) {
 	database.DB.Model(&models.Broadcast{}).Where("id = ?", broadcastID).
 		Updates(map[string]any{"sent": sent, "failed": failed, "skipped": skipped})
+}
+
+// normalizeBroadcastDelay memaksa jeda min/maks ke rentang yang aman & konsisten.
+// minD diangkat ke minBroadcastDelay bila terlalu kecil; maxD minimal sama dengan minD.
+func normalizeBroadcastDelay(minD, maxD int) (int, int) {
+	if minD < minBroadcastDelay {
+		minD = minBroadcastDelay
+	}
+	if maxD < minD {
+		maxD = minD + 20
+	}
+	return minD, maxD
+}
+
+// resumeBroadcastDelay membaca jeda yang dipersistensi saat broadcast dibuat, dengan
+// fallback aman untuk data lama (sebelum kolom min/max_delay ada).
+func resumeBroadcastDelay(broadcastID uint) (int, int) {
+	var b models.Broadcast
+	if err := database.DB.Select("min_delay", "max_delay").First(&b, broadcastID).Error; err != nil {
+		return minBroadcastDelay, 30
+	}
+	return normalizeBroadcastDelay(b.MinDelay, b.MaxDelay)
+}
+
+// configuredDailyCap = batas harian penuh dari konfigurasi (target akhir setelah warm-up).
+func configuredDailyCap() int {
+	return config.EnvInt("BROADCAST_DAILY_CAP", 200)
+}
+
+// effectiveDailyCap = batas harian setelah memperhitungkan masa pemanasan (warm-up) nomor.
+// Nomor baru mulai dari batas kecil lalu naik bertahap tiap hari aktif broadcast hingga
+// mencapai batas penuh. Bisa dimatikan dengan BROADCAST_WARMUP=off.
+func effectiveDailyCap(agentID uint) int {
+	full := configuredDailyCap()
+	if strings.EqualFold(config.Env("BROADCAST_WARMUP", "on"), "off") {
+		return full
+	}
+	day := broadcastActiveDayIndex(agentID) // 1 = hari aktif broadcast pertama
+	if day >= 1 && day <= len(broadcastWarmupSchedule) {
+		if cap := broadcastWarmupSchedule[day-1]; cap < full {
+			return cap
+		}
+	}
+	return full
+}
+
+// broadcastActiveDayIndex = nomor urut hari aktif broadcast agent ini, termasuk hari ini.
+// Dihitung dari jumlah tanggal berbeda dengan pengiriman SEBELUM hari ini, lalu +1 untuk hari ini,
+// agar nilainya stabil sepanjang hari berjalan (tidak naik di tengah broadcast).
+func broadcastActiveDayIndex(agentID uint) int {
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	var prior int64
+	database.DB.Model(&models.BroadcastRecipient{}).
+		Joins("JOIN broadcasts ON broadcasts.id = broadcast_recipients.broadcast_id").
+		Where("broadcasts.agent_id = ? AND broadcast_recipients.status = ? AND broadcast_recipients.sent_at < ?", agentID, "sent", startOfDay).
+		Select("COUNT(DISTINCT DATE(broadcast_recipients.sent_at))").Scan(&prior)
+	return int(prior) + 1
 }
 
 func dailySentCount(agentID uint) int64 {

@@ -58,7 +58,7 @@ func Init() {
 		&models.Knowledge{}, &models.Handoff{}, &models.Contact{}, &models.ConversationMemory{},
 		&models.CrawlJob{}, &models.CrawlPage{},
 		&models.Plan{}, &models.Tenant{}, &models.Subscription{}, &models.Invoice{}, &models.AIUsage{},
-		&models.Broadcast{}, &models.BroadcastRecipient{}, &models.OptOut{},
+		&models.Broadcast{}, &models.BroadcastRecipient{}, &models.OptOut{}, &models.ContactConsent{},
 		&models.ScheduledMessage{}, &models.Label{}, &models.ChatLabel{}, &models.AutoReply{},
 		&models.Template{},
 		&models.FollowUp{}, &models.FollowUpStep{}, &models.FollowUpEnrollment{},

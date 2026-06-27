@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import {
-  Box, Typography, Card, CardContent, TextField, Button, Stack, Alert, AlertTitle, Chip,
+  Box, Typography, Card, CardContent, TextField, Button, Stack, Alert, Chip,
   Table, TableBody, TableCell, TableHead, TableRow, LinearProgress, CircularProgress,
-  Dialog, DialogTitle, DialogContent, DialogActions, Checkbox, FormControlLabel,
-  Divider,
+  Dialog, DialogTitle, DialogContent, DialogActions, Divider,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
@@ -14,13 +13,15 @@ import PeopleAltIcon from '@mui/icons-material/PeopleAltOutlined';
 import ScheduleIcon from '@mui/icons-material/ScheduleOutlined';
 import HistoryIcon from '@mui/icons-material/HistoryOutlined';
 import InfoIcon from '@mui/icons-material/InfoOutlined';
-import { useCheckNumbers, useCreateBroadcast, useBroadcasts, useBroadcastDetail, useCancelBroadcast } from '../hooks';
+import { useCheckNumbers, useBroadcastPreflight, useCreateBroadcast, useBroadcasts, useBroadcastDetail, useCancelBroadcast } from '../hooks';
 import { swalToast, swalConfirm } from '../services/swal';
 import RecipientField from './RecipientField';
 import WhatsAppEditor from './WhatsAppEditor';
 import TemplatePicker from './TemplatePicker';
 import PageHeader from './PageHeader';
-import type { NumberCheck, CheckResult } from '../types';
+import BroadcastSafetyReview from './BroadcastSafetyReview';
+import { defaultBroadcastSafetyForm } from '../services/broadcastSafety';
+import type { NumberCheck, CheckResult, BroadcastAssessment, BroadcastSafetyForm } from '../types';
 
 function normalizePhone(s: string): string {
   const d = (s.match(/\d/g) || []).join('');
@@ -43,6 +44,12 @@ const RCP_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
 };
 const RCP_LABEL: Record<string, string> = {
   sent: 'Terkirim', failed: 'Gagal', skipped: 'Dilewati', pending: 'Antre',
+};
+const RISK_LABEL: Record<string, string> = {
+  low: 'Risiko lebih rendah', medium: 'Sudah ditinjau', high: 'Override risiko',
+};
+const RISK_COLOR: Record<string, 'success' | 'warning' | 'error'> = {
+  low: 'success', medium: 'warning', high: 'error',
 };
 
 function SectionTitle({ icon, title, subtitle, action }: { icon: ReactNode; title: string; subtitle?: string; action?: ReactNode }) {
@@ -89,7 +96,9 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   const [modalOpen, setModalOpen] = useState(false);
   const [checked, setChecked] = useState<NumberCheck[] | null>(null);
   const [summary, setSummary] = useState<CheckResult['summary'] | null>(null);
-  const [ackRisk, setAckRisk] = useState(false);
+  const [safety, setSafety] = useState<BroadcastSafetyForm>(() => defaultBroadcastSafetyForm());
+  const [assessment, setAssessment] = useState<BroadcastAssessment | null>(null);
+  const [assessmentStale, setAssessmentStale] = useState(false);
   const [page, setPage] = useState(1);
   const [lastStartedId, setLastStartedId] = useState<number | null>(null);
 
@@ -101,6 +110,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   const closeDetail = () => { setDetailId(null); setDetailFilter('all'); setDetailSearch(''); };
 
   const checkNumbers = useCheckNumbers(agentId);
+  const preflight = useBroadcastPreflight(agentId);
   const createBroadcast = useCreateBroadcast(agentId);
   const cancelBroadcast = useCancelBroadcast(agentId);
   const { data: bpage } = useBroadcasts(agentId, page);
@@ -127,6 +137,26 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
       ? 'Jeda maksimal harus lebih besar atau sama dengan jeda minimal'
       : '';
 
+  const updateSafety = (patch: Partial<BroadcastSafetyForm>, affectsAssessment = true) => {
+    setSafety(current => ({
+      ...current,
+      ...(affectsAssessment ? { risk_acknowledged: false, override_phrase: '', override_reason: '' } : {}),
+      ...patch,
+    }));
+    if (affectsAssessment) setAssessmentStale(true);
+  };
+
+  const runPreflight = async (numberChecks: NumberCheck[], form: BroadcastSafetyForm = safety) => {
+    const recipients = numberChecks.filter(item => item.registered).map(item => ({
+      number: item.number,
+      name: nameMap[item.number] || '',
+    }));
+    const result = await preflight.mutateAsync({ message, recipients, ...form });
+    setAssessment(result);
+    setAssessmentStale(false);
+    return result;
+  };
+
   const openModal = () => {
     const e: Record<string, string> = {};
     if (!message.trim()) e.message = 'Pesan tidak boleh kosong';
@@ -136,10 +166,17 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
     if (Object.keys(e).length > 0) return;
     setChecked(null);
     setSummary(null);
-    setAckRisk(false);
+    const initialSafety = defaultBroadcastSafetyForm();
+    setSafety(initialSafety);
+    setAssessment(null);
+    setAssessmentStale(false);
     setModalOpen(true);
     checkNumbers.mutateAsync(parsed.map(p => p.number))
-      .then(res => { setChecked(res.data); setSummary(res.summary); })
+      .then(async res => {
+        setChecked(res.data);
+        setSummary(res.summary);
+        await runPreflight(res.data, initialSafety);
+      })
       .catch(() => { setChecked([]); setSummary(null); });
   };
 
@@ -151,13 +188,14 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
       .filter(line => regNums.has(normalizePhone(line.split(',')[0])));
     setRecipientsText(kept.join('\n'));
     setChecked(checked.filter(c => c.registered));
+    setAssessmentStale(true);
   };
 
   const doSend = async () => {
     const recipients = registered.map(c => ({ number: c.number, name: nameMap[c.number] || '' }));
     if (recipients.length === 0) return;
     try {
-      const res = await createBroadcast.mutateAsync({ message, recipients, min_delay: minDelay, max_delay: maxDelay, file });
+      const res = await createBroadcast.mutateAsync({ message, recipients, min_delay: minDelay, max_delay: maxDelay, file, safety });
       const started = res.data;
       setModalOpen(false);
 
@@ -167,7 +205,9 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
       setFile(null);
       setChecked(null);
       setSummary(null);
-      setAckRisk(false);
+      setSafety(defaultBroadcastSafetyForm());
+      setAssessment(null);
+      setAssessmentStale(false);
       setErrors({});
 
       // Balik ke halaman 1 — broadcast terbaru di paling atas
@@ -179,64 +219,41 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
         historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
 
-      swalToast(`Broadcast dimulai untuk ${recipients.length} nomor. Form sudah dibersihkan agar tidak terkirim dua kali.`);
-    } catch {
-      swalToast('Broadcast belum bisa dimulai. Cek koneksi WhatsApp dan coba lagi.', 'error');
+      const accepted = res.assessment?.sendable_today ?? recipients.length;
+      const excluded = Math.max(0, recipients.length - (res.assessment?.eligible_recipients ?? recipients.length));
+      swalToast(`Broadcast dimulai untuk ${accepted} penerima${excluded ? `; ${excluded} dikeluarkan karena izin atau opt-out` : ''}.`);
+    } catch (error) {
+      const detail = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      swalToast(detail || 'Broadcast belum bisa dimulai. Periksa kembali izin dan koneksi WhatsApp.', 'error');
     }
   };
 
-  const checking = checkNumbers.isPending || checked === null;
+  const checking = checkNumbers.isPending || preflight.isPending || checked === null;
 
-  // ---- Penilaian kesiapan kirim (gerbang anti-banned) ----
+  // Statistik pemeriksaan nomor. Keputusan risiko final selalu berasal dari backend.
   const total = checked?.length || 0;
   const unreg = total - registered.length;
   const warmCount = registered.filter(c => c.warm).length;
   const coldCount = registered.length - warmCount;
-  const batch = registered.length;
   const cap = summary?.daily_cap ?? 200;
   const sentToday = summary?.sent_today ?? 0;
-  const remaining = Math.max(0, cap - sentToday);
-  const coldRatio = batch ? coldCount / batch : 0;
-  const unregRatio = total ? unreg / total : 0;
-  const pct = (r: number) => `${Math.round(r * 100)}%`;
-
-  type Finding = { sev: 'red' | 'yellow'; msg: string; tip?: string };
-  const findings: Finding[] = [];
-  if (unregRatio > 0.3) findings.push({ sev: 'red', msg: `${unreg} nomor tidak terdaftar WhatsApp (${pct(unregRatio)})`, tip: 'Buang nomor tak terdaftar dulu. Nomor mati menaikkan sinyal spam.' });
-  else if (unreg > 0) findings.push({ sev: 'yellow', msg: `${unreg} nomor tak terdaftar akan dilewati`, tip: 'Sebaiknya dibuang biar daftar bersih.' });
-  if (coldRatio > 0.7 && batch > 100) findings.push({ sev: 'red', msg: `${coldCount} nomor (${pct(coldRatio)}) belum pernah chat denganmu`, tip: 'Utamakan kontak yang pernah chat, atau pecah jadi beberapa hari.' });
-  else if (coldRatio > 0.4) findings.push({ sev: 'yellow', msg: `${coldCount} nomor (${pct(coldRatio)}) belum pernah chat`, tip: 'Lebih aman kirim ke yang pernah chat dulu.' });
-  if (batch > remaining) findings.push({ sev: 'red', msg: `Batch ${batch} melebihi sisa jatah hari ini (${remaining})`, tip: `Kurangi jadi maksimal ${remaining} atau lanjut besok.` });
-  else if (remaining > 0 && batch > remaining * 0.5) findings.push({ sev: 'yellow', msg: `Batch ini memakai sebagian besar jatah harian (sisa ${remaining})` });
-
-  const level: 'green' | 'yellow' | 'red' =
-    findings.some(f => f.sev === 'red') ? 'red' : findings.some(f => f.sev === 'yellow') ? 'yellow' : 'green';
-
-  // ---- Lint pesan ----
-  const lint: string[] = [];
-  if (batch > 10 && !/\{nama\}/.test(message)) lint.push('Belum pakai {nama}. Semua pesan identik lebih mudah terdeteksi spam.');
-  if (/(https?:\/\/|www\.)/i.test(message)) lint.push('Pesan mengandung link. Pastikan domain tepercaya dan relevan.');
-  const letters = message.replace(/[^a-zA-Z]/g, '');
-  if (letters.length >= 10 && letters === letters.toUpperCase()) lint.push('Pesan huruf besar semua terasa seperti spam.');
-  if (message.length > 700) lint.push('Pesan sangat panjang. Pertimbangkan dipersingkat.');
-
-  const VERDICT = {
-    green: { sev: 'success' as const, title: 'Aman dikirim' },
-    yellow: { sev: 'warning' as const, title: 'Perlu hati-hati' },
-    red: { sev: 'error' as const, title: 'Tahan dulu' },
-  }[level];
-  const sendBlocked = level === 'red' && !ackRisk;
+  const confirmationIncomplete = !assessment || assessmentStale || !assessment.can_proceed
+    || (assessment.level === 'medium' && !safety.risk_acknowledged)
+    || (assessment.level === 'high' && (
+      safety.override_phrase !== (assessment.override_phrase || 'SAYA PAHAM RISIKONYA')
+      || !safety.override_reason.trim()
+    ));
   const formIssueCount = (message.trim() ? 0 : 1) + (parsed.length ? 0 : 1) + (delayProblem ? 1 : 0);
   const readyToReview = formIssueCount === 0;
 
   return (
     <Box>
       <PageHeader title="Broadcast"
-        subtitle="Susun pesan, pilih penerima, cek risiko, lalu kirim dengan jeda aman." />
+        subtitle="Susun pesan, pastikan izin penerima, lalu tinjau risiko sebelum mengirim." />
 
       <Alert severity="info" icon={<InfoIcon fontSize="small" />} sx={{ mb: 2 }}>
         <Typography variant="body2">
-          Pakai kontak yang pernah chat, tambah <code>{'{nama}'}</code> bila tersedia, dan mulai dari batch kecil untuk menjaga reputasi nomor.
+          Tidak ada pola kirim yang menjamin nomor bebas pembatasan. Sistem akan memeriksa izin penerima, riwayat interaksi, dan batas internal sebelum kampanye dimulai.
         </Typography>
       </Alert>
 
@@ -287,8 +304,8 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                     }).join('\n');
                     setRecipientsText(formatted);
                   }}>Format otomatis</Button>
-                  <Chip size="small" label="Pernah chat paling aman" color="success" variant="outlined" />
-                  <Chip size="small" label="Sinkron WA lebih berisiko" color="warning" variant="outlined" />
+                  <Chip size="small" label="Riwayat chat bukan otomatis izin" color="info" variant="outlined" />
+                  <Chip size="small" label="Kontak tersinkron tetap perlu izin" color="warning" variant="outlined" />
                 </Stack>
               </Box>
 
@@ -298,7 +315,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                 <SectionTitle
                   icon={<ScheduleIcon fontSize="small" />}
                   title="Jeda Kirim"
-                  subtitle="Broadcast akan dikirim satu per satu sesuai rentang jeda ini."
+                  subtitle="Mengatur ritme kirim, bukan jaminan nomor bebas pembatasan."
                 />
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                   <TextField type="number" size="small" label="Jeda min (detik)" value={minDelay}
@@ -339,7 +356,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                 {readyToReview ? `Cek nomor & lanjut (${parsed.length})` : 'Cek kelengkapan'}
               </Button>
               <Typography variant="caption" color="text.secondary">
-                Nomor akan dicek dulu. Broadcast baru dimulai setelah kamu konfirmasi di layar berikutnya.
+                Nomor, catatan izin, dan tingkat risiko akan diperiksa sebelum broadcast dapat dimulai.
               </Typography>
             </Stack>
           </CardContent>
@@ -379,7 +396,12 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                         {b.id === lastStartedId && <Chip label="Baru dimulai" size="small" color="primary" sx={{ ml: 1 }} />}
                       </TableCell>
                       <TableCell sx={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.message}</TableCell>
-                      <TableCell align="center"><Chip label={STATUS_LABEL[b.status] ?? b.status} size="small" color={STATUS_COLOR[b.status] ?? 'default'} /></TableCell>
+                      <TableCell align="center">
+                        <Stack spacing={0.5} sx={{ alignItems: 'center' }}>
+                          <Chip label={STATUS_LABEL[b.status] ?? b.status} size="small" color={STATUS_COLOR[b.status] ?? 'default'} />
+                          {b.risk_level && <Chip label={RISK_LABEL[b.risk_level] ?? b.risk_level} size="small" color={RISK_COLOR[b.risk_level] ?? 'warning'} variant="outlined" />}
+                        </Stack>
+                      </TableCell>
                       <TableCell>
                         <LinearProgress variant="determinate" value={pct} color={b.status === 'done' ? 'success' : 'primary'} sx={{ height: 6, borderRadius: 3, mb: 0.5 }} />
                         <Typography variant="caption" color="text.secondary">
@@ -436,6 +458,12 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                 {detail.broadcast.media_type && (
                   <Chip size="small" icon={<AttachFileIcon />} label={detail.broadcast.file_name || detail.broadcast.media_type} sx={{ mb: 1.5 }} />
                 )}
+                {detail.broadcast.risk_level && (
+                  <Alert severity={detail.broadcast.risk_level === 'high' ? 'warning' : 'info'} icon={false} sx={{ mb: 1.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>{RISK_LABEL[detail.broadcast.risk_level]}</Typography>
+                    {detail.broadcast.override_reason && <Typography variant="caption">Alasan pengguna: {detail.broadcast.override_reason}</Typography>}
+                  </Alert>
+                )}
                 <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
                   {FILTERS.map(f => (
                     <Chip key={f.k} size="small" label={f.label} onClick={() => setDetailFilter(f.k)}
@@ -481,38 +509,23 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
         </DialogActions>
       </Dialog>
 
-      {/* Modal: gerbang kesiapan kirim */}
+      {/* Modal: izin penerima dan penilaian risiko */}
       <Dialog open={modalOpen} onClose={() => !createBroadcast.isPending && setModalOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Kesiapan Kirim</DialogTitle>
+        <DialogTitle>Review Izin & Risiko</DialogTitle>
         <DialogContent dividers>
-          {checking ? (
+          {checkNumbers.isPending || checked === null ? (
             <Box sx={{ py: 2, textAlign: 'center' }}>
               <Typography sx={{ mb: 2 }}>Mengecek {parsed.length} nomor di WhatsApp…</Typography>
               <LinearProgress />
             </Box>
           ) : (
             <>
-              <Alert severity={VERDICT.sev} sx={{ mb: 1.5 }}>
-                <AlertTitle sx={{ fontWeight: 700, mb: findings.length ? 0.5 : 0 }}>{VERDICT.title}</AlertTitle>
-                {findings.length === 0 ? (
-                  <Typography variant="body2">Daftar terlihat sehat. Tetap kirim dengan jeda & secukupnya ya.</Typography>
-                ) : (
-                  <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-                    {findings.map((f, i) => (
-                      <li key={i}>
-                        <Typography variant="body2">{f.msg}{f.tip && <Box component="span" sx={{ display: 'block', opacity: 0.85 }}>Saran: {f.tip}</Box>}</Typography>
-                      </li>
-                    ))}
-                  </Box>
-                )}
-              </Alert>
-
               <Stack direction="row" spacing={0.75} sx={{ mb: 1.25, flexWrap: 'wrap', gap: 0.75 }}>
                 <Chip size="small" icon={<CheckCircleIcon />} label={`${registered.length} terdaftar`} color="success" />
                 {unreg > 0 && <Chip size="small" label={`${unreg} tak terdaftar`} color="default" variant="outlined" />}
-                <Chip size="small" label={`${warmCount} hangat`} color="success" variant="outlined" />
-                <Chip size="small" label={`${coldCount} dingin`} color={coldCount ? 'warning' : 'default'} variant="outlined" />
-                <Chip size="small" label={`Terkirim hari ini ${sentToday}/${cap}`} variant="outlined" color={remaining === 0 ? 'warning' : 'default'} />
+                <Chip size="small" label={`${warmCount} pernah berinteraksi`} color="success" variant="outlined" />
+                <Chip size="small" label={`${coldCount} tanpa riwayat chat`} color={coldCount ? 'warning' : 'default'} variant="outlined" />
+                <Chip size="small" label={`Batas internal ${sentToday}/${cap}`} variant="outlined" color={sentToday >= cap ? 'warning' : 'default'} />
               </Stack>
 
               {unreg > 0 && (
@@ -520,34 +533,27 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                   Buang {unreg} nomor tak terdaftar
                 </Button>
               )}
-
-              {lint.length > 0 && (
-                <Alert severity="info" icon={false} sx={{ mb: 1.25 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5 }}>Saran pesan</Typography>
-                  <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-                    {lint.map((l, i) => <li key={i}><Typography variant="caption">{l}</Typography></li>)}
-                  </Box>
-                </Alert>
-              )}
-
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                Yang dikirimi cuma nomor terdaftar. {file && <>Ada lampiran <b>{file.name}</b>. </>}Antar pesan dikasih jeda {minDelay} sampai {maxDelay} detik biar lebih aman. Jatah harian reset tiap tengah malam. Penilaian ini bantu menurunkan risiko, bukan jaminan ya.
-              </Typography>
-
-              {level === 'red' && (
-                <FormControlLabel
-                  control={<Checkbox checked={ackRisk} onChange={e => setAckRisk(e.target.checked)} color="error" />}
-                  label={<Typography variant="body2">Saya paham risikonya dan tetap mau mengirim</Typography>} />
-              )}
+              <BroadcastSafetyReview
+                value={safety}
+                assessment={assessment}
+                stale={assessmentStale}
+                onChange={updateSafety}
+              />
             </>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setModalOpen(false)} disabled={createBroadcast.isPending}>Batal</Button>
-          <Button variant="contained" color={level === 'red' ? 'error' : 'primary'} onClick={doSend}
-            disabled={checking || registered.length === 0 || sendBlocked || createBroadcast.isPending}
+          <Button variant="outlined" onClick={() => checked && runPreflight(checked)}
+            disabled={checkNumbers.isPending || preflight.isPending || !checked || registered.length === 0}>
+            {preflight.isPending ? 'Memeriksa...' : 'Periksa ulang'}
+          </Button>
+          <Button variant="contained" color={assessment?.level === 'high' ? 'error' : 'primary'} onClick={doSend}
+            disabled={checking || registered.length === 0 || confirmationIncomplete || createBroadcast.isPending}
             startIcon={createBroadcast.isPending ? <CircularProgress size={16} /> : <SendIcon />}>
-            {createBroadcast.isPending ? 'Memulai broadcast…' : `Kirim ke ${registered.length} nomor`}
+            {createBroadcast.isPending
+              ? 'Memulai broadcast…'
+              : `Kirim ke ${assessment?.sendable_today ?? registered.length} nomor`}
           </Button>
         </DialogActions>
       </Dialog>

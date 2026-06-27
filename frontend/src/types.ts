@@ -139,6 +139,54 @@ export interface CheckResult {
   summary: { sent_today: number; daily_cap: number };
 }
 
+export type BroadcastConsentCategory = 'marketing' | 'order_update' | 'reminder' | 'service_info';
+
+export interface BroadcastSafetyForm {
+  consent_category: BroadcastConsentCategory;
+  consent_source: string;
+  consent_granted_at: string;
+  consent_note: string;
+  consent_confirmed: boolean;
+  risk_acknowledged: boolean;
+  override_phrase: string;
+  override_reason: string;
+}
+
+export interface BroadcastGuardFinding {
+  code: string;
+  severity: 'info' | 'warning' | 'danger' | 'blocked';
+  message: string;
+  recommendation?: string;
+}
+
+export interface BroadcastAssessment {
+  level: 'low' | 'medium' | 'high' | 'blocked';
+  title: string;
+  can_proceed: boolean;
+  can_override: boolean;
+  requires_acknowledgement: boolean;
+  requires_override: boolean;
+  total_recipients: number;
+  eligible_recipients: number;
+  sendable_today: number;
+  existing_consent: number;
+  consent_to_record: number;
+  missing_consent: number;
+  opted_out: number;
+  engaged_recipients: number;
+  no_interaction: number;
+  sent_today: number;
+  daily_limit: number;
+  findings: BroadcastGuardFinding[];
+  override_phrase?: string;
+}
+
+export interface BroadcastPreflightBody extends BroadcastSafetyForm {
+  message: string;
+  recipients: { number: string; name: string }[];
+  run_at?: string;
+}
+
 export interface Broadcast {
   id: number;
   message: string;
@@ -149,6 +197,11 @@ export interface Broadcast {
   skipped: number;
   media_type: string;
   file_name: string;
+  consent_category?: BroadcastConsentCategory;
+  consent_source?: string;
+  risk_level?: BroadcastAssessment['level'];
+  risk_acknowledged?: boolean;
+  override_reason?: string;
   created_at: string;
 }
 
@@ -231,6 +284,11 @@ export interface ScheduledMessage {
   media_type: string;
   file_name: string;
   status: string; // scheduled, running, done, failed, cancelled, interrupted
+  consent_category?: BroadcastConsentCategory;
+  consent_source?: string;
+  risk_level?: BroadcastAssessment['level'];
+  risk_acknowledged?: boolean;
+  override_reason?: string;
   broadcast_id?: number | null;
 }
 

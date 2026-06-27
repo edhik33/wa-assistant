@@ -229,6 +229,10 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 	// 0. Permintaan berhenti (opt-out) -> catat agar tidak ikut broadcast lagi, lalu konfirmasi.
 	if in.Text != "" && isOptOutKeyword(in.Text) {
 		_ = database.DB.Where(models.OptOut{AgentID: agentID, Sender: num}).FirstOrCreate(&models.OptOut{AgentID: agentID, Sender: num}).Error
+		now := time.Now()
+		_ = database.DB.Model(&models.ContactConsent{}).
+			Where("agent_id = ? AND number = ? AND revoked_at IS NULL", agentID, num).
+			Update("revoked_at", &now).Error
 		ack := "Baik kak 🙏 nomor ini tidak akan kami kirimi pesan promosi lagi. Terima kasih."
 		logRow(in.Text, ack, send(ack))
 		return

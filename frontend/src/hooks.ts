@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from './services/api';
-import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, Invoice, PaymentChannel, Analytics, AIMetrics, Contact, ChatMsg, CheckResult, Broadcast, BroadcastRecipient, WAGroup, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff, CrawlJob, CrawlPage, KnowledgeUsage } from './types';
+import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, Invoice, PaymentChannel, Analytics, AIMetrics, Contact, ChatMsg, CheckResult, Broadcast, BroadcastRecipient, BroadcastAssessment, BroadcastPreflightBody, BroadcastSafetyForm, WAGroup, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff, CrawlJob, CrawlPage, KnowledgeUsage } from './types';
 
 type ContactList = { number: string; name: string }[];
 
@@ -210,6 +210,13 @@ export function useCheckNumbers(agentId: number) {
   return useMutation({
     mutationFn: async (numbers: string[]) =>
       (await api.post(`/agents/${agentId}/check-numbers`, { numbers })).data as CheckResult,
+  });
+}
+
+export function useBroadcastPreflight(agentId: number) {
+  return useMutation({
+    mutationFn: async (body: BroadcastPreflightBody) =>
+      (await api.post(`/agents/${agentId}/broadcast/preflight`, body)).data as BroadcastAssessment,
   });
 }
 
@@ -423,12 +430,13 @@ export function useBroadcastDetail(agentId: number, bid: number | null) {
 export function useCreateBroadcast(agentId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: { message: string; recipients: { number: string; name: string }[]; min_delay: number; max_delay: number; file: File | null }) => {
+    mutationFn: async (body: { message: string; recipients: { number: string; name: string }[]; min_delay: number; max_delay: number; file: File | null; safety: BroadcastSafetyForm }) => {
       const fd = new FormData();
       fd.append('message', body.message);
       fd.append('recipients', JSON.stringify(body.recipients));
       fd.append('min_delay', String(body.min_delay));
       fd.append('max_delay', String(body.max_delay));
+      Object.entries(body.safety).forEach(([key, value]) => fd.append(key, String(value)));
       if (body.file) fd.append('file', body.file);
       return (await api.post(`/agents/${agentId}/broadcast`, fd)).data;
     },
