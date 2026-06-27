@@ -157,18 +157,68 @@ func fetchPage(rawurl string) (title, text string, links []string, err error) {
 	return title, text, links, nil
 }
 
-// extractTitleText menelusuri pohon HTML, mengambil <title> dan seluruh teks terlihat
-// (melewati script/style/noscript), lalu merapatkan spasi.
+// extractTitleText menelusuri pohon HTML, mencari container konten utama dulu
+// (<article>, <main>, atau .post-content), lalu mengambil <title> dan teks di dalamnya.
+// Fallback: seluruh teks terlihat (skip script/style/nav/footer/aside).
 func extractTitleText(root *html.Node) (title, text string) {
+	// Phase 1: cari container konten utama
+	contentRoot := findContentRoot(root)
+
+	// Phase 2: ekstrak teks dari container (atau seluruh root sebagai fallback)
+	source := contentRoot
+	if source == nil {
+		source = root
+	}
+	title, text = extractTextFrom(source)
+	return title, collapseSpaces(text)
+}
+
+// findContentRoot mencari node <article>, <main>, atau element dengan class/role konten.
+// Mengembalikan nil jika tidak ditemukan.
+func findContentRoot(n *html.Node) *html.Node {
+	var result *html.Node
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if result != nil {
+			return
+		}
+		if n.Type == html.ElementNode {
+			switch n.Data {
+			case "article", "main":
+				result = n
+				return
+			}
+			// Deteksi WordPress/situs umum: class mengandung "content", "post", "entry", "article"
+			for _, a := range n.Attr {
+				if a.Key == "class" || a.Key == "id" {
+					lower := strings.ToLower(a.Val)
+					for _, kw := range []string{"post-content", "entry-content", "article-content", "content-area", "the-content", "site-content", "post-body", "article-body"} {
+						if strings.Contains(lower, kw) {
+							result = n
+							return
+						}
+					}
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(n)
+	return result
+}
+
+// extractTextFrom mengambil title dari <title> dan semua teks terlihat dari node,
+// melewati element non-konten (script, style, nav, footer, aside, header, head).
+func extractTextFrom(n *html.Node) (title, text string) {
 	var sb strings.Builder
 	var walk func(n *html.Node, skip bool)
 	walk = func(n *html.Node, skip bool) {
 		if n.Type == html.ElementNode {
 			switch n.Data {
-			case "script", "style", "noscript", "svg", "head", "nav", "footer", "aside":
-				if n.Data != "head" {
-					skip = true
-				}
+			case "script", "style", "noscript", "svg", "head", "nav", "footer", "aside", "header":
+				skip = true
 			case "title":
 				if title == "" && n.FirstChild != nil && n.FirstChild.Type == html.TextNode {
 					title = strings.TrimSpace(n.FirstChild.Data)
@@ -185,8 +235,9 @@ func extractTitleText(root *html.Node) (title, text string) {
 			walk(c, skip)
 		}
 	}
-	walk(root, false)
-	return title, collapseSpaces(sb.String())
+	// Kalau cuma ekstrak dari container, tetap cari title dari root via parameter
+	walk(n, false)
+	return title, sb.String()
 }
 
 // extractLinks mengumpulkan seluruh href <a>, di-resolve relatif terhadap base.
