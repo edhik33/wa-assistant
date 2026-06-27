@@ -55,7 +55,7 @@ func GenerateWebFAQ(title, content string) ([]QAPair, error) {
 				{Role: openai.ChatMessageRoleSystem, Content: webFAQSystem},
 				{Role: openai.ChatMessageRoleUser, Content: userMsg},
 			},
-			MaxTokens:   1500,
+			MaxTokens:   2500, // beri ruang ekstra: model reasoning makan token utk "mikir" dulu
 			Temperature: 0.2,
 		})
 		cancel()
@@ -112,7 +112,7 @@ func GenerateWebPersona(samples []string) (string, error) {
 				{Role: openai.ChatMessageRoleSystem, Content: webPersonaSystem},
 				{Role: openai.ChatMessageRoleUser, Content: userMsg},
 			},
-			MaxTokens:   1500, // ruang lega agar persona lengkap tidak terpotong
+			MaxTokens:   3000, // ruang lega: persona + token "mikir" model reasoning, agar tak kosong/terpotong
 			Temperature: 0.4,
 		})
 		cancel()

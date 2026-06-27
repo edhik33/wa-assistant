@@ -131,7 +131,7 @@ func extractClosingData(prompt string) (*ClosingResult, error) {
 				{Role: openai.ChatMessageRoleSystem, Content: closingExtractorSystem},
 				{Role: openai.ChatMessageRoleUser, Content: prompt},
 			},
-			MaxTokens:   1000,
+			MaxTokens:   3000, // model deepseek "reasoning" makan token utk mikir; beri ruang utk output JSON
 			Temperature: 0.2,
 		})
 		if err != nil {
