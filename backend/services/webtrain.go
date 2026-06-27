@@ -77,15 +77,16 @@ func GenerateWebFAQ(title, content string) ([]QAPair, error) {
 	return nil, lastErr // (nil,nil) = benar-benar kosong; (nil,err) = gangguan API -> caller fallback chunk
 }
 
-const webPersonaSystem = `Kamu prompt engineer. Buat SYSTEM PROMPT persona untuk AI customer service WhatsApp
-sebuah bisnis, berdasarkan konten website mereka. Tulis dalam bahasa Indonesia. Utamakan AKURASI &
-KELENGKAPAN — panjang tidak masalah, jangan dipotong, selesaikan setiap kalimat dengan utuh.
-WAJIB mencakup: (1) identitas — nama bisnis yang BENAR (ambil nama brand-nya saja, bukan judul SEO
-yang panjang) & bidang usahanya; (2) produk/layanan utama beserta keunggulan bila ada; (3) area/jam
-layanan & kontak bila tercantum; (4) gaya bahasa ramah, sopan, menyapa "kak"; (5) cara order/checkout
-bila ada di konten; (6) hal yang TIDAK boleh dijanjikan (mengirim file/katalog/gambar lewat chat, atau
-harga/stok/detail yang tidak diketahui — arahkan ke admin/website untuk hal itu).
-Jangan mengarang fakta yang tak ada di konten. Output HANYA teks persona, tanpa kalimat pembuka/penutup.`
+const webPersonaSystem = `Kamu prompt engineer. Buat SYSTEM PROMPT persona SINGKAT untuk AI customer service
+WhatsApp, berdasarkan konten website. Bahasa Indonesia, RINGKAS & UTUH — sekitar 6-10 kalimat,
+MAKSIMAL ~1200 karakter, dan WAJIB selesaikan kalimat terakhir (jangan terpotong).
+Cakup secara ringkas: (1) identitas — nama brand yang BENAR (bukan judul SEO panjang) & bidang usaha;
+(2) JENIS produk/layanan secara umum (sebut kategorinya saja); (3) area/jam layanan & cara kontak bila ada;
+(4) gaya ramah, sopan, menyapa "kak"; (5) cara order; (6) hal yang TIDAK boleh dijanjikan (kirim
+file/katalog/gambar lewat chat, atau harga/stok/detail yang tidak pasti — arahkan ke admin/website).
+PENTING: JANGAN menyalin daftar kode produk atau harga satu per satu. Detail itu sudah tersimpan di basis
+pengetahuan dan diambil otomatis saat pelanggan bertanya — persona cukup menyebut kategori produk umum.
+Jangan mengarang. Output HANYA teks persona, tanpa kalimat pembuka/penutup.`
 
 // GenerateWebPersona menyusun system prompt persona dari beberapa cuplikan konten web (Home/About).
 // Mencoba hingga 2x dan menyimpan hasil terlengkap, karena model kadang berhenti terlalu dini
@@ -128,12 +129,27 @@ func GenerateWebPersona(samples []string) (string, error) {
 		if len([]rune(out)) > len([]rune(best)) {
 			best = out // simpan yang terpanjang sebagai cadangan
 		}
-		if personaLooksComplete(out) {
+		// finish=length berarti kehabisan token (terpotong di tengah) -> jangan diterima, ulangi.
+		if fr != "length" && personaLooksComplete(out) {
 			return out, nil
 		}
-		log.Printf("[persona] hasil pendek/terpotong (len=%d, finish=%s) — retry", len([]rune(out)), fr)
+		log.Printf("[persona] belum lengkap (len=%d, finish=%s) — retry", len([]rune(out)), fr)
 	}
-	return best, lastErr // best-effort: kembalikan hasil terlengkap walau belum sempurna
+	// Best-effort: kalau tetap terpotong, rapikan ke akhir kalimat utuh (jangan berhenti di tengah kata).
+	return cleanTruncatedPersona(best), lastErr
+}
+
+// cleanTruncatedPersona memotong teks ke akhir kalimat terakhir bila persona tampak terpotong,
+// supaya tidak pernah berhenti di tengah kata.
+func cleanTruncatedPersona(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" || personaLooksComplete(s) {
+		return s
+	}
+	if idx := strings.LastIndexAny(s, ".!?"); idx > 200 {
+		return strings.TrimSpace(s[:idx+1])
+	}
+	return s
 }
 
 // personaLooksComplete menolak persona yang jelas terpotong (terlalu pendek atau berhenti di heading).
