@@ -32,9 +32,9 @@ export async function swalPrompt(title: string, placeholder?: string): Promise<s
   return result.isConfirmed ? (result.value || '') : null;
 }
 
-/** Alert info/error. */
-export async function swalAlert(title: string, icon: 'success' | 'error' | 'warning' | 'info' = 'info') {
-  await swal.fire({ title, icon, confirmButtonText: 'OK' });
+/** Alert info/error. `text` opsional untuk detail di bawah judul. */
+export async function swalAlert(title: string, icon: 'success' | 'error' | 'warning' | 'info' = 'info', text?: string) {
+  await swal.fire({ title, text, icon, confirmButtonText: 'OK' });
 }
 
 /** Toast kecil pojok kanan atas — tidak mengganggu. */

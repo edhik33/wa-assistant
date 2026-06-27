@@ -75,6 +75,26 @@ func isLowValueURL(rawurl string) bool {
 	return false
 }
 
+// isListingHubURL: halaman hub/indeks daftar (mis. /category, /shop, /blog) TANPA item spesifik.
+// Biasanya cuma navigasi tanpa info CS, jadi jangan auto-direkomendasi (tetap bisa dipilih manual).
+// /category/buket (ada slug) TIDAK kena—itu halaman katalog berisi produk.
+func isListingHubURL(rawurl string) bool {
+	u, err := url.Parse(rawurl)
+	if err != nil {
+		return false
+	}
+	seg := strings.Split(strings.Trim(strings.ToLower(u.Path), "/"), "/")
+	if len(seg) != 1 || seg[0] == "" {
+		return false
+	}
+	switch seg[0] {
+	case "category", "categories", "kategori", "tag", "tags", "blog", "artikel", "articles",
+		"shop", "store", "toko", "product", "products", "produk", "koleksi", "collection", "collections":
+		return true
+	}
+	return false
+}
+
 var crawlClient = &http.Client{Timeout: crawlTimeout}
 
 // RunCrawl menjalankan satu job crawl (dipanggil di goroutine oleh handler). Sitemap.xml dulu;
@@ -113,8 +133,8 @@ func RunCrawl(jobID uint, maxPages int) {
 			p.Status, p.Error = "failed", ferr.Error()
 		} else {
 			p.Status, p.Content, p.CharCount = "crawled", text, len([]rune(text))
-			// Direkomendasi bila kontennya cukup tebal & bukan halaman low-value.
-			p.Recommended = p.CharCount >= minContentChars && !isLowValueURL(pageURL)
+			// Direkomendasi bila kontennya cukup tebal, bukan halaman low-value, & bukan hub/indeks daftar.
+			p.Recommended = p.CharCount >= minContentChars && !isLowValueURL(pageURL) && !isListingHubURL(pageURL)
 		}
 		database.DB.Create(&p)
 		pages++

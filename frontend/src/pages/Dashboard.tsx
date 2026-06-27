@@ -192,6 +192,21 @@ export default function Dashboard() {
   // Pelatihan selesai bila job idle tapi sudah ada halaman yang diproses (dilatih/dilewati/gagal).
   const trainingDone = !isTraining && (trainedCount > 0 || skippedCount > 0);
 
+  // Popup "Pelatihan selesai" saat status job berubah dari proses-latih -> selesai (biar kebaca dulu).
+  const prevTrainStatus = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const s = crawlJob?.status;
+    const prev = prevTrainStatus.current;
+    prevTrainStatus.current = s;
+    if ((prev === 'training' || prev === 'stopping') && (s === 'done' || s === 'failed')) {
+      const detail = `${trainedCount} halaman dilatih`
+        + (skippedCount ? `, ${skippedCount} dilewati (AI menilai cuma navigasi/tanpa info pelanggan)` : '')
+        + (failedTrainCount ? `, ${failedTrainCount} gagal` : '')
+        + '. FAQ tersimpan di daftar Knowledge di bawah.';
+      swalAlert('Pelatihan selesai', trainedCount > 0 ? 'success' : 'warning', detail);
+    }
+  }, [crawlJob?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-pilih halaman rekomendasi sekali tiap kali crawl baru selesai (biar user tinggal klik "Latih").
   const autoPickedJob = useRef<number | null>(null);
   useEffect(() => {
