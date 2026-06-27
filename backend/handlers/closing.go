@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -70,15 +69,31 @@ func maybeExtractAndExportClosing(agentID uint, sender string) {
 
 	dataJSON, _ := json.Marshal(result.Data)
 	summaryJSON, _ := json.Marshal(result)
-	idempotencyKey := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d-%s-%s", agentID, sender, string(dataJSON)))))
+	rowVals := buildSheetRow(form.SchemaJSON, result.Data, agent, sender)
 
-	// Cek duplikat.
+	// UPSERT: 1 baris per pelanggan per sesi order. Kalau pelanggan ini sudah punya order dalam
+	// ~12 jam terakhir (order sama yang berkembang), UPDATE baris itu. Kalau tidak, order baru -> baris baru.
+	cutoff := time.Now().Add(-12 * time.Hour)
 	var existing models.ClosingRecord
-	if database.DB.Where("idempotency_key = ?", idempotencyKey[:64]).First(&existing).Error == nil {
-		log.Printf("[closing] Agent %d: duplicate closing record untuk sender %s", agentID, sender)
+	if database.DB.Where("agent_id = ? AND sender = ? AND created_at >= ?", agentID, sender, cutoff).
+		Order("id desc").First(&existing).Error == nil {
+		if existing.DataJSON == string(dataJSON) {
+			return // tidak ada perubahan -> tak perlu tulis ulang
+		}
+		database.DB.Model(&existing).Updates(map[string]any{
+			"data_json": string(dataJSON), "raw_summary": string(summaryJSON), "confidence": result.Confidence,
+		})
+		if existing.SheetRow > 0 {
+			if err := services.UpdateRow(sheetID, sheetName, existing.SheetRow, rowVals); err != nil {
+				log.Printf("[closing] Agent %d: gagal update baris sheet %d: %v", agentID, existing.SheetRow, err)
+			} else {
+				log.Printf("[closing] Agent %d: order pelanggan %s diperbarui (baris %d)", agentID, sender, existing.SheetRow)
+			}
+		}
 		return
 	}
 
+	// Order baru -> buat record + append baris baru, simpan nomor barisnya untuk update berikutnya.
 	rec := models.ClosingRecord{
 		AgentID:        agentID,
 		Sender:         sender,
@@ -86,22 +101,20 @@ func maybeExtractAndExportClosing(agentID uint, sender string) {
 		Confidence:     result.Confidence,
 		DataJSON:       string(dataJSON),
 		RawSummary:     string(summaryJSON),
-		IdempotencyKey: idempotencyKey[:64],
+		IdempotencyKey: fmt.Sprintf("%d-%s-%d", agentID, sender, time.Now().UnixNano()),
 	}
 	database.DB.Create(&rec)
 
-	// Append ke Google Sheets.
-	row := buildSheetRow(form.SchemaJSON, result.Data, agent, sender)
 	go func() {
-		sheetErr := services.AppendRow(sheetID, sheetName, row)
+		row, sheetErr := services.AppendRow(sheetID, sheetName, rowVals)
 		now := time.Now()
 		updates := map[string]any{"exported_at": &now}
 		if sheetErr != nil {
 			log.Printf("[closing] Agent %d: gagal append sheet: %v", agentID, sheetErr)
-			updates["status"] = "failed"
-			updates["sheet_error"] = sheetErr.Error()
+			updates["status"], updates["sheet_error"] = "failed", sheetErr.Error()
 		} else {
-			updates["status"] = "exported"
+			updates["status"], updates["sheet_row"] = "exported", row
+			log.Printf("[closing] Agent %d: order baru pelanggan %s tercatat (baris %d)", agentID, sender, row)
 		}
 		database.DB.Model(&rec).Updates(updates)
 	}()

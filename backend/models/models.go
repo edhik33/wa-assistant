@@ -161,15 +161,15 @@ type CrawlJob struct {
 
 // CrawlPage = satu halaman hasil crawl. content disimpan agar bisa dilatih nanti tanpa fetch ulang.
 type CrawlPage struct {
-	ID        uint       `gorm:"primaryKey" json:"id"`
-	JobID     uint       `gorm:"index;not null" json:"job_id"`
-	AgentID   uint       `gorm:"index;not null" json:"agent_id"`
-	URL       string     `gorm:"type:text" json:"url"`
-	Title     string     `gorm:"type:text" json:"title"`
-	Status    string     `gorm:"size:16;index;default:found" json:"status"` // found, crawled, failed, training, trained, skipped
-	CharCount int        `gorm:"not null;default:0" json:"char_count"`
-	Content   string     `gorm:"type:longtext" json:"-"` // teks bersih (tidak dikirim ke frontend, bisa besar)
-	Error     string     `gorm:"type:text" json:"error"`
+	ID        uint   `gorm:"primaryKey" json:"id"`
+	JobID     uint   `gorm:"index;not null" json:"job_id"`
+	AgentID   uint   `gorm:"index;not null" json:"agent_id"`
+	URL       string `gorm:"type:text" json:"url"`
+	Title     string `gorm:"type:text" json:"title"`
+	Status    string `gorm:"size:16;index;default:found" json:"status"` // found, crawled, failed, training, trained, skipped
+	CharCount int    `gorm:"not null;default:0" json:"char_count"`
+	Content   string `gorm:"type:longtext" json:"-"` // teks bersih (tidak dikirim ke frontend, bisa besar)
+	Error     string `gorm:"type:text" json:"error"`
 	// Recommended = halaman layak dilatih (konten cukup & bukan halaman low-value seperti
 	// privacy/terms/tag). Dipakai UI untuk auto-centang halaman penting saja.
 	Recommended bool       `gorm:"not null;default:false" json:"recommended"`
@@ -224,6 +224,7 @@ type ClosingRecord struct {
 	RawSummary     string     `gorm:"type:text" json:"raw_summary"`
 	SheetError     string     `json:"sheet_error"`
 	IdempotencyKey string     `gorm:"size:128;uniqueIndex" json:"idempotency_key"`
+	SheetRow       int        `gorm:"default:0" json:"sheet_row"` // nomor baris di Google Sheet (untuk update-in-place)
 	ExportedAt     *time.Time `json:"exported_at"`
 	CreatedAt      time.Time  `json:"created_at"`
 }

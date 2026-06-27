@@ -49,17 +49,56 @@ func InitSheets() {
 	log.Println("[sheets] Google Sheets client siap")
 }
 
-// AppendRow menambahkan satu baris data ke sheet.
+// AppendRow menambahkan satu baris data ke sheet & mengembalikan nomor baris (1-based) hasil append.
 // spreadsheetID: ID dari URL, sheetName: nama tab, values: slice string per kolom.
-func AppendRow(spreadsheetID, sheetName string, values []string) error {
+func AppendRow(spreadsheetID, sheetName string, values []string) (int, error) {
+	if sheetsClient == nil {
+		return 0, fmt.Errorf("sheets client belum diinisialisasi")
+	}
+	range_ := sheetName + "!A:Z"
+	resp, err := sheetsClient.Spreadsheets.Values.Append(spreadsheetID, range_, &sheets.ValueRange{
+		Values: [][]interface{}{toInterfaceSlice(values)},
+	}).ValueInputOption("RAW").Context(context.Background()).Do()
+	if err != nil {
+		return 0, err
+	}
+	row := 0
+	if resp.Updates != nil {
+		row = parseRowFromRange(resp.Updates.UpdatedRange)
+	}
+	return row, nil
+}
+
+// UpdateRow menimpa isi satu baris (1-based) di sheet — dipakai untuk memperbarui order yang berkembang.
+func UpdateRow(spreadsheetID, sheetName string, row int, values []string) error {
 	if sheetsClient == nil {
 		return fmt.Errorf("sheets client belum diinisialisasi")
 	}
-	range_ := sheetName + "!A:Z"
-	_, err := sheetsClient.Spreadsheets.Values.Append(spreadsheetID, range_, &sheets.ValueRange{
+	if row < 1 {
+		return fmt.Errorf("nomor baris tidak valid: %d", row)
+	}
+	range_ := fmt.Sprintf("%s!A%d", sheetName, row)
+	_, err := sheetsClient.Spreadsheets.Values.Update(spreadsheetID, range_, &sheets.ValueRange{
 		Values: [][]interface{}{toInterfaceSlice(values)},
 	}).ValueInputOption("RAW").Context(context.Background()).Do()
 	return err
+}
+
+// parseRowFromRange mengambil nomor baris dari range A1 seperti "Leads!A5:H5" -> 5.
+func parseRowFromRange(rng string) int {
+	if i := strings.LastIndex(rng, "!"); i >= 0 {
+		rng = rng[i+1:]
+	}
+	if i := strings.Index(rng, ":"); i >= 0 {
+		rng = rng[:i] // "A5:H5" -> "A5"
+	}
+	num := 0
+	for _, r := range rng {
+		if r >= '0' && r <= '9' {
+			num = num*10 + int(r-'0')
+		}
+	}
+	return num
 }
 
 func toInterfaceSlice(vals []string) []interface{} {
