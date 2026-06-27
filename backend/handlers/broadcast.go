@@ -367,6 +367,16 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 	if b.MediaType != "" && b.MediaPath != "" {
 		mediaBytes, _ = os.ReadFile(b.MediaPath)
 	}
+	// Upload media SEKALI di awal lalu dipakai ulang untuk semua penerima (hemat waktu & kuota,
+	// terutama video). Kalau upload awal gagal, biarkan nil -> nanti fallback upload per penerima.
+	var prepared *services.PreparedMedia
+	if len(mediaBytes) > 0 {
+		if pm, err := services.WA(agentID).PrepareMedia(b.MediaType, b.Mimetype, b.FileName, mediaBytes); err != nil {
+			log.Printf("Broadcast %d: upload media sekali gagal (%v), fallback upload per penerima", broadcastID, err)
+		} else {
+			prepared = pm
+		}
+	}
 
 	dailyCap := effectiveDailyCap(agentID)
 	restEvery, restDuration := normalizeBroadcastRest(b.RestEvery, b.RestDuration)
@@ -438,6 +448,9 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 		}
 		var sendErr error
 		switch {
+		case prepared != nil:
+			// Jalur cepat: media sudah di-upload sekali, tinggal kirim ke penerima ini.
+			sendErr = services.WA(agentID).SendPreparedMedia(r.Number, msg, prepared)
 		case b.MediaType == "image" && len(mediaBytes) > 0:
 			sendErr = services.WA(agentID).SendImage(r.Number, msg, b.Mimetype, mediaBytes)
 		case b.MediaType == "video" && len(mediaBytes) > 0:

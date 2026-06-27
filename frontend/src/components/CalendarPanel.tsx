@@ -450,13 +450,16 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
             <WhatsAppEditor value={message} onChange={v => { setMessage(v); setAssessmentStale(true); if (errors.message) setErrors(p => ({...p, message: ''})); }}
               placeholder="Halo {nama}, ..." rows={3} error={!!errors.message} helperText={errors.message} />
           </Box>
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.5, flexWrap: 'wrap', gap: 0.75 }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 0.75 }}>
             <Button component="label" size="small" variant="outlined" startIcon={<AttachFileIcon />}>
               {file ? 'Ganti lampiran' : 'Tambah lampiran'}
               <input type="file" hidden onChange={e => setFile(e.target.files?.[0] || null)} />
             </Button>
             {file && <Chip label={file.name} size="small" onDelete={() => setFile(null)} deleteIcon={<CloseIcon />} />}
           </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, mb: 1.5 }}>
+            Bisa gambar atau video (maks video 16MB). File lebih besar kirim sebagai dokumen.
+          </Typography>
 
           <Divider sx={{ my: 1.5 }} />
 

@@ -777,6 +777,72 @@ func (w *waInstance) SendVideo(toNumber, caption, mimetype string, data []byte) 
 	return err
 }
 
+// PreparedMedia menyimpan hasil upload media SEKALI agar bisa dikirim ke banyak penerima
+// tanpa upload ulang per penerima — penting untuk broadcast video/gambar besar.
+type PreparedMedia struct {
+	mediaType string // image, video, document
+	mimetype  string
+	fileName  string
+	up        whatsmeow.UploadResponse
+}
+
+// PrepareMedia meng-upload media satu kali ke server WhatsApp; hasilnya dipakai SendPreparedMedia.
+func (w *waInstance) PrepareMedia(mediaType, mimetype, fileName string, data []byte) (*PreparedMedia, error) {
+	w.mu.Lock()
+	client := w.client
+	w.mu.Unlock()
+	if client == nil || !client.IsConnected() {
+		return nil, fmt.Errorf("client WA tidak terhubung")
+	}
+	mt := whatsmeow.MediaDocument
+	switch mediaType {
+	case "image":
+		mt = whatsmeow.MediaImage
+	case "video":
+		mt = whatsmeow.MediaVideo
+	}
+	up, err := client.Upload(context.Background(), data, mt)
+	if err != nil {
+		return nil, fmt.Errorf("gagal upload media: %w", err)
+	}
+	return &PreparedMedia{mediaType: mediaType, mimetype: mimetype, fileName: fileName, up: up}, nil
+}
+
+// SendPreparedMedia mengirim media yang sudah di-upload ke satu penerima (TANPA upload ulang).
+func (w *waInstance) SendPreparedMedia(toNumber, caption string, pm *PreparedMedia) error {
+	w.mu.Lock()
+	client := w.client
+	w.mu.Unlock()
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("client WA tidak terhubung")
+	}
+	up := pm.up
+	var msg *waProto.Message
+	switch pm.mediaType {
+	case "image":
+		msg = &waProto.Message{ImageMessage: &waProto.ImageMessage{
+			Caption: proto.String(caption), Mimetype: proto.String(pm.mimetype),
+			URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath), MediaKey: up.MediaKey,
+			FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256, FileLength: proto.Uint64(up.FileLength),
+		}}
+	case "video":
+		msg = &waProto.Message{VideoMessage: &waProto.VideoMessage{
+			Caption: proto.String(caption), Mimetype: proto.String(pm.mimetype),
+			URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath), MediaKey: up.MediaKey,
+			FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256, FileLength: proto.Uint64(up.FileLength),
+		}}
+	default:
+		msg = &waProto.Message{DocumentMessage: &waProto.DocumentMessage{
+			FileName: proto.String(pm.fileName), Title: proto.String(pm.fileName),
+			Caption: proto.String(caption), Mimetype: proto.String(pm.mimetype),
+			URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath), MediaKey: up.MediaKey,
+			FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256, FileLength: proto.Uint64(up.FileLength),
+		}}
+	}
+	_, err := client.SendMessage(context.Background(), types.NewJID(toNumber, types.DefaultUserServer), msg)
+	return err
+}
+
 // Suspend memutus socket WA tanpa menghapus sesi (device tetap tersimpan di store).
 // Dipakai saat langganan tenant tidak aktif; cukup Connect() lagi untuk menyambung tanpa scan QR.
 func (w *waInstance) Suspend() {

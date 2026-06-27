@@ -326,7 +326,7 @@ export default function InboxPanel({ agentId, aiEnabled, seed }: { agentId: numb
               )}
               <Stack direction="row" spacing={1} sx={{ p: 1.25, alignItems: 'center' }}>
                 <input ref={fileInput} type="file" hidden onChange={e => setFile(e.target.files?.[0] || null)} />
-                <IconButton onClick={() => fileInput.current?.click()}><AttachFileIcon /></IconButton>
+                <IconButton onClick={() => fileInput.current?.click()} title="Lampirkan gambar/video (maks video 16MB) atau dokumen"><AttachFileIcon /></IconButton>
                 <TemplatePicker agentId={agentId} variant="text"
                   onPick={b => { const filled = b.replace(/\{nama\}/g, selectedName || 'kak'); setText(t => t ? t + ' ' + filled : filled); }} />
 	                <TextField fullWidth size="small" placeholder={file ? 'Caption (opsional)…' : 'Balas pelanggan…'} value={text}

@@ -285,6 +285,9 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                   </Button>
                   {file && <Chip label={file.name} size="small" onDelete={() => setFile(null)} deleteIcon={<CloseIcon />} />}
                 </Stack>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                  Bisa gambar atau video (maks video 16MB). File lebih besar kirim sebagai dokumen.
+                </Typography>
               </Box>
 
               <Divider />
