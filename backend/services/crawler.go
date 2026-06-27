@@ -157,20 +157,114 @@ func fetchPage(rawurl string) (title, text string, links []string, err error) {
 	return title, text, links, nil
 }
 
-// extractTitleText menelusuri pohon HTML, mencari container konten utama dulu
-// (<article>, <main>, atau .post-content), lalu mengambil <title> dan teks di dalamnya.
-// Fallback: seluruh teks terlihat (skip script/style/nav/footer/aside).
+// extractTitleText menelusuri pohon HTML, mencari heading artikel dulu (h1/h2/h3 yang cocok
+// dengan <title>), lalu ambil teks dari parent container-nya. Fallback ke container konten
+// (<article>, <main>, WordPress content classes), atau seluruh teks terlihat.
 func extractTitleText(root *html.Node) (title, text string) {
-	// Phase 1: cari container konten utama
-	contentRoot := findContentRoot(root)
+	// Cari <title> dulu
+	title = findTitle(root)
 
-	// Phase 2: ekstrak teks dari container (atau seluruh root sebagai fallback)
-	source := contentRoot
+	// Phase 1: cari heading artikel (h1/h2/h3) yang teksnya mirip title
+	articleContainer := findArticleContainer(root, title)
+
+	// Phase 2: kalau nemu, ekstrak dari container itu. Kalau tidak, coba findContentRoot.
+	// Kalau tetap tidak nemu, fallback ke seluruh root.
+	source := articleContainer
+	if source == nil {
+		source = findContentRoot(root)
+	}
 	if source == nil {
 		source = root
 	}
-	title, text = extractTextFrom(source)
+
+	_, text = extractTextFrom(source)
 	return title, collapseSpaces(text)
+}
+
+// findTitle mencari teks dari tag <title>.
+func findTitle(n *html.Node) string {
+	var title string
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if title != "" {
+			return
+		}
+		if n.Type == html.ElementNode && n.Data == "title" && n.FirstChild != nil {
+			title = strings.TrimSpace(n.FirstChild.Data)
+			return
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(n)
+	return title
+}
+
+// findArticleContainer mencari heading artikel (h1/h2/h3) yang teksnya mengandung
+// kata kunci dari title, lalu naik ke parent container (max 5 level) yang cukup besar.
+func findArticleContainer(n *html.Node, title string) *html.Node {
+	if title == "" {
+		return nil
+	}
+	titleWords := strings.Fields(strings.ToLower(title))
+
+	var result *html.Node
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if result != nil {
+			return
+		}
+		if n.Type == html.ElementNode && (n.Data == "h1" || n.Data == "h2" || n.Data == "h3") {
+			headingText := strings.ToLower(extractTextOnly(n))
+			// Cek minimal 2 kata dari title muncul di heading
+			match := 0
+			for _, w := range titleWords {
+				if len(w) >= 4 && strings.Contains(headingText, w) {
+					match++
+				}
+			}
+			if match >= 2 || strings.Contains(headingText, strings.ToLower(title[:min(30, len(title))])) {
+				// Naik ke parent container (max 5 level, cari yang punya banyak teks)
+				candidate := n
+				for i := 0; i < 5 && candidate != nil; i++ {
+					candidate = candidate.Parent
+					if candidate != nil && len(extractTextOnly(candidate)) > 200 {
+						result = candidate
+						return
+					}
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(n)
+	return result
+}
+
+// extractTextOnly mengambil teks dari node TANPA title (hanya text nodes langsung).
+func extractTextOnly(n *html.Node) string {
+	var sb strings.Builder
+	var walk func(*html.Node, bool)
+	walk = func(n *html.Node, skip bool) {
+		if n.Type == html.ElementNode {
+			switch n.Data {
+			case "script", "style", "noscript", "svg":
+				skip = true
+			}
+		}
+		if n.Type == html.TextNode && !skip {
+			sb.WriteString(strings.TrimSpace(n.Data))
+			sb.WriteByte(' ')
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c, skip)
+		}
+	}
+	walk(n, false)
+	return strings.TrimSpace(sb.String())
 }
 
 // findContentRoot mencari node <article>, <main>, atau element dengan class/role konten.
@@ -188,11 +282,14 @@ func findContentRoot(n *html.Node) *html.Node {
 				result = n
 				return
 			}
-			// Deteksi WordPress/situs umum: class mengandung "content", "post", "entry", "article"
+			// Deteksi WordPress/situs umum: class/id mengandung keyword konten
 			for _, a := range n.Attr {
 				if a.Key == "class" || a.Key == "id" {
 					lower := strings.ToLower(a.Val)
-					for _, kw := range []string{"post-content", "entry-content", "article-content", "content-area", "the-content", "site-content", "post-body", "article-body"} {
+					for _, kw := range []string{
+						"post-content", "entry-content", "article-content", "content-area",
+						"the-content", "site-content", "post-body", "article-body",
+					} {
 						if strings.Contains(lower, kw) {
 							result = n
 							return
@@ -209,7 +306,7 @@ func findContentRoot(n *html.Node) *html.Node {
 	return result
 }
 
-// extractTextFrom mengambil title dari <title> dan semua teks terlihat dari node,
+// extractTextFrom mengambil semua teks terlihat dari node,
 // melewati element non-konten (script, style, nav, footer, aside, header, head).
 func extractTextFrom(n *html.Node) (title, text string) {
 	var sb strings.Builder
