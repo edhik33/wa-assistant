@@ -174,7 +174,7 @@ func TrainCrawlPages(c *gin.Context) {
 	// Auto-generate Persona dari konten web kalau agent belum punya system prompt
 	if len(req.PageIDs) > 0 {
 		log.Printf("[autoPersona] triggering for agent %d, ids=%v", aid, req.PageIDs)
-		go autoGeneratePersona(aid, pages)
+		autoGeneratePersona(aid, pages)
 	}
 
 	c.JSON(200, gin.H{
@@ -216,6 +216,11 @@ func DeleteWebKnowledge(c *gin.Context) {
 // autoGeneratePersona generates a system prompt persona from trained crawl pages
 // using AI, then saves it to the agent if the agent's system prompt is empty.
 func autoGeneratePersona(agentID uint, pages []models.CrawlPage) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[autoPersona] PANIC agent %d: %v", agentID, r)
+		}
+	}()
 	log.Printf("[autoPersona] start agent %d, pages=%d", agentID, len(pages))
 	var agent models.Agent
 	if database.DB.First(&agent, agentID).Error != nil {
