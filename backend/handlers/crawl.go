@@ -253,7 +253,7 @@ func autoGeneratePersona(agentID uint, pages []models.CrawlPage) {
 		return
 	}
 
-	log.Printf("[autoPersona] agent %d: sample=%d chars, calling AI...", agentID, sample.Len())
+	log.Printf("[autoPersona] agent %d: sample=%d chars, calling AI (model=%s)...", agentID, sample.Len(), config.Env("OPENAI_MODEL", "deepseek-v4-pro"))
 
 	// Call AI to generate persona
 	client := services.AIClient
