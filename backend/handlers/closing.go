@@ -47,34 +47,10 @@ func maybeExtractAndExportClosing(agentID uint, sender string) {
 		sheetName = "Leads"
 	}
 
-	// Bangun prompt extractor dari schema + summary + chat history.
-	prompt := buildExtractorPrompt(agentID, sender, agent, form)
-
-	cfg := openai.DefaultConfig(config.EnvRequired("OPENAI_API_KEY"))
-	cfg.BaseURL = config.Env("OPENAI_BASE_URL", "https://api.deepseek.com/v1")
-	client := openai.NewClientWithConfig(cfg)
-
-	resp, err := client.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-		Model: config.Env("OPENAI_MODEL", "deepseek-v4-pro"),
-		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleSystem, Content: `Kamu adalah data extractor. Tugasmu membaca riwayat percakapan dan mengekstrak data sesuai schema. Output HANYA JSON. Kalau data belum lengkap, tetap berikan JSON dengan field yang ada. Jangan menambah field di luar schema.`},
-			{Role: openai.ChatMessageRoleUser, Content: prompt},
-		},
-		MaxTokens: 1000,
-	})
+	// Bangun prompt extractor dari schema + summary + chat history, lalu jalankan AI extractor.
+	result, err := extractClosingData(buildExtractorPrompt(agentID, sender, agent, form))
 	if err != nil {
-		log.Printf("[closing] Agent %d: AI extractor error: %v", agentID, err)
-		return
-	}
-
-	content := strings.TrimSpace(resp.Choices[0].Message.Content)
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-
-	var result ClosingResult
-	if err := json.Unmarshal([]byte(content), &result); err != nil {
-		log.Printf("[closing] Agent %d: gagal parse extractor JSON: %v — content len=%d: %q", agentID, err, len(content), content)
+		log.Printf("[closing] Agent %d: extractor gagal: %v", agentID, err)
 		return
 	}
 	if result.Confidence < 0.7 {
@@ -131,6 +107,141 @@ func maybeExtractAndExportClosing(agentID uint, sender string) {
 type ClosingResult struct {
 	Confidence float64                `json:"confidence"`
 	Data       map[string]interface{} `json:"data"`
+}
+
+const closingExtractorSystem = `Kamu adalah data extractor. Tugasmu membaca riwayat percakapan dan mengekstrak data sesuai schema. Output HANYA JSON. Kalau data belum lengkap, tetap berikan JSON dengan field yang ada. Jangan menambah field di luar schema.`
+
+// extractClosingData menjalankan AI extractor pada satu prompt dan mengembalikan hasil terstruktur.
+func extractClosingData(prompt string) (*ClosingResult, error) {
+	cfg := openai.DefaultConfig(config.EnvRequired("OPENAI_API_KEY"))
+	cfg.BaseURL = config.Env("OPENAI_BASE_URL", "https://api.deepseek.com/v1")
+	client := openai.NewClientWithConfig(cfg)
+
+	resp, err := client.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
+		Model: config.Env("OPENAI_MODEL", "deepseek-v4-pro"),
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleSystem, Content: closingExtractorSystem},
+			{Role: openai.ChatMessageRoleUser, Content: prompt},
+		},
+		MaxTokens: 1000,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("extractor tidak mengembalikan jawaban")
+	}
+	content := strings.TrimSpace(resp.Choices[0].Message.Content)
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	var result ClosingResult
+	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		return nil, fmt.Errorf("parse JSON gagal (len=%d): %w", len(content), err)
+	}
+	return &result, nil
+}
+
+// orderIntentKeywords = sinyal kasar bahwa percakapan menuju order (untuk hemat token di simulator).
+var orderIntentKeywords = []string{
+	"pesan", "order", "beli", "checkout", "ambil", "booking", "dp", "transfer",
+	"nama", "wa", "whatsapp", "alamat", "atas nama", "no hp", "nomor",
+}
+
+func looksLikeOrderIntent(text string) bool {
+	t := strings.ToLower(text)
+	for _, k := range orderIntentKeywords {
+		if strings.Contains(t, k) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildConvoText(history []models.ChatHistory, latestUser, latestReply string) string {
+	var sb strings.Builder
+	for _, h := range history {
+		if strings.TrimSpace(h.Message) != "" {
+			sb.WriteString("Customer: " + h.Message + "\n")
+		}
+		if strings.TrimSpace(h.Reply) != "" {
+			sb.WriteString("AI: " + h.Reply + "\n")
+		}
+	}
+	if strings.TrimSpace(latestUser) != "" {
+		sb.WriteString("Customer: " + latestUser + "\n")
+	}
+	if strings.TrimSpace(latestReply) != "" {
+		sb.WriteString("AI: " + latestReply + "\n")
+	}
+	return sb.String()
+}
+
+func buildExtractorPromptFromConvo(form models.ClosingForm, convo string) string {
+	var sb strings.Builder
+	sb.WriteString("Schema data yang harus diekstrak:\n")
+	sb.WriteString(form.SchemaJSON)
+	sb.WriteString("\n\nPercakapan:\n")
+	sb.WriteString(convo)
+	sb.WriteString("\nEkstrak data sesuai schema di atas. Output JSON: {\"confidence\": 0.0-1.0, \"data\": {...}}")
+	return sb.String()
+}
+
+// missingRequiredFields mengembalikan label/key field wajib yang masih kosong.
+func missingRequiredFields(schemaJSON string, data map[string]interface{}) []string {
+	var schema struct {
+		Fields []struct {
+			Key      string `json:"key"`
+			Label    string `json:"label"`
+			Required bool   `json:"required"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal([]byte(schemaJSON), &schema); err != nil {
+		return nil
+	}
+	var missing []string
+	for _, f := range schema.Fields {
+		if !f.Required {
+			continue
+		}
+		if val, ok := data[f.Key]; !ok || val == nil || val == "" {
+			label := f.Label
+			if label == "" {
+				label = f.Key
+			}
+			missing = append(missing, label)
+		}
+	}
+	return missing
+}
+
+// previewClosing menjalankan extractor closing sebagai DRY-RUN (tanpa simpan DB / tulis Sheets),
+// dipakai simulator "Coba Chat" agar user bisa menguji deteksi order tanpa WhatsApp asli.
+// Mengembalikan nil bila tak ada closing form aktif atau belum ada sinyal order (hemat token).
+func previewClosing(agentID uint, agent models.Agent, history []models.ChatHistory, latestUser, latestReply string) map[string]any {
+	var form models.ClosingForm
+	if database.DB.Where("agent_id = ? AND enabled = ?", agentID, true).First(&form).Error != nil {
+		return nil
+	}
+	convo := buildConvoText(history, latestUser, latestReply)
+	if !looksLikeOrderIntent(convo) {
+		return nil
+	}
+	result, err := extractClosingData(buildExtractorPromptFromConvo(form, convo))
+	if err != nil {
+		log.Printf("[closing-preview] agent %d: %v", agentID, err)
+		return nil
+	}
+	missing := missingRequiredFields(form.SchemaJSON, result.Data)
+	complete := len(missing) == 0
+	return map[string]any{
+		"detected":         complete && result.Confidence >= 0.7,
+		"complete":         complete,
+		"confidence":       result.Confidence,
+		"missing":          missing,
+		"data":             result.Data,
+		"sheet_configured": agent.SheetSyncEnabled && agent.SpreadsheetURL != "",
+	}
 }
 
 // buildExtractorPrompt membuat prompt untuk AI extractor.

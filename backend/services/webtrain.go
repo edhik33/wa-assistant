@@ -61,10 +61,13 @@ func GenerateWebFAQ(title, content string) ([]QAPair, error) {
 }
 
 const webPersonaSystem = `Kamu prompt engineer. Buat SYSTEM PROMPT persona untuk AI customer service WhatsApp
-sebuah bisnis, berdasarkan konten website mereka. Tulis dalam bahasa Indonesia, ringkas tapi lengkap
-(5-9 kalimat) dan WAJIB mencakup: (1) identitas — nama bisnis & bidang usahanya; (2) produk/layanan
-utama; (3) gaya bahasa ramah, sopan, menyapa "kak"; (4) cara order/kontak bila ada di konten;
-(5) hal yang TIDAK boleh dijanjikan (mengirim file/katalog/gambar, atau harga/detail yang tidak diketahui).
+sebuah bisnis, berdasarkan konten website mereka. Tulis dalam bahasa Indonesia. Utamakan AKURASI &
+KELENGKAPAN — panjang tidak masalah, jangan dipotong, selesaikan setiap kalimat dengan utuh.
+WAJIB mencakup: (1) identitas — nama bisnis yang BENAR (ambil nama brand-nya saja, bukan judul SEO
+yang panjang) & bidang usahanya; (2) produk/layanan utama beserta keunggulan bila ada; (3) area/jam
+layanan & kontak bila tercantum; (4) gaya bahasa ramah, sopan, menyapa "kak"; (5) cara order/checkout
+bila ada di konten; (6) hal yang TIDAK boleh dijanjikan (mengirim file/katalog/gambar lewat chat, atau
+harga/stok/detail yang tidak diketahui — arahkan ke admin/website untuk hal itu).
 Jangan mengarang fakta yang tak ada di konten. Output HANYA teks persona, tanpa kalimat pembuka/penutup.`
 
 // GenerateWebPersona menyusun system prompt persona dari beberapa cuplikan konten web (Home/About).
@@ -85,7 +88,7 @@ func GenerateWebPersona(samples []string) (string, error) {
 			{Role: openai.ChatMessageRoleSystem, Content: webPersonaSystem},
 			{Role: openai.ChatMessageRoleUser, Content: "Konten website:\n" + joined},
 		},
-		MaxTokens:   400,
+		MaxTokens:   900, // ruang cukup agar persona lengkap tidak terpotong
 		Temperature: 0.5,
 	})
 	if err != nil {

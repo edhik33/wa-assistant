@@ -22,10 +22,28 @@ func TestChat(c *gin.Context) {
 	}
 	var req struct {
 		Message string `json:"message"`
+		History []struct {
+			Role string `json:"role"` // "user" | "bot"
+			Text string `json:"text"`
+		} `json:"history"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Message) == "" {
 		c.JSON(400, gin.H{"error": "Pesan kosong"})
 		return
+	}
+	// Simulator multi-turn: pakai riwayat dari frontend (tanpa menyentuh ChatHistory asli/analytics).
+	var history []models.ChatHistory
+	hist := req.History
+	if len(hist) > 20 {
+		hist = hist[len(hist)-20:] // batasi konteks supaya hemat token
+	}
+	for _, h := range hist {
+		switch h.Role {
+		case "user":
+			history = append(history, models.ChatHistory{Message: h.Text})
+		case "bot":
+			history = append(history, models.ChatHistory{Reply: h.Text})
+		}
 	}
 	var agent models.Agent
 	database.DB.First(&agent, id)
@@ -48,7 +66,7 @@ func TestChat(c *gin.Context) {
 	if shippingCtx != "" {
 		prompt += shippingCtx
 	}
-	reply, escalate, model, knowledgeCount, err := services.ChatWithKnowledge(id, prompt, tone, req.Message, nil)
+	reply, escalate, model, knowledgeCount, err := services.ChatWithKnowledge(id, prompt, tone, req.Message, history)
 	latencyMs := time.Since(start).Milliseconds()
 	if err != nil {
 		if turnError != "" {
@@ -61,7 +79,13 @@ func TestChat(c *gin.Context) {
 	}
 	logAITurn(id, testAITurnSender, req.Message, reply, model, knowledgeCount, usedShippingTool, escalate, turnError, latencyMs)
 	incrementAIUsage(agent.TenantID)
-	c.JSON(200, gin.H{"reply": reply, "escalate": escalate, "model": model})
+
+	out := gin.H{"reply": reply, "escalate": escalate, "model": model}
+	// Pratinjau deteksi order (dry-run): tampilkan apa yang AKAN tercatat, tanpa tulis ke Sheets/DB.
+	if closing := previewClosing(id, agent, history, req.Message, reply); closing != nil {
+		out["closing"] = closing
+	}
+	c.JSON(200, out)
 }
 
 // AgentAnalytics mengembalikan ringkasan + tren 7 hari untuk satu agent.

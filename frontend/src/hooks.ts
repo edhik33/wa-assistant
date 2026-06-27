@@ -668,9 +668,20 @@ export function useResumeHandoff(agentId: number) {
   });
 }
 
+export interface ClosingPreview {
+  detected: boolean;
+  complete: boolean;
+  confidence: number;
+  missing: string[];
+  data: Record<string, unknown>;
+  sheet_configured: boolean;
+}
+
 export function useTestChat(agentId: number) {
   return useMutation({
-    mutationFn: async (message: string) =>
-      (await api.post(`/agents/${agentId}/test-chat`, { message })).data as { reply: string; escalate: boolean; model?: string },
+    mutationFn: async (vars: { message: string; history: { role: 'user' | 'bot'; text: string }[] }) =>
+      (await api.post(`/agents/${agentId}/test-chat`, vars)).data as {
+        reply: string; escalate: boolean; model?: string; closing?: ClosingPreview;
+      },
   });
 }
