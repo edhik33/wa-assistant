@@ -7,7 +7,7 @@ type GroupGuardConfig struct {
 	ID        uint   `gorm:"primaryKey" json:"id"`
 	TenantID  uint   `gorm:"index" json:"tenant_id"`
 	AgentID   uint   `gorm:"index;not null;uniqueIndex:idx_groupguard_agent_group,priority:1" json:"agent_id"`
-	GroupJID  string `gorm:"size:64;not null;uniqueIndex:idx_groupguard_agent_group,priority:2" json:"group_jid"`
+	GroupJID  string `gorm:"column:group_jid;size:64;not null;uniqueIndex:idx_groupguard_agent_group,priority:2" json:"group_jid"`
 	GroupName string `gorm:"size:128" json:"group_name"`
 	Enabled   bool   `gorm:"not null;default:false" json:"enabled"`
 
@@ -32,10 +32,10 @@ type GroupGuardConfig struct {
 type GroupModerationLog struct {
 	ID         uint   `gorm:"primaryKey" json:"id"`
 	AgentID    uint   `gorm:"index;not null" json:"agent_id"`
-	GroupJID   string `gorm:"size:64;index" json:"group_jid"`
+	GroupJID   string `gorm:"column:group_jid;size:64;index" json:"group_jid"`
 	GroupName  string `gorm:"size:128" json:"group_name"`
 	Sender     string `gorm:"size:32" json:"sender"`      // nomor pengirim (untuk tampil)
-	SenderJID  string `gorm:"size:64" json:"-"`           // JID asli (untuk kick/revoke)
+	SenderJID  string `gorm:"column:sender_jid;size:64" json:"-"`           // JID asli (untuk kick/revoke)
 	SenderName string `gorm:"size:128" json:"sender_name"`
 	WAMsgID    string `gorm:"size:64" json:"-"`           // id pesan WA (untuk revoke)
 	Action     string `gorm:"size:16;index" json:"action"`  // flagged, deleted, kicked, warned, dismissed
