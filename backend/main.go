@@ -141,6 +141,7 @@ func main() {
 			auth.GET("/agents/:id/crawl", handlers.LatestCrawl)
 			auth.GET("/agents/:id/crawl/:jobId", handlers.CrawlStatus)
 			auth.POST("/agents/:id/crawl/:jobId/train", handlers.TrainCrawlPages)
+			auth.POST("/agents/:id/crawl/:jobId/train/stop", handlers.StopTraining)
 			auth.GET("/agents/:id/knowledge-usage", handlers.KnowledgeUsage)
 			auth.DELETE("/agents/:id/knowledge-web", handlers.DeleteWebKnowledge)
 			auth.POST("/agents/:id/persona/regenerate", handlers.RegeneratePersona)

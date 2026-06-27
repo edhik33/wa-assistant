@@ -154,7 +154,15 @@ func runWebTraining(agentID, jobID uint, pageIDs []uint, maxChars int) {
 	var pages []models.CrawlPage
 	database.DB.Where("agent_id = ? AND job_id = ? AND id IN ?", agentID, jobID, pageIDs).Find(&pages)
 
+	stopped := false
 	for i := range pages {
+		// Hormati permintaan Stop dari user: berhenti rapi antar-halaman.
+		// Halaman yang sudah jadi FAQ tetap tersimpan; sisanya bisa dilatih lagi nanti.
+		if jobStatusIs(jobID, "stopping") {
+			log.Printf("[train] dihentikan user pada halaman %d/%d (agent %d)", i, len(pages), agentID)
+			stopped = true
+			break
+		}
 		p := pages[i]
 		if p.Status == "trained" || strings.TrimSpace(p.Content) == "" {
 			continue
@@ -201,12 +209,41 @@ func runWebTraining(agentID, jobID uint, pageIDs []uint, maxChars int) {
 			Updates(map[string]any{"status": st, "error": errMsg, "trained_at": &now})
 	}
 	services.InvalidateKB(agentID)
-	maybeAutoPersona(agentID, jobID)
+	// Persona otomatis hanya bila pelatihan tuntas (kalau di-Stop, jangan boros panggil AI lagi).
+	if !stopped {
+		maybeAutoPersona(agentID, jobID)
+	}
 }
 
 func setPageStatus(pageID uint, status, errMsg string) {
 	database.DB.Model(&models.CrawlPage{}).Where("id = ?", pageID).
 		Updates(map[string]any{"status": status, "error": errMsg})
+}
+
+// jobStatusIs membaca status job terkini dari DB (dipakai untuk mendeteksi permintaan Stop saat training).
+func jobStatusIs(jobID uint, status string) bool {
+	var s string
+	database.DB.Model(&models.CrawlJob{}).Where("id = ?", jobID).Select("status").Scan(&s)
+	return s == status
+}
+
+// StopTraining menandai job pelatihan agar berhenti rapi pada halaman berikutnya.
+func StopTraining(c *gin.Context) {
+	aid, ok := resolveAgent(c)
+	if !ok {
+		return
+	}
+	var job models.CrawlJob
+	if database.DB.Where("agent_id = ?", aid).First(&job, c.Param("jobId")).Error != nil {
+		c.JSON(404, gin.H{"error": "Job tidak ditemukan"})
+		return
+	}
+	if job.Status != "training" {
+		c.JSON(409, gin.H{"error": "Tidak ada pelatihan yang sedang berjalan"})
+		return
+	}
+	database.DB.Model(&job).Update("status", "stopping")
+	c.JSON(200, gin.H{"stopping": true})
 }
 
 // fallbackChunks dipakai bila AI FAQ gagal: simpan konten bersih sebagai beberapa potongan.

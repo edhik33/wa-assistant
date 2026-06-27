@@ -590,10 +590,10 @@ export function useCrawlStatus(agentId: number) {
     queryKey: ['agent', agentId, 'crawl'],
     queryFn: async () => (await api.get(`/agents/${agentId}/crawl`)).data,
     enabled: !!agentId,
-    // Polling cepat selagi crawl ATAU pelatihan berjalan, berhenti saat idle/selesai.
+    // Polling cepat selagi crawl/pelatihan berjalan (termasuk saat dihentikan), berhenti saat idle/selesai.
     refetchInterval: (q) => {
       const s = q.state.data?.job?.status;
-      return s === 'pending' || s === 'crawling' || s === 'training' ? 2500 : false;
+      return s === 'pending' || s === 'crawling' || s === 'training' || s === 'stopping' ? 2500 : false;
     },
   });
 }
@@ -624,6 +624,15 @@ export function useTrainCrawlPages(agentId: number) {
       qc.invalidateQueries({ queryKey: ['agent', agentId, 'knowledge'] });
       qc.invalidateQueries({ queryKey: ['agent', agentId, 'knowledge-usage'] });
     },
+  });
+}
+
+export function useStopTraining(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (jobId: number) =>
+      (await api.post(`/agents/${agentId}/crawl/${jobId}/train/stop`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['agent', agentId, 'crawl'] }),
   });
 }
 

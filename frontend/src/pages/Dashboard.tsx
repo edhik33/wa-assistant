@@ -53,7 +53,7 @@ import {
   useAgentHandoffs, useResumeHandoff, useAgentAIMetrics,
   useUsage,
   useCrawlStatus, useKnowledgeUsage, useStartCrawl, useTrainCrawlPages, useDeleteWebKnowledge,
-  useRegeneratePersona,
+  useRegeneratePersona, useStopTraining,
 } from '../hooks';
 import BillingPanel from '../components/BillingPanel';
 
@@ -180,11 +180,12 @@ export default function Dashboard() {
   const trainCrawlMut = useTrainCrawlPages(agentId);
   const deleteWebMut = useDeleteWebKnowledge(agentId);
   const regenPersonaMut = useRegeneratePersona(agentId);
+  const stopTrainMut = useStopTraining(agentId);
   const [crawlUrl, setCrawlUrl] = useState('');
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
   const crawlJob = crawlData?.job ?? null;
   const crawlPages = crawlData?.pages ?? [];
-  const isTraining = crawlJob?.status === 'training';
+  const isTraining = crawlJob?.status === 'training' || crawlJob?.status === 'stopping';
   const trainedCount = crawlPages.filter(p => p.status === 'trained').length;
 
   // Auto-pilih halaman rekomendasi sekali tiap kali crawl baru selesai (biar user tinggal klik "Latih").
@@ -219,6 +220,16 @@ export default function Dashboard() {
     } catch (e) {
       const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal memulai pelatihan';
       swalToast(msg, 'error');
+    }
+  };
+
+  const stopTraining = async () => {
+    if (!crawlJob) return;
+    try {
+      await stopTrainMut.mutateAsync(crawlJob.id);
+      swalToast('Menghentikan pelatihan… halaman yang sudah jadi tetap tersimpan', 'success');
+    } catch {
+      swalToast('Gagal menghentikan pelatihan', 'error');
     }
   };
 
@@ -797,6 +808,7 @@ export default function Dashboard() {
                       <Chip size="small"
                         label={crawlJob.status === 'crawling' || crawlJob.status === 'pending' ? 'Menelusuri…'
                           : crawlJob.status === 'training' ? 'Melatih AI…'
+                          : crawlJob.status === 'stopping' ? 'Menghentikan…'
                           : crawlJob.status === 'failed' ? 'Gagal' : `Selesai · ${crawlJob.pages_found} halaman`}
                         color={crawlJob.status === 'failed' ? 'error' : crawlJob.status === 'done' ? 'success' : 'default'} />
                       {crawlJob.domain && <Typography variant="caption" color="text.secondary">{crawlJob.domain}</Typography>}
@@ -805,11 +817,20 @@ export default function Dashboard() {
 
                     {isTraining && (
                       <Box sx={{ mb: 1 }}>
-                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.25 }}>
-                          <CircularProgress size={14} />
-                          <Typography variant="caption" color="text.secondary">
-                            AI sedang merangkum halaman jadi FAQ ({trainedCount}/{crawlPages.length} halaman)…
-                          </Typography>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.25, justifyContent: 'space-between' }}>
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
+                            <CircularProgress size={14} />
+                            <Typography variant="caption" color="text.secondary">
+                              {crawlJob.status === 'stopping'
+                                ? 'Menghentikan pelatihan…'
+                                : `AI sedang merangkum halaman jadi FAQ (${trainedCount}/${crawlPages.length} halaman)…`}
+                            </Typography>
+                          </Stack>
+                          <Button size="small" color="error" variant="outlined" sx={{ flexShrink: 0 }}
+                            disabled={stopTrainMut.isPending || crawlJob.status === 'stopping'}
+                            onClick={stopTraining}>
+                            {crawlJob.status === 'stopping' ? 'Menghentikan…' : 'Stop'}
+                          </Button>
                         </Stack>
                         <LinearProgress variant="determinate"
                           value={crawlPages.length ? (trainedCount / crawlPages.length) * 100 : 0}

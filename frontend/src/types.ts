@@ -294,7 +294,7 @@ export interface CrawlJob {
   id: number;
   root_url: string;
   domain: string;
-  status: 'pending' | 'crawling' | 'training' | 'done' | 'failed';
+  status: 'pending' | 'crawling' | 'training' | 'stopping' | 'done' | 'failed';
   pages_found: number;
   error?: string;
 }
