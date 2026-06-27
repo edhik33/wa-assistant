@@ -116,34 +116,51 @@ type ClosingResult struct {
 const closingExtractorSystem = `Kamu adalah data extractor. Tugasmu membaca riwayat percakapan dan mengekstrak data sesuai schema. Output HANYA JSON. Kalau data belum lengkap, tetap berikan JSON dengan field yang ada. Jangan menambah field di luar schema.`
 
 // extractClosingData menjalankan AI extractor pada satu prompt dan mengembalikan hasil terstruktur.
+// Mencoba hingga 3x karena model kadang flaky membalas kosong / JSON tak lengkap.
 func extractClosingData(prompt string) (*ClosingResult, error) {
 	cfg := openai.DefaultConfig(config.EnvRequired("OPENAI_API_KEY"))
 	cfg.BaseURL = config.Env("OPENAI_BASE_URL", "https://api.deepseek.com/v1")
 	client := openai.NewClientWithConfig(cfg)
+	model := config.Env("OPENAI_MODEL", "deepseek-v4-pro")
 
-	resp, err := client.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-		Model: config.Env("OPENAI_MODEL", "deepseek-v4-pro"),
-		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleSystem, Content: closingExtractorSystem},
-			{Role: openai.ChatMessageRoleUser, Content: prompt},
-		},
-		MaxTokens: 1000,
-	})
-	if err != nil {
-		return nil, err
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		resp, err := client.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
+			Model: model,
+			Messages: []openai.ChatCompletionMessage{
+				{Role: openai.ChatMessageRoleSystem, Content: closingExtractorSystem},
+				{Role: openai.ChatMessageRoleUser, Content: prompt},
+			},
+			MaxTokens:   1000,
+			Temperature: 0.2,
+		})
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if len(resp.Choices) == 0 {
+			lastErr = fmt.Errorf("extractor tidak mengembalikan jawaban")
+			continue
+		}
+		content := strings.TrimSpace(resp.Choices[0].Message.Content)
+		content = strings.TrimPrefix(content, "```json")
+		content = strings.TrimPrefix(content, "```")
+		content = strings.TrimSuffix(content, "```")
+		content = strings.TrimSpace(content)
+		if content == "" {
+			lastErr = fmt.Errorf("extractor balas kosong (finish=%s)", resp.Choices[0].FinishReason)
+			log.Printf("[closing] extractor kosong, retry %d/3 (finish=%s)", attempt, resp.Choices[0].FinishReason)
+			continue
+		}
+		var result ClosingResult
+		if err := json.Unmarshal([]byte(content), &result); err != nil {
+			lastErr = fmt.Errorf("parse JSON gagal (len=%d): %w", len(content), err)
+			log.Printf("[closing] parse gagal, retry %d/3: %v", attempt, err)
+			continue
+		}
+		return &result, nil
 	}
-	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("extractor tidak mengembalikan jawaban")
-	}
-	content := strings.TrimSpace(resp.Choices[0].Message.Content)
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	var result ClosingResult
-	if err := json.Unmarshal([]byte(content), &result); err != nil {
-		return nil, fmt.Errorf("parse JSON gagal (len=%d): %w", len(content), err)
-	}
-	return &result, nil
+	return nil, lastErr
 }
 
 // closingMinConfidence = ambang minimum keyakinan extractor. Cukup 0.6 karena required-field
