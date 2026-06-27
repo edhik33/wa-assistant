@@ -88,6 +88,8 @@ harga/stok/detail yang tidak diketahui — arahkan ke admin/website untuk hal it
 Jangan mengarang fakta yang tak ada di konten. Output HANYA teks persona, tanpa kalimat pembuka/penutup.`
 
 // GenerateWebPersona menyusun system prompt persona dari beberapa cuplikan konten web (Home/About).
+// Mencoba hingga 2x dan menyimpan hasil terlengkap, karena model kadang berhenti terlalu dini
+// (persona terpotong di tengah, mis. berhenti tepat di sebuah heading).
 func GenerateWebPersona(samples []string) (string, error) {
 	joined := strings.TrimSpace(strings.Join(samples, "\n\n---\n\n"))
 	if joined == "" {
@@ -97,24 +99,56 @@ func GenerateWebPersona(samples []string) (string, error) {
 		joined = string(r[:webPersonaMaxInputRunes])
 	}
 	p := activePreset()
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-	defer cancel()
-	resp, err := clientForPreset(p).CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-		Model: p.Model,
-		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleSystem, Content: webPersonaSystem},
-			{Role: openai.ChatMessageRoleUser, Content: "Konten website:\n" + joined},
-		},
-		MaxTokens:   900, // ruang cukup agar persona lengkap tidak terpotong
-		Temperature: 0.5,
-	})
-	if err != nil {
-		return "", err
+	userMsg := "Konten website:\n" + joined
+
+	var best string
+	var lastErr error
+	for attempt := 1; attempt <= 2; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		resp, err := clientForPreset(p).CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+			Model: p.Model,
+			Messages: []openai.ChatCompletionMessage{
+				{Role: openai.ChatMessageRoleSystem, Content: webPersonaSystem},
+				{Role: openai.ChatMessageRoleUser, Content: userMsg},
+			},
+			MaxTokens:   1500, // ruang lega agar persona lengkap tidak terpotong
+			Temperature: 0.4,
+		})
+		cancel()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		lastErr = nil
+		if len(resp.Choices) == 0 {
+			continue
+		}
+		out := strings.TrimSpace(resp.Choices[0].Message.Content)
+		fr := string(resp.Choices[0].FinishReason)
+		if len([]rune(out)) > len([]rune(best)) {
+			best = out // simpan yang terpanjang sebagai cadangan
+		}
+		if personaLooksComplete(out) {
+			return out, nil
+		}
+		log.Printf("[persona] hasil pendek/terpotong (len=%d, finish=%s) — retry", len([]rune(out)), fr)
 	}
-	if len(resp.Choices) == 0 {
-		return "", nil
+	return best, lastErr // best-effort: kembalikan hasil terlengkap walau belum sempurna
+}
+
+// personaLooksComplete menolak persona yang jelas terpotong (terlalu pendek atau berhenti di heading).
+func personaLooksComplete(s string) bool {
+	s = strings.TrimSpace(s)
+	if len([]rune(s)) < 350 {
+		return false
 	}
-	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+	lines := strings.Split(s, "\n")
+	last := strings.TrimSpace(lines[len(lines)-1])
+	// Berhenti tepat di heading markdown ("## ...") atau label tanpa isi = terpotong.
+	if strings.HasPrefix(last, "#") || strings.HasSuffix(last, ":") {
+		return false
+	}
+	return true
 }
 
 // parseQAJSON mengekstrak array JSON [{question,answer}] dari output AI (toleran markdown/teks ekstra).
