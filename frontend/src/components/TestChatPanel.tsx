@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { Box, Typography, Card, CardContent, TextField, IconButton, Stack, Chip, CircularProgress, Alert } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import SmartToyIcon from '@mui/icons-material/SmartToyOutlined';
@@ -7,6 +7,15 @@ import { useTestChat, type ClosingPreview } from '../hooks';
 import PageHeader from './PageHeader';
 
 type Msg = { role: 'user' | 'bot'; text: string; escalate?: boolean; model?: string; closing?: ClosingPreview };
+
+// Ubah URL (mis. https://wa.me/62...) di teks jadi tautan yang bisa diklik.
+function renderWithLinks(text: string) {
+  return text.split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
+    /^https?:\/\//.test(part)
+      ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', fontWeight: 700, textDecoration: 'underline' }}>{part}</a>
+      : <Fragment key={i}>{part}</Fragment>
+  );
+}
 
 // ClosingCard menampilkan hasil deteksi order (dry-run) di simulator: apa yang AKAN tercatat.
 function ClosingCard({ c }: { c: ClosingPreview }) {
@@ -89,7 +98,7 @@ export default function TestChatPanel({ agentId }: { agentId: number }) {
             {msgs.map((m, i) => (
               <Box key={i} sx={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
                 <Box sx={{ px: 1.25, py: 0.75, borderRadius: 1.5, bgcolor: m.role === 'user' ? 'primary.main' : '#eceff1', color: m.role === 'user' ? '#fff' : 'text.primary', whiteSpace: 'pre-wrap', fontSize: '0.88rem', lineHeight: 1.45 }}>
-                  {m.text}
+                  {renderWithLinks(m.text)}
                 </Box>
                 {m.role === 'bot' && m.model && (
                   <Chip icon={<SmartToyIcon sx={{ fontSize: 14 }} />} label={`Dijawab oleh ${m.model}`} size="small" variant="outlined"

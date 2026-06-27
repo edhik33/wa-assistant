@@ -80,6 +80,7 @@ func TestChat(c *gin.Context) {
 	logAITurn(id, testAITurnSender, req.Message, reply, model, knowledgeCount, usedShippingTool, escalate, turnError, latencyMs)
 	incrementAIUsage(agent.TenantID)
 
+	reply = services.LinkifyWhatsApp(reply, agent.Number) // nomor WA jadi tautan klik (kecuali nomor sendiri)
 	out := gin.H{"reply": reply, "escalate": escalate, "model": model}
 	// Pratinjau deteksi order (dry-run): tampilkan apa yang AKAN tercatat, tanpa tulis ke Sheets/DB.
 	if closing := previewClosing(id, agent, history, req.Message, reply); closing != nil {

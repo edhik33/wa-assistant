@@ -336,7 +336,8 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 		log.Printf("Eskalasi (agent %d) dari %s: %q", agentID, num, in.Text)
 	}
 	latencyMs := time.Since(turnStart).Milliseconds()
-	sendErr := sendChunked(agentID, sender, reply) // balasan panjang dipecah jadi beberapa bubble (lebih manusiawi)
+	reply = services.LinkifyWhatsApp(reply, agent.Number) // nomor WA jadi tautan klik (kecuali nomor sendiri)
+	sendErr := sendChunked(agentID, sender, reply)        // balasan panjang dipecah jadi beberapa bubble (lebih manusiawi)
 	if sendErr != nil {
 		log.Printf("WA send chunked gagal (agent %d, %s): %v", agentID, num, sendErr)
 	}
