@@ -476,9 +476,33 @@ type WAGroup struct {
 	JID          string `json:"jid"`
 	Name         string `json:"name"`
 	Participants int    `json:"participants"`
+	// BotIsAdmin = apakah nomor yang tertaut (Wai) menjadi admin di grup ini.
+	// Penentu apakah fitur moderasi (kick/hapus) bisa dijalankan di grup tersebut.
+	BotIsAdmin bool `json:"bot_is_admin"`
 }
 
-// GetGroups mengambil daftar grup yang diikuti.
+// botIsAdminOf mengecek apakah akun yang tertaut adalah admin/super-admin di grup g.
+// Mencocokkan identitas bot lewat nomor telepon (Store.ID) maupun LID (Store.LID),
+// karena anggota grup bisa beralamat sebagai nomor atau LID.
+func botIsAdminOf(client *whatsmeow.Client, g *types.GroupInfo) bool {
+	if client.Store.ID == nil {
+		return false
+	}
+	selfPN := client.Store.ID.User
+	selfLID := client.Store.LID.User // kosong kalau belum punya LID
+	for _, p := range g.Participants {
+		isSelf := p.JID.User == selfPN || p.PhoneNumber.User == selfPN
+		if selfLID != "" && p.LID.User == selfLID {
+			isSelf = true
+		}
+		if isSelf {
+			return p.IsAdmin || p.IsSuperAdmin
+		}
+	}
+	return false
+}
+
+// GetGroups mengambil daftar grup yang diikuti beserta status admin bot di tiap grup.
 func (w *waInstance) GetGroups() ([]WAGroup, error) {
 	w.mu.Lock()
 	client := w.client
@@ -492,7 +516,10 @@ func (w *waInstance) GetGroups() ([]WAGroup, error) {
 	}
 	out := make([]WAGroup, 0, len(groups))
 	for _, g := range groups {
-		out = append(out, WAGroup{JID: g.JID.String(), Name: g.Name, Participants: len(g.Participants)})
+		out = append(out, WAGroup{
+			JID: g.JID.String(), Name: g.Name, Participants: len(g.Participants),
+			BotIsAdmin: botIsAdminOf(client, g),
+		})
 	}
 	return out, nil
 }

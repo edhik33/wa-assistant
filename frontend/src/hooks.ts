@@ -245,6 +245,16 @@ export function useGroups(agentId: number) {
   return useMutation({ mutationFn: async () => (await api.get(`/agents/${agentId}/groups`)).data.data as WAGroup[] });
 }
 
+// useManagedGroups = query daftar grup (auto-load) untuk halaman Penjaga Grup.
+export function useManagedGroups(agentId: number, enabled = true) {
+  return useQuery({
+    queryKey: ['managed-groups', agentId],
+    queryFn: async () => (await api.get(`/agents/${agentId}/groups`)).data.data as WAGroup[],
+    enabled,
+    retry: false,
+  });
+}
+
 export function useGroupMembers(agentId: number) {
   return useMutation({ mutationFn: async (jid: string) => (await api.get(`/agents/${agentId}/group-members`, { params: { jid } })).data.data as ContactList });
 }

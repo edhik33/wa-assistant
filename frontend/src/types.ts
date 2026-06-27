@@ -264,6 +264,7 @@ export interface WAGroup {
   jid: string;
   name: string;
   participants: number;
+  bot_is_admin: boolean;
 }
 
 export interface LabelInfo {

@@ -20,6 +20,7 @@ import CalendarIcon from '@mui/icons-material/EventAvailableOutlined';
 import RuleIcon from '@mui/icons-material/RuleOutlined';
 import TemplateIcon from '@mui/icons-material/TextSnippetOutlined';
 import FollowUpIcon from '@mui/icons-material/ScheduleSendOutlined';
+import ShieldIcon from '@mui/icons-material/ShieldOutlined';
 import ContactsIcon from '@mui/icons-material/ContactsOutlined';
 import CreditCardIcon from '@mui/icons-material/CreditCardOutlined';
 import PersonIcon from '@mui/icons-material/Person';
@@ -45,6 +46,7 @@ import AutoReplyPanel from '../components/AutoReplyPanel';
 import TemplatePanel from '../components/TemplatePanel';
 import ContactsPanel from '../components/ContactsPanel';
 import FollowUpPanel from '../components/FollowUpPanel';
+import GroupGuardPanel from '../components/GroupGuardPanel';
 import PageHeader from '../components/PageHeader';
 import {
   useAgents, useAgentStatuses, useAgentStatus, useAgentKnowledge,
@@ -78,6 +80,9 @@ const NAV_GROUPS = [
     { id: 'auto-reply', label: 'Auto-Reply', icon: <RuleIcon fontSize="small" /> },
     { id: 'template', label: 'Template', icon: <TemplateIcon fontSize="small" /> },
     { id: 'coba-chat', label: 'Coba Chat AI', icon: <ChatIcon fontSize="small" /> },
+  ] },
+  { section: 'Grup', items: [
+    { id: 'grup', label: 'Penjaga Grup', icon: <ShieldIcon fontSize="small" /> },
   ] },
   { section: 'Kampanye', items: [
     { id: 'broadcast', label: 'Broadcast', icon: <CampaignIcon fontSize="small" /> },
@@ -1295,6 +1300,7 @@ export default function Dashboard() {
         )}
         {tab === 'inbox' && <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}><InboxPanel agentId={agentId} aiEnabled={aiEnabled} seed={seed?.kind === 'inbox' ? seed : null} /></Box>}
         {tab === 'coba-chat' && <TestChatPanel agentId={agentId} />}
+        {tab === 'grup' && <GroupGuardPanel agentId={agentId} />}
         {tab === 'broadcast' && <BroadcastPanel agentId={agentId} seed={seed?.kind === 'broadcast' ? seed : null} />}
         {tab === 'kalender' && <CalendarPanel agentId={agentId} />}
         {tab === 'auto-reply' && <AutoReplyPanel agentId={agentId} />}
