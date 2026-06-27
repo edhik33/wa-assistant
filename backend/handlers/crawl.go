@@ -153,7 +153,9 @@ func runWebTraining(agentID, jobID uint, pageIDs []uint, maxChars int) {
 	used := knowledgeCharsUsed(agentID)
 	var pages []models.CrawlPage
 	database.DB.Where("agent_id = ? AND job_id = ? AND id IN ?", agentID, jobID, pageIDs).Find(&pages)
+	log.Printf("[train] mulai agent %d job %d: %d halaman dipilih", agentID, jobID, len(pages))
 
+	trainedN, skippedN, failedN, totalFAQ := 0, 0, 0, 0
 	stopped := false
 	for i := range pages {
 		// Hormati permintaan Stop dari user: berhenti rapi antar-halaman.
@@ -181,6 +183,8 @@ func runWebTraining(agentID, jobID uint, pageIDs []uint, maxChars int) {
 		}
 		if len(faqs) == 0 {
 			setPageStatus(p.ID, "skipped", "tidak ada info berguna untuk pelanggan")
+			skippedN++
+			log.Printf("[train] page %d (%s) -> dilewati (tak ada info berguna)", p.ID, p.URL)
 			continue
 		}
 
@@ -204,11 +208,17 @@ func runWebTraining(agentID, jobID uint, pageIDs []uint, maxChars int) {
 		errMsg := ""
 		if added == 0 {
 			st, errMsg = "failed", "kuota knowledge penuh"
+			failedN++
+		} else {
+			trainedN++
+			totalFAQ += added
 		}
+		log.Printf("[train] page %d (%s) -> %s (%d FAQ)", p.ID, p.URL, st, added)
 		database.DB.Model(&models.CrawlPage{}).Where("id = ?", p.ID).
 			Updates(map[string]any{"status": st, "error": errMsg, "trained_at": &now})
 	}
 	services.InvalidateKB(agentID)
+	log.Printf("[train] SELESAI agent %d job %d: %d dilatih (%d FAQ), %d dilewati, %d gagal", agentID, jobID, trainedN, totalFAQ, skippedN, failedN)
 	// Persona otomatis hanya bila pelatihan tuntas (kalau di-Stop, jangan boros panggil AI lagi).
 	if !stopped {
 		maybeAutoPersona(agentID, jobID)

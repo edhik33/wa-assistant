@@ -176,7 +176,9 @@ func finishCrawl(jobID uint, pages int, errMsg string) {
 	database.DB.Model(&models.CrawlJob{}).Where("id = ?", jobID).Updates(map[string]any{
 		"status": status, "pages_found": pages, "error": errMsg, "finished_at": &now,
 	})
-	log.Printf("Crawl job #%d selesai: %d halaman, status=%s %s", jobID, pages, status, errMsg)
+	var rec int64
+	database.DB.Model(&models.CrawlPage{}).Where("job_id = ? AND recommended = ?", jobID, true).Count(&rec)
+	log.Printf("Crawl job #%d selesai: %d halaman (%d direkomendasi), status=%s %s", jobID, pages, rec, status, errMsg)
 }
 
 // fetchPage mengambil satu halaman & mengembalikan judul, teks bersih, dan daftar link.
