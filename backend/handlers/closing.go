@@ -53,7 +53,11 @@ func maybeExtractAndExportClosing(agentID uint, sender string) {
 		log.Printf("[closing] Agent %d: extractor gagal: %v", agentID, err)
 		return
 	}
-	if result.Confidence < 0.7 {
+	// Nomor WA pelanggan = nomor pengirim chat (otomatis). Isi field bertipe phone yang kosong
+	// supaya tak bergantung pada pelanggan mengetik nomornya.
+	fillPhoneFromSender(form.SchemaJSON, result.Data, sender)
+
+	if result.Confidence < closingMinConfidence {
 		log.Printf("[closing] Agent %d: confidence rendah %.2f, skip", agentID, result.Confidence)
 		return
 	}
@@ -140,6 +144,35 @@ func extractClosingData(prompt string) (*ClosingResult, error) {
 		return nil, fmt.Errorf("parse JSON gagal (len=%d): %w", len(content), err)
 	}
 	return &result, nil
+}
+
+// closingMinConfidence = ambang minimum keyakinan extractor. Cukup 0.6 karena required-field
+// (nama+produk+nomor) sudah jadi penjaga utama; 0.7 dulu kelewat ketat & melewatkan order asli.
+const closingMinConfidence = 0.6
+
+// fillPhoneFromSender mengisi field bertipe "phone" yang masih kosong dengan nomor pengirim,
+// karena nomor WhatsApp pelanggan otomatis diketahui dari chat.
+func fillPhoneFromSender(schemaJSON string, data map[string]interface{}, sender string) {
+	if data == nil || strings.TrimSpace(sender) == "" {
+		return
+	}
+	var schema struct {
+		Fields []struct {
+			Key  string `json:"key"`
+			Type string `json:"type"`
+		} `json:"fields"`
+	}
+	if json.Unmarshal([]byte(schemaJSON), &schema) != nil {
+		return
+	}
+	for _, f := range schema.Fields {
+		if f.Type != "phone" {
+			continue
+		}
+		if v, ok := data[f.Key]; !ok || v == nil || v == "" {
+			data[f.Key] = sender
+		}
+	}
 }
 
 // orderIntentKeywords = sinyal kasar bahwa percakapan menuju order (untuk hemat token di simulator).
@@ -232,10 +265,13 @@ func previewClosing(agentID uint, agent models.Agent, history []models.ChatHisto
 		log.Printf("[closing-preview] agent %d: %v", agentID, err)
 		return nil
 	}
+	// Di chat asli nomor diisi otomatis dari pengirim; di simulator pakai placeholder agar
+	// pratinjau tidak salah menandai "Nomor WA" sebagai kurang.
+	fillPhoneFromSender(form.SchemaJSON, result.Data, "(otomatis dari nomor pelanggan)")
 	missing := missingRequiredFields(form.SchemaJSON, result.Data)
 	complete := len(missing) == 0
 	return map[string]any{
-		"detected":         complete && result.Confidence >= 0.7,
+		"detected":         complete && result.Confidence >= closingMinConfidence,
 		"complete":         complete,
 		"confidence":       result.Confidence,
 		"missing":          missing,
@@ -253,7 +289,8 @@ func buildExtractorPrompt(agentID uint, sender string, agent models.Agent, form 
 	var sb strings.Builder
 	sb.WriteString("Schema data yang harus diekstrak:\n")
 	sb.WriteString(form.SchemaJSON)
-	sb.WriteString("\n\nRingkasan percakapan sebelumnya:\n")
+	sb.WriteString("\n\nNomor WhatsApp pelanggan (pengirim chat ini): " + sender + " — pakai untuk field bertipe phone bila pelanggan tidak menyebut nomor lain.\n")
+	sb.WriteString("\nRingkasan percakapan sebelumnya:\n")
 	var mem models.ConversationMemory
 	if database.DB.Where("agent_id = ? AND sender = ?", agentID, sender).First(&mem).Error == nil && mem.Summary != "" {
 		sb.WriteString(mem.Summary)
