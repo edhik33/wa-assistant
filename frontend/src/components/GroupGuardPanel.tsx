@@ -1,243 +1,205 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions,
-  DialogContent, DialogTitle, Divider, FormControlLabel, Stack, Switch, Tab, Tabs,
-  TextField, Typography,
+  Alert, Avatar, Box, Button, Chip, CircularProgress, Divider, IconButton,
+  InputAdornment, Paper, Stack, Tab, Tabs, TextField, ToggleButton,
+  ToggleButtonGroup, Tooltip, Typography,
 } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import AdminIcon from '@mui/icons-material/AdminPanelSettingsOutlined';
+import CloseIcon from '@mui/icons-material/Close';
 import GroupsIcon from '@mui/icons-material/GroupsOutlined';
+import HistoryIcon from '@mui/icons-material/HistoryOutlined';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import SearchIcon from '@mui/icons-material/Search';
 import ShieldIcon from '@mui/icons-material/ShieldOutlined';
 import TuneIcon from '@mui/icons-material/Tune';
+import EmptyState from './common/EmptyState';
+import GroupGuardConfigDialog from './group-guard/GroupGuardConfigDialog';
+import GroupModerationFeed from './group-guard/GroupModerationFeed';
+import { LoadingState, SummaryGrid } from './group-guard/GroupGuardShared';
 import PageHeader from './PageHeader';
-import {
-  useManagedGroups, useGroupConfig, useSaveGroupConfig, useGroupModeration,
-  useConfirmKick, useDismissModeration,
-} from '../hooks';
-import type { GroupGuardConfig, WAGroup } from '../types';
+import { useManagedGroups } from '../hooks';
+import type { WAGroup } from '../types';
+
+type GroupFilter = 'all' | 'active' | 'needs-admin';
 
 export default function GroupGuardPanel({ agentId }: { agentId: number }) {
   const [tab, setTab] = useState(0);
+
   return (
     <Box>
       <PageHeader
         title="Penjaga Grup"
-        subtitle="Moderasi anti-spam untuk grup yang diikuti nomor ini. Aksi (hapus/keluarkan) hanya jalan di grup tempat Wai menjadi admin."
+        subtitle="Atur perlindungan anti-spam dan tinjau tindakan untuk grup WhatsApp yang dikelola nomor ini."
       />
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-        <Tab label="Grup" />
-        <Tab label="Aktivitas" />
+
+      <Tabs
+        value={tab}
+        onChange={(_, value) => setTab(value)}
+        variant="scrollable"
+        scrollButtons="auto"
+        sx={{ mb: 2, borderBottom: '1px solid', borderColor: 'divider' }}
+      >
+        <Tab icon={<GroupsIcon fontSize="small" />} iconPosition="start" label="Grup" />
+        <Tab icon={<HistoryIcon fontSize="small" />} iconPosition="start" label="Aktivitas" />
       </Tabs>
-      {tab === 0 ? <GroupList agentId={agentId} /> : <ModerationFeed agentId={agentId} />}
+
+      {tab === 0 ? <GroupList agentId={agentId} /> : <GroupModerationFeed agentId={agentId} />}
     </Box>
   );
 }
 
 function GroupList({ agentId }: { agentId: number }) {
-  const { data: groups, isLoading, isError, error, refetch, isFetching } = useManagedGroups(agentId);
+  const { data: groups = [], isLoading, isError, refetch, isFetching } = useManagedGroups(agentId);
   const [editing, setEditing] = useState<WAGroup | null>(null);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<GroupFilter>('all');
 
-  const adminCount = groups?.filter(g => g.bot_is_admin).length ?? 0;
-  const total = groups?.length ?? 0;
+  const totals = useMemo(() => ({
+    total: groups.length,
+    active: groups.filter(group => group.guard_enabled).length,
+    admin: groups.filter(group => group.bot_is_admin).length,
+    needsAdmin: groups.filter(group => !group.bot_is_admin).length,
+  }), [groups]);
+
+  const visibleGroups = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    return groups
+      .filter(group => !keyword || group.name.toLowerCase().includes(keyword) || group.jid.toLowerCase().includes(keyword))
+      .filter(group => filter === 'all' || (filter === 'active' ? group.guard_enabled : !group.bot_is_admin))
+      .sort((a, b) => Number(b.guard_enabled) - Number(a.guard_enabled) || a.name.localeCompare(b.name, 'id'));
+  }, [filter, groups, query]);
+
+  if (isError) {
+    return (
+      <EmptyState
+        icon={<GroupsIcon sx={{ fontSize: 48 }} />}
+        title="Belum ada grup yang dapat dijaga"
+        description="Sambungkan WhatsApp untuk memuat daftar grup, lalu aktifkan aturan anti-spam sesuai kebutuhan."
+        actionLabel="Coba Lagi"
+        onAction={() => refetch()}
+      />
+    );
+  }
 
   return (
     <Box>
-      <Alert severity="info" icon={<ShieldIcon fontSize="small" />} sx={{ mb: 2 }}>
-        <Typography variant="body2">
-          Status admin terdeteksi otomatis. Jadikan Wai admin di grup yang ingin dimoderasi, lalu klik grupnya untuk mengatur aturan anti-spam.
-        </Typography>
-      </Alert>
+      <SummaryGrid items={[
+        { label: 'Total grup', value: totals.total },
+        { label: 'Penjaga aktif', value: totals.active, tone: totals.active ? 'success.main' : 'text.secondary' },
+        { label: 'Wai sudah admin', value: totals.admin, tone: totals.admin ? 'primary.main' : 'text.secondary' },
+        { label: 'Perlu akses admin', value: totals.needsAdmin, tone: totals.needsAdmin ? 'warning.main' : 'text.secondary' },
+      ]} />
 
-      <Stack direction="row" sx={{ mb: 1.5, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-        <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
-          <Chip size="small" label={`${total} grup`} variant="outlined" />
-          <Chip size="small" color="success" label={`${adminCount} sebagai admin`} variant="outlined" />
-          {total - adminCount > 0 && <Chip size="small" color="warning" label={`${total - adminCount} bukan admin`} variant="outlined" />}
+      {totals.needsAdmin > 0 && (
+        <Alert severity="warning" icon={<AdminIcon fontSize="small" />} sx={{ mb: 1.5 }}>
+          <Typography variant="body2">
+            <b>{totals.needsAdmin} grup belum memberi Wai akses admin.</b> Aturan bisa disiapkan, tetapi Wai belum dapat menghapus pesan atau mengeluarkan anggota di grup tersebut.
+          </Typography>
+        </Alert>
+      )}
+
+      <Paper variant="outlined" sx={{ mb: 1.5, p: 1 }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ alignItems: { xs: 'stretch', md: 'center' } }}>
+          <TextField
+            size="small"
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            placeholder="Cari nama grup..."
+            sx={{ flex: 1 }}
+            slotProps={{
+              input: {
+                startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
+                endAdornment: query ? (
+                  <InputAdornment position="end">
+                    <IconButton size="small" aria-label="Hapus pencarian" onClick={() => setQuery('')}>
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ) : undefined,
+              },
+            }}
+          />
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={filter}
+            onChange={(_, value: GroupFilter | null) => value && setFilter(value)}
+            aria-label="Filter grup"
+            sx={{ alignSelf: { xs: 'stretch', md: 'center' }, '& .MuiToggleButton-root': { flex: { xs: 1, md: 'initial' } } }}
+          >
+            <ToggleButton value="all">Semua</ToggleButton>
+            <ToggleButton value="active">Aktif</ToggleButton>
+            <ToggleButton value="needs-admin">Perlu admin</ToggleButton>
+          </ToggleButtonGroup>
+          <Tooltip title="Segarkan daftar grup">
+            <span>
+              <IconButton aria-label="Segarkan daftar grup" onClick={() => refetch()} disabled={isFetching}>
+                {isFetching ? <CircularProgress size={20} /> : <RefreshIcon />}
+              </IconButton>
+            </span>
+          </Tooltip>
         </Stack>
-        <Button size="small" variant="outlined" startIcon={<RefreshIcon />} onClick={() => refetch()} disabled={isFetching}>Segarkan</Button>
-      </Stack>
+      </Paper>
 
-      {isLoading && <Stack sx={{ py: 6, alignItems: 'center' }}><CircularProgress /></Stack>}
-      {isError && <Alert severity="warning">Gagal memuat grup. Pastikan WhatsApp tersambung.{error instanceof Error && error.message ? ` (${error.message})` : ''}</Alert>}
-      {!isLoading && !isError && total === 0 && <Alert severity="info">Belum ada grup yang diikuti nomor ini.</Alert>}
+      {isLoading && <LoadingState label="Memuat grup..." />}
+      {!isLoading && groups.length === 0 && (
+        <EmptyState
+          icon={<GroupsIcon sx={{ fontSize: 44 }} />}
+          title="Belum ada grup"
+          description="Grup WhatsApp yang diikuti nomor ini akan muncul otomatis di sini."
+          actionLabel="Segarkan"
+          onAction={() => refetch()}
+        />
+      )}
+      {!isLoading && groups.length > 0 && visibleGroups.length === 0 && (
+        <EmptyState
+          icon={<SearchIcon sx={{ fontSize: 42 }} />}
+          title="Grup tidak ditemukan"
+          description="Coba ubah kata pencarian atau pilih filter lain."
+          actionLabel="Reset filter"
+          onAction={() => { setQuery(''); setFilter('all'); }}
+        />
+      )}
 
-      {!isLoading && !isError && total > 0 && (
-        <Stack spacing={1}>
-          {groups!.map(g => (
-            <Card key={g.jid} variant="outlined">
-              <CardContent sx={{ py: 1.25, '&:last-child': { pb: 1.25 } }}>
-                <Stack direction="row" sx={{ alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-                  <GroupsIcon fontSize="small" color="action" />
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {g.name || g.jid}
+      {!isLoading && visibleGroups.length > 0 && (
+        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+          {visibleGroups.map((group, index) => (
+            <Box key={group.jid}>
+              {index > 0 && <Divider />}
+              <Stack
+                direction="row"
+                spacing={1.25}
+                sx={{ alignItems: 'center', px: { xs: 1, sm: 1.5 }, py: 1.15, '&:hover': { bgcolor: 'action.hover' } }}
+              >
+                <Avatar sx={{ width: 34, height: 34, bgcolor: group.guard_enabled ? 'success.light' : 'action.selected', color: group.guard_enabled ? 'success.dark' : 'text.secondary' }}>
+                  {group.guard_enabled ? <ShieldIcon fontSize="small" /> : <GroupsIcon fontSize="small" />}
+                </Avatar>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 750, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {group.name || group.jid}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">{g.participants} anggota</Typography>
-                  </Box>
-                  {g.guard_enabled
-                    ? <Chip size="small" color="success" label="Penjaga aktif" />
-                    : <Chip size="small" variant="outlined" label="Penjaga nonaktif" />}
-                  {g.bot_is_admin
-                    ? <Chip size="small" color="success" variant="outlined" label="Wai admin" />
-                    : <Chip size="small" color="warning" variant="outlined" label="Wai bukan admin" />}
-                  <Button size="small" variant="outlined" startIcon={<TuneIcon />} onClick={() => setEditing(g)}>Atur</Button>
-                </Stack>
-                {!g.bot_is_admin && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, pl: 3.5 }}>
-                    Jadikan Wai admin agar aturan bisa menghapus spam &amp; mengeluarkan anggota. Aturan tetap bisa disimpan dulu.
+                    <Chip
+                      size="small"
+                      color={group.guard_enabled ? 'success' : 'default'}
+                      variant={group.guard_enabled ? 'filled' : 'outlined'}
+                      label={group.guard_enabled ? 'Aktif' : 'Nonaktif'}
+                    />
+                  </Stack>
+                  <Typography variant="caption" color={group.bot_is_admin ? 'text.secondary' : 'warning.main'} sx={{ display: 'block', mt: 0.15 }}>
+                    {group.participants} anggota · {group.bot_is_admin ? 'Wai memiliki akses admin' : 'Wai belum admin'}
                   </Typography>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </Stack>
-      )}
-
-      {editing && (
-        <ConfigDialog agentId={agentId} group={editing} onClose={() => setEditing(null)} />
-      )}
-    </Box>
-  );
-}
-
-function ConfigDialog({ agentId, group, onClose }: { agentId: number; group: WAGroup; onClose: () => void }) {
-  const { data, isLoading } = useGroupConfig(agentId, group.jid);
-  const save = useSaveGroupConfig(agentId);
-  const [form, setForm] = useState<GroupGuardConfig | null>(null);
-
-  useEffect(() => {
-    if (data) setForm({ ...data, group_jid: group.jid, group_name: group.name || data.group_name });
-  }, [data, group.jid, group.name]);
-
-  const set = (patch: Partial<GroupGuardConfig>) => setForm(f => (f ? { ...f, ...patch } : f));
-
-  const onSave = async () => {
-    if (!form) return;
-    await save.mutateAsync(form);
-    onClose();
-  };
-
-  return (
-    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Aturan moderasi — {group.name || group.jid}</DialogTitle>
-      <DialogContent dividers>
-        {isLoading || !form ? (
-          <Stack sx={{ py: 4, alignItems: 'center' }}><CircularProgress /></Stack>
-        ) : (
-          <Stack spacing={1.5}>
-            {!group.bot_is_admin && (
-              <Alert severity="warning" icon={false}>
-                Wai belum admin di grup ini. Aturan tersimpan, tapi hapus/keluarkan baru jalan setelah Wai dijadikan admin.
-              </Alert>
-            )}
-            <FormControlLabel
-              control={<Switch checked={form.enabled} onChange={e => set({ enabled: e.target.checked })} />}
-              label={<Typography variant="body2" sx={{ fontWeight: 700 }}>Aktifkan penjaga di grup ini</Typography>}
-            />
-            {!form.enabled && (
-              <Alert severity="warning" icon={false} sx={{ py: 0.25 }}>
-                Penjaga belum aktif — aturan di bawah tidak akan berjalan sampai ini dinyalakan.
-              </Alert>
-            )}
-            <Divider />
-            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Deteksi spam</Typography>
-            <FormControlLabel control={<Switch checked={form.block_links} onChange={e => set({ block_links: e.target.checked })} />} label="Blokir pesan berisi tautan/link" />
-            <FormControlLabel control={<Switch checked={form.block_phones} onChange={e => set({ block_phones: e.target.checked })} />} label="Blokir pesan berisi nomor telepon" />
-            <TextField
-              size="small" label="Kata terlarang (pisah baris/koma)" value={form.block_words} multiline minRows={2}
-              onChange={e => set({ block_words: e.target.value })} placeholder={'judi\npinjol\npromo'}
-            />
-            <Box>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>Anti-flood (banjir pesan)</Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                Tandai sebagai spam bila satu anggota mengirim terlalu banyak pesan dalam waktu singkat. Contoh: 5 pesan dalam 10 detik. Isi 0 untuk mematikan.
-              </Typography>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: 'center' }}>
-                <TextField type="number" size="small" label="Jumlah pesan" value={form.flood_count}
-                  onChange={e => set({ flood_count: Math.max(0, Number(e.target.value)) })} helperText="0 = mati" sx={{ width: { xs: '100%', sm: 150 } }} />
-                <Typography variant="body2" color="text.secondary">dalam</Typography>
-                <TextField type="number" size="small" label="Detik" value={form.flood_window_sec}
-                  onChange={e => set({ flood_window_sec: Math.max(1, Number(e.target.value)) })} sx={{ width: { xs: '100%', sm: 130 } }} />
+                </Box>
+                <Button size="small" variant={group.guard_enabled ? 'outlined' : 'contained'} startIcon={<TuneIcon />} onClick={() => setEditing(group)}>
+                  {group.guard_enabled ? 'Atur' : 'Siapkan'}
+                </Button>
               </Stack>
             </Box>
-            <Divider />
-            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Tindakan saat spam</Typography>
-            <FormControlLabel control={<Switch checked={form.delete_spam} onChange={e => set({ delete_spam: e.target.checked })} />} label="Hapus pesan spam otomatis (butuh admin)" />
-            <FormControlLabel control={<Switch checked={form.flag_for_kick} onChange={e => set({ flag_for_kick: e.target.checked })} />} label="Tandai untuk dikonfirmasi keluarkan (tab Aktivitas)" />
-            <FormControlLabel control={<Switch color="warning" checked={form.auto_kick} onChange={e => set({ auto_kick: e.target.checked })} />}
-              label={<Typography variant="body2">Keluarkan otomatis tanpa konfirmasi <Typography component="span" variant="caption" color="warning.main">(berisiko)</Typography></Typography>} />
-            <Divider />
-            <TextField size="small" label="Nomor dikecualikan (pisah baris/koma)" value={form.allow_numbers} multiline minRows={1}
-              onChange={e => set({ allow_numbers: e.target.value })} placeholder="6281234567890" helperText="Admin grup otomatis dikecualikan." />
-          </Stack>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Batal</Button>
-        <Button variant="contained" onClick={onSave} disabled={!form || save.isPending}>Simpan</Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
+          ))}
+        </Paper>
+      )}
 
-function ModerationFeed({ agentId }: { agentId: number }) {
-  const { data: rows, isLoading, isError, refetch, isFetching } = useGroupModeration(agentId);
-  const confirmKick = useConfirmKick(agentId);
-  const dismiss = useDismissModeration(agentId);
-
-  const actionChip = (a: string) => {
-    const map: Record<string, { label: string; color: 'default' | 'success' | 'error' | 'warning' }> = {
-      deleted: { label: 'Dihapus', color: 'success' },
-      kicked: { label: 'Dikeluarkan', color: 'error' },
-      flagged: { label: 'Ditandai', color: 'warning' },
-      warned: { label: 'Diperingatkan', color: 'warning' },
-      dismissed: { label: 'Diabaikan', color: 'default' },
-    };
-    const m = map[a] || { label: a, color: 'default' as const };
-    return <Chip size="small" color={m.color} label={m.label} variant="outlined" />;
-  };
-
-  return (
-    <Box>
-      <Stack direction="row" sx={{ mb: 1.5, justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="body2" color="text.secondary">Aktivitas moderasi terbaru. Item "menunggu konfirmasi" bisa kamu keluarkan atau abaikan.</Typography>
-        <Button size="small" variant="outlined" startIcon={<RefreshIcon />} onClick={() => refetch()} disabled={isFetching}>Segarkan</Button>
-      </Stack>
-
-      {isLoading && <Stack sx={{ py: 6, alignItems: 'center' }}><CircularProgress /></Stack>}
-      {isError && <Alert severity="warning">Gagal memuat aktivitas.</Alert>}
-      {!isLoading && !isError && (rows?.length ?? 0) === 0 && <Alert severity="info">Belum ada aktivitas moderasi.</Alert>}
-
-      <Stack spacing={1}>
-        {rows?.map(r => (
-          <Card key={r.id} variant="outlined">
-            <CardContent sx={{ py: 1.25, '&:last-child': { pb: 1.25 } }}>
-              <Stack direction="row" sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
-                {actionChip(r.action)}
-                {r.status === 'pending' && <Chip size="small" color="warning" label="menunggu konfirmasi" />}
-                <Typography variant="caption" color="text.secondary">{new Date(r.created_at).toLocaleString('id-ID')}</Typography>
-              </Stack>
-              <Typography variant="body2">
-                <b>{r.sender_name || r.sender}</b> di <b>{r.group_name || r.group_jid}</b> · alasan: {r.reason}
-              </Typography>
-              {r.excerpt && (
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25, fontStyle: 'italic', wordBreak: 'break-word' }}>
-                  "{r.excerpt}"
-                </Typography>
-              )}
-              {r.status === 'pending' && (
-                <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                  <Button size="small" color="error" variant="contained"
-                    disabled={confirmKick.isPending}
-                    onClick={() => confirmKick.mutate(r.id)}>Keluarkan</Button>
-                  <Button size="small" variant="outlined"
-                    disabled={dismiss.isPending}
-                    onClick={() => dismiss.mutate(r.id)}>Abaikan</Button>
-                </Stack>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </Stack>
+      {editing && <GroupGuardConfigDialog agentId={agentId} group={editing} onClose={() => setEditing(null)} />}
     </Box>
   );
 }
