@@ -173,6 +173,7 @@ func TrainCrawlPages(c *gin.Context) {
 
 	// Auto-generate Persona dari konten web kalau agent belum punya system prompt
 	if len(pages) > 0 {
+		log.Printf("[autoPersona] triggering for agent %d, pages=%d", aid, len(pages))
 		go autoGeneratePersona(aid, pages)
 	}
 
