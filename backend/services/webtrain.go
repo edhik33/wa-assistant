@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"strings"
 	"time"
 
@@ -21,16 +22,19 @@ const (
 )
 
 const webFAQSystem = `Kamu ahli menyusun FAQ knowledge base customer service dari konten website bisnis.
-Dari konten yang diberikan, ambil HANYA informasi yang berguna untuk pelanggan: produk/layanan,
+Dari konten yang diberikan, ambil SEMUA informasi yang berguna untuk pelanggan: produk/layanan,
 harga, promo, cara order, pembayaran, pengiriman/ongkir, jam operasional, lokasi, kontak, garansi,
 kebijakan. BUANG menu navigasi, footer, copyright, teks hukum panjang, dan basa-basi marketing kosong.
 Jangan mengarang—hanya dari teks yang diberikan. Tulis pertanyaan seperti cara pelanggan bertanya,
 jawaban ringkas & faktual, bahasa Indonesia natural.
-Output HANYA JSON array: [{"question":"...","answer":"..."}]. Jika konten tidak punya info berguna
-untuk pelanggan, kembalikan [].`
+PENTING: Halaman produk/layanan yang memuat nama produk, HARGA, stok, atau cara pesan HAMPIR PASTI
+punya info berguna—WAJIB diekstrak, jangan dilewati. Kembalikan array kosong [] HANYA bila konten
+benar-benar cuma menu/navigasi tanpa satu pun fakta tentang produk, harga, layanan, atau kontak.
+Output HANYA JSON array: [{"question":"...","answer":"..."}].`
 
 // GenerateWebFAQ mengubah konten satu halaman web menjadi pasangan Q&A FAQ yang bersih.
-// Mengembalikan slice kosong (bukan error) bila konten tidak mengandung info berguna.
+// Mengembalikan slice kosong (bukan error) bila konten benar-benar tak mengandung info berguna.
+// Mencoba hingga 2x karena model kadang flaky mengembalikan [] untuk konten yang sama.
 func GenerateWebFAQ(title, content string) ([]QAPair, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
@@ -40,24 +44,37 @@ func GenerateWebFAQ(title, content string) ([]QAPair, error) {
 		content = string(r[:webFAQMaxInputRunes])
 	}
 	p := activePreset()
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	resp, err := clientForPreset(p).CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-		Model: p.Model,
-		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleSystem, Content: webFAQSystem},
-			{Role: openai.ChatMessageRoleUser, Content: "Judul halaman: " + title + "\n\nKonten:\n" + content},
-		},
-		MaxTokens:   1200,
-		Temperature: 0.3,
-	})
-	if err != nil {
-		return nil, err
+	userMsg := "Judul halaman: " + title + "\n\nKonten:\n" + content
+
+	var lastErr error
+	for attempt := 1; attempt <= 2; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		resp, err := clientForPreset(p).CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+			Model: p.Model,
+			Messages: []openai.ChatCompletionMessage{
+				{Role: openai.ChatMessageRoleSystem, Content: webFAQSystem},
+				{Role: openai.ChatMessageRoleUser, Content: userMsg},
+			},
+			MaxTokens:   1500,
+			Temperature: 0.2,
+		})
+		cancel()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		lastErr = nil
+		if len(resp.Choices) == 0 {
+			continue
+		}
+		if qa := parseQAJSON(resp.Choices[0].Message.Content); len(qa) > 0 {
+			return qa, nil
+		}
+		if attempt == 1 {
+			log.Printf("[faq] percobaan 1 kosong untuk %q (%d char) — retry", title, len([]rune(content)))
+		}
 	}
-	if len(resp.Choices) == 0 {
-		return nil, nil
-	}
-	return parseQAJSON(resp.Choices[0].Message.Content), nil
+	return nil, lastErr // (nil,nil) = benar-benar kosong; (nil,err) = gangguan API -> caller fallback chunk
 }
 
 const webPersonaSystem = `Kamu prompt engineer. Buat SYSTEM PROMPT persona untuk AI customer service WhatsApp
