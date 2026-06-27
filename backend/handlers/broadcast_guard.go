@@ -205,8 +205,8 @@ func assessBroadcast(agentID uint, message string, recipients []broadcastGuardRe
 	if consent.Confirmed && !attestationValid {
 		assessment.Findings = append(assessment.Findings, broadcastGuardFinding{
 			Code: "invalid_consent_evidence", Severity: "blocked",
-			Message:        "Catatan izin belum lengkap atau tanggalnya tidak valid.",
-			Recommendation: "Pilih sumber izin dan tanggal saat penerima memberi persetujuan.",
+			Message:        "Sumber atau tanggal izin yang diisi tidak valid.",
+			Recommendation: "Sumber dan tanggal bersifat opsional — kosongkan atau perbaiki (tanggal tidak boleh di masa depan).",
 		})
 	}
 	if assessment.OptedOut > 0 {

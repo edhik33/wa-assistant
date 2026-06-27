@@ -25,9 +25,22 @@ func ValidBroadcastConsentSource(source string) bool {
 	}
 }
 
+// ValidBroadcastConsentEvidence memvalidasi pernyataan izin dari pengirim.
+// Inti yang wajib: pengirim mencentang pernyataan (confirmed) + jenis pesan valid.
+// Sumber & tanggal bersifat OPSIONAL (hanya untuk catatan/audit) — kalau diisi harus masuk akal:
+// sumber harus dari daftar yang dikenal, tanggal tidak boleh di masa depan.
+// Ini sengaja honest: ini deklarasi pengirim, bukan verifikasi sistem/WhatsApp.
 func ValidBroadcastConsentEvidence(category, source string, grantedAt time.Time, confirmed bool, now time.Time) bool {
-	return confirmed && ValidBroadcastConsentCategory(category) && ValidBroadcastConsentSource(source) &&
-		!grantedAt.IsZero() && !grantedAt.After(now.Add(24*time.Hour))
+	if !confirmed || !ValidBroadcastConsentCategory(category) {
+		return false
+	}
+	if source != "" && !ValidBroadcastConsentSource(source) {
+		return false
+	}
+	if !grantedAt.IsZero() && grantedAt.After(now.Add(24*time.Hour)) {
+		return false
+	}
+	return true
 }
 
 func ValidateBroadcastRiskConfirmation(level string, canProceed, acknowledged bool, phrase, reason, blockedTitle string) string {

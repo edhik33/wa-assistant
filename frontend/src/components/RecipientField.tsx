@@ -25,6 +25,7 @@ export default function RecipientField({ agentId, value, onChange, error }: {
   const labelContacts = useLabelContacts(agentId);
 
   const [note, setNote] = useState('');
+  const [noteWarn, setNoteWarn] = useState(false);
   const [groupList, setGroupList] = useState<WAGroup[]>([]);
   const [labelList, setLabelList] = useState<LabelInfo[]>([]);
   const [groupAnchor, setGroupAnchor] = useState<null | HTMLElement>(null);
@@ -56,7 +57,7 @@ export default function RecipientField({ agentId, value, onChange, error }: {
   };
   const clearAll = () => { onChange(''); setNote(''); setFilter(''); };
 
-  const merge = (list: Contact[], label: string) => {
+  const merge = (list: Contact[], label: string, warm = false) => {
     const parsed = value.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
       const [num, ...rest] = line.split(',');
       return { number: normalizePhone(num), name: rest.join(',').trim() };
@@ -65,7 +66,10 @@ export default function RecipientField({ agentId, value, onChange, error }: {
     [...parsed, ...list.map(c => ({ number: normalizePhone(c.number), name: c.name || '' }))]
       .forEach(c => { if (c.number && !map.has(c.number)) map.set(c.number, c.name); });
     onChange(Array.from(map.entries()).map(([n, nm]) => (nm ? `${n},${nm}` : n)).join('\n'));
-    setNote(`${list.length} kontak dari ${label} ditambahkan.`);
+    setNoteWarn(!warm);
+    setNote(warm
+      ? `${list.length} kontak dari ${label} ditambahkan.`
+      : `${list.length} kontak dari ${label} ditambahkan — belum tentu pernah berinteraksi, risiko pembatasan lebih tinggi.`);
   };
 
   const openGroups = async (e: React.MouseEvent<HTMLElement>) => {
@@ -83,29 +87,34 @@ export default function RecipientField({ agentId, value, onChange, error }: {
     <Box>
       <TextField fullWidth multiline rows={4} value={value} onChange={e => onChange(e.target.value)}
         placeholder={'08123456789,Budi\n08987654321,Sinta'} error={!!error} helperText={error} sx={{ mb: 1 }} />
-      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.75, mb: 0.5 }}>
-        <Button size="small" disabled={chatContacts.isPending}
-          startIcon={chatContacts.isPending ? <CircularProgress size={14} /> : <ForumIcon />}
-          onClick={async () => merge(await chatContacts.mutateAsync(), 'pernah chat')}>
+      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.75, mb: 0.5, alignItems: 'center' }}>
+        <Button size="small" variant="contained" color="success" disabled={chatContacts.isPending}
+          startIcon={chatContacts.isPending ? <CircularProgress size={14} color="inherit" /> : <ForumIcon />}
+          onClick={async () => merge(await chatContacts.mutateAsync(), 'pernah chat', true)}>
           Pernah chat
         </Button>
-        <Button size="small" color="warning" disabled={waContacts.isPending}
+        <Typography variant="caption" color="success.main" sx={{ fontWeight: 600 }}>← paling aman</Typography>
+        <Box sx={{ flexBasis: '100%', height: 0 }} />
+        <Button size="small" variant="outlined" color="warning" disabled={waContacts.isPending}
           startIcon={waContacts.isPending ? <CircularProgress size={14} /> : <ContactsIcon />}
           onClick={async () => merge(await waContacts.mutateAsync(), 'kontak WhatsApp')}>
           Sinkron WA
         </Button>
-        <Button size="small" disabled={groups.isPending}
+        <Button size="small" variant="outlined" color="warning" disabled={groups.isPending}
           startIcon={groups.isPending ? <CircularProgress size={14} /> : <GroupsIcon />}
           onClick={openGroups}>
           Dari grup
         </Button>
-        <Button size="small" disabled={labels.isPending}
+        <Button size="small" variant="outlined" color="warning" disabled={labels.isPending}
           startIcon={labels.isPending ? <CircularProgress size={14} /> : <LabelIcon />}
           onClick={openLabels}>
           Dari label
         </Button>
       </Stack>
-      {note && <Typography variant="caption" color="success.main" sx={{ display: 'block' }}>{note}</Typography>}
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+        Sumber kuning belum tentu pernah berinteraksi, jadi risiko pembatasan lebih tinggi.
+      </Typography>
+      {note && <Typography variant="caption" color={noteWarn ? 'warning.main' : 'success.main'} sx={{ display: 'block' }}>{note}</Typography>}
 
       {/* Pratinjau daftar target */}
       {recipients.length > 0 && (

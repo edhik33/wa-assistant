@@ -27,8 +27,11 @@ export default function BroadcastSafetyReview({
     <Stack spacing={1.25}>
       <Box>
         <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 0.25 }}>Izin penerima</Typography>
-        <Typography variant="caption" color="text.secondary">
-          Catat dasar izin yang benar-benar diberikan penerima. Riwayat chat atau nomor yang tersimpan bukan otomatis izin promosi.
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+          Ini pernyataan Anda, bukan verifikasi sistem. WhatsApp tidak mengecek izin ini.
+        </Typography>
+        <Typography variant="caption" color="success.main" sx={{ display: 'block', fontWeight: 600 }}>
+          Cara paling aman: kirim ke kontak yang pernah berinteraksi (tombol "Pernah chat").
         </Typography>
       </Box>
 
@@ -47,12 +50,13 @@ export default function BroadcastSafetyReview({
           </Select>
         </FormControl>
         <FormControl size="small" fullWidth>
-          <InputLabel>Sumber izin</InputLabel>
+          <InputLabel>Sumber izin (opsional)</InputLabel>
           <Select
             value={value.consent_source}
-            label="Sumber izin"
+            label="Sumber izin (opsional)"
             onChange={e => onChange({ consent_source: e.target.value }, true)}
           >
+            <MenuItem value=""><em>Tidak dicatat</em></MenuItem>
             <MenuItem value="form">Form persetujuan</MenuItem>
             <MenuItem value="checkout">Checkout atau pemesanan</MenuItem>
             <MenuItem value="customer_request">Permintaan pelanggan</MenuItem>
@@ -66,11 +70,11 @@ export default function BroadcastSafetyReview({
         <TextField
           type="date"
           size="small"
-          label="Tanggal izin"
+          label="Tanggal izin (opsional)"
           value={value.consent_granted_at}
           onChange={e => onChange({ consent_granted_at: e.target.value }, true)}
           slotProps={{ inputLabel: { shrink: true } }}
-          sx={{ width: { xs: '100%', sm: 190 }, flexShrink: 0 }}
+          sx={{ width: { xs: '100%', sm: 210 }, flexShrink: 0 }}
         />
         <TextField
           size="small"
@@ -91,7 +95,7 @@ export default function BroadcastSafetyReview({
         )}
         label={(
           <Typography variant="body2">
-            Saya memastikan penerima sudah setuju menerima jenis pesan ini dan sumber izin di atas dapat dipertanggungjawabkan.
+            Saya menyatakan penerima sudah memberi izin untuk jenis pesan ini, dan saya bertanggung jawab atas pernyataan ini.
           </Typography>
         )}
       />
