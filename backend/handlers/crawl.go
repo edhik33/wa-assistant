@@ -1,14 +1,19 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"net/url"
 	"strings"
 	"time"
 
+	"wa-assistant/backend/config"
 	"wa-assistant/backend/database"
 	"wa-assistant/backend/models"
 	"wa-assistant/backend/services"
+
+	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/gin-gonic/gin"
 )
@@ -165,6 +170,12 @@ func TrainCrawlPages(c *gin.Context) {
 		trained++
 	}
 	services.InvalidateKB(aid)
+
+	// Auto-generate Persona dari konten web kalau agent belum punya system prompt
+	if trained > 0 {
+		go autoGeneratePersona(aid, pages)
+	}
+
 	c.JSON(200, gin.H{
 		"trained": trained, "chunks": chunks, "skipped": skipped,
 		"quota_exceeded": quotaHit, "used_chars": used, "max_chars": maxChars,
@@ -199,4 +210,78 @@ func DeleteWebKnowledge(c *gin.Context) {
 	res := q.Delete(&models.Knowledge{})
 	services.InvalidateKB(aid)
 	c.JSON(200, gin.H{"deleted": res.RowsAffected})
+}
+
+// autoGeneratePersona generates a system prompt persona from trained crawl pages
+// using AI, then saves it to the agent if the agent's system prompt is empty.
+func autoGeneratePersona(agentID uint, pages []models.CrawlPage) {
+	var agent models.Agent
+	if database.DB.First(&agent, agentID).Error != nil {
+		return
+	}
+	// Only generate if persona is empty
+	if strings.TrimSpace(agent.SystemPrompt) != "" {
+		return
+	}
+
+	// Collect sample content from trained pages (max 3000 chars)
+	var sample strings.Builder
+	for _, p := range pages {
+		if strings.TrimSpace(p.Content) == "" {
+			continue
+		}
+		sample.WriteString(p.Title)
+		sample.WriteString("\n")
+		content := p.Content
+		if len([]rune(content)) > 1500 {
+			content = string([]rune(content)[:1500])
+		}
+		sample.WriteString(content)
+		sample.WriteString("\n\n")
+		if sample.Len() > 3000 {
+			break
+		}
+	}
+
+	if sample.Len() == 0 {
+		return
+	}
+
+	// Call AI to generate persona
+	client := services.AIClient
+	if client == nil {
+		log.Printf("[autoPersona] AI client nil, skip agent %d", agentID)
+		return
+	}
+
+	prompt := fmt.Sprintf(`Berdasarkan konten website berikut, buat persona customer service WhatsApp yang singkat dan natural. 
+Tulis dalam Bahasa Indonesia, 3-5 kalimat saja. 
+Format: "Kamu adalah [nama bisnis]. [deskripsi singkat]. [produk/layanan utama]. [cara order/kontak]."
+
+Konten website:
+%s`, sample.String()[:min(3000, sample.Len())])
+
+	resp, err := client.CreateChatCompletion(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model: config.Env("OPENAI_MODEL", "deepseek-v4-pro"),
+			Messages: []openai.ChatCompletionMessage{
+				{Role: "system", Content: "Kamu adalah generator persona CS. Output HANYA teks persona, tanpa kata pembuka/penutup."},
+				{Role: "user", Content: prompt},
+			},
+			MaxTokens: 300,
+		},
+	)
+	if err != nil {
+		log.Printf("[autoPersona] AI error agent %d: %v", agentID, err)
+		return
+	}
+
+	persona := strings.TrimSpace(resp.Choices[0].Message.Content)
+	if persona == "" {
+		return
+	}
+
+	database.DB.Model(&agent).Update("system_prompt", persona)
+	log.Printf("[autoPersona] Generated persona for agent %d (%d chars): %q", agentID, len(persona), persona[:min(80, len(persona))])
 }
