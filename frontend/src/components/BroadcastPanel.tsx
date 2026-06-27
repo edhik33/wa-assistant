@@ -91,6 +91,9 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   useEffect(() => { if (seed?.value) setRecipientsText(seed.value); }, [seed?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const [minDelay, setMinDelay] = useState(10);
   const [maxDelay, setMaxDelay] = useState(30);
+  // Istirahat berkala (default pintar): jeda restDuration dtk tiap restEvery pesan. restEvery=0 = mati.
+  const [restEvery, setRestEvery] = useState(25);
+  const [restDuration, setRestDuration] = useState(90);
   const [file, setFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [modalOpen, setModalOpen] = useState(false);
@@ -195,7 +198,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
     const recipients = registered.map(c => ({ number: c.number, name: nameMap[c.number] || '' }));
     if (recipients.length === 0) return;
     try {
-      const res = await createBroadcast.mutateAsync({ message, recipients, min_delay: minDelay, max_delay: maxDelay, file, safety });
+      const res = await createBroadcast.mutateAsync({ message, recipients, min_delay: minDelay, max_delay: maxDelay, rest_every: restEvery, rest_duration: restDuration, file, safety });
       const started = res.data;
       setModalOpen(false);
 
@@ -328,6 +331,20 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                     helperText={errors.delay || delayProblem || ' '}
                     sx={{ width: { xs: '100%', sm: 150 } }} />
                 </Stack>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
+                  <TextField type="number" size="small" label="Istirahat tiap (pesan)" value={restEvery}
+                    onChange={e => setRestEvery(Math.max(0, Number(e.target.value)))}
+                    helperText="0 = tanpa istirahat"
+                    sx={{ width: { xs: '100%', sm: 180 } }} />
+                  <TextField type="number" size="small" label="Lama istirahat (detik)" value={restDuration}
+                    onChange={e => setRestDuration(Math.max(0, Number(e.target.value)))}
+                    disabled={restEvery <= 0}
+                    helperText=" "
+                    sx={{ width: { xs: '100%', sm: 180 } }} />
+                </Stack>
+                <Typography variant="caption" color="text.secondary">
+                  Istirahat panjang tiap beberapa pesan membuat ritme tidak metronomik, lebih mirip kirim manual.
+                </Typography>
               </Box>
             </Stack>
           </CardContent>
@@ -345,6 +362,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
               <ReviewRow label="Penerima" value={parsed.length ? `${uniqueParsedCount} nomor` : 'Belum ada'} good={parsed.length > 0} warning={parsed.length === 0} />
               <ReviewRow label="Lampiran" value={file ? 'Ada' : 'Tidak ada'} good={!!file} />
               <ReviewRow label="Jeda" value={`${minDelay}-${maxDelay} detik`} good={!delayProblem} warning={!!delayProblem} />
+              <ReviewRow label="Istirahat" value={restEvery > 0 ? `${restDuration} dtk tiap ${restEvery} pesan` : 'Tidak ada'} good={restEvery > 0} />
               {message.length > 700 && <Alert severity="warning" icon={false}>Pesan cukup panjang. Pertimbangkan dipersingkat agar lebih mudah dibaca.</Alert>}
               {duplicateCount > 0 && <Alert severity="info" icon={false}>{duplicateCount} nomor duplikat terdeteksi. Sistem akan menggabungkan saat daftar diproses.</Alert>}
               {formIssueCount > 0 && (

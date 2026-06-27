@@ -123,6 +123,9 @@ func CreateBroadcast(c *gin.Context) {
 	minD, _ := strconv.Atoi(c.PostForm("min_delay"))
 	maxD, _ := strconv.Atoi(c.PostForm("max_delay"))
 	minD, maxD = normalizeBroadcastDelay(minD, maxD)
+	restEvery, _ := strconv.Atoi(c.PostForm("rest_every"))
+	restDuration, _ := strconv.Atoi(c.PostForm("rest_duration"))
+	restEvery, restDuration = normalizeBroadcastRest(restEvery, restDuration)
 
 	consent := parseConsentAttestation(
 		c.PostForm("consent_category"), c.PostForm("consent_source"),
@@ -173,6 +176,8 @@ func CreateBroadcast(c *gin.Context) {
 	b.Total = len(guardRecipients)
 	b.MinDelay = minD
 	b.MaxDelay = maxD
+	b.RestEvery = restEvery
+	b.RestDuration = restDuration
 
 	// Simpan lampiran setelah guard lolos agar request yang diblokir tidak meninggalkan file yatim.
 	if fh, err := c.FormFile("file"); err == nil {
@@ -362,6 +367,8 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 	}
 
 	dailyCap := effectiveDailyCap(agentID)
+	restEvery, restDuration := normalizeBroadcastRest(b.RestEvery, b.RestDuration)
+	sentSinceRest := 0
 	var sentCount, failedCount, skippedCount int64
 	database.DB.Model(&models.BroadcastRecipient{}).Where("broadcast_id = ? AND status = ?", broadcastID, "sent").Count(&sentCount)
 	database.DB.Model(&models.BroadcastRecipient{}).Where("broadcast_id = ? AND status = ?", broadcastID, "failed").Count(&failedCount)
@@ -451,7 +458,8 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 			database.DB.Model(&models.BroadcastRecipient{}).Where("id = ?", r.ID).
 				Updates(map[string]any{"status": "sent", "sent_at": &now, "error": ""})
 			sent++
-			daily++ // hitung pemakaian jatah harian secara in-memory
+			daily++         // hitung pemakaian jatah harian secara in-memory
+			sentSinceRest++ // hitung menuju istirahat berkala
 		}
 		updateBroadcastCounters(broadcastID, sent, failed, skipped)
 
@@ -465,6 +473,16 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 				finalizeCancelledBroadcast(broadcastID)
 				log.Printf("Broadcast %d dibatalkan user saat jeda antar pesan", broadcastID)
 				return
+			}
+			// Istirahat panjang berkala agar ritme tidak metronomik (mirip perilaku manusia).
+			if restEvery > 0 && sentSinceRest >= restEvery {
+				log.Printf("Broadcast %d istirahat %d dtk setelah %d pesan terkirim", broadcastID, restDuration, sentSinceRest)
+				sentSinceRest = 0
+				if !sleepBroadcastDelay(broadcastID, restDuration) {
+					finalizeCancelledBroadcast(broadcastID)
+					log.Printf("Broadcast %d dibatalkan user saat istirahat berkala", broadcastID)
+					return
+				}
 			}
 		}
 	}
@@ -520,6 +538,18 @@ func normalizeBroadcastDelay(minD, maxD int) (int, int) {
 		maxD = minD + 20
 	}
 	return minD, maxD
+}
+
+// normalizeBroadcastRest memvalidasi setelan istirahat berkala.
+// every<=0 mematikan fitur. Jika aktif tapi durasi tak masuk akal, pakai default 60 dtk.
+func normalizeBroadcastRest(every, duration int) (int, int) {
+	if every <= 0 {
+		return 0, 0
+	}
+	if duration <= 0 {
+		duration = 60
+	}
+	return every, duration
 }
 
 // resumeBroadcastDelay membaca jeda yang dipersistensi saat broadcast dibuat, dengan

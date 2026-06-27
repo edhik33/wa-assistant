@@ -32,6 +32,10 @@ type Broadcast struct {
 	// dilanjutkan setelah server restart, jeda tetap sesuai pilihan, bukan default.
 	MinDelay int `json:"min_delay"`
 	MaxDelay int `json:"max_delay"`
+	// Istirahat panjang berkala: jeda RestDuration detik setiap RestEvery pesan terkirim,
+	// agar pola kirim tidak metronomik. RestEvery=0 berarti tanpa istirahat berkala.
+	RestEvery    int `json:"rest_every"`
+	RestDuration int `json:"rest_duration"`
 	// Lampiran opsional yang dikirim ke semua penerima (pesan jadi caption).
 	MediaType string    `gorm:"size:16" json:"media_type"`
 	MediaPath string    `json:"-"`
