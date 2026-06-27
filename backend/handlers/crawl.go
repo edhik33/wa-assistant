@@ -223,6 +223,7 @@ func autoGeneratePersona(agentID uint, pages []models.CrawlPage) {
 	}
 	// Only generate if persona is empty
 	if strings.TrimSpace(agent.SystemPrompt) != "" {
+		log.Printf("[autoPersona] agent %d already has persona, skip", agentID)
 		return
 	}
 
@@ -230,8 +231,10 @@ func autoGeneratePersona(agentID uint, pages []models.CrawlPage) {
 	var sample strings.Builder
 	for _, p := range pages {
 		if strings.TrimSpace(p.Content) == "" {
+			log.Printf("[autoPersona] page %d (%s) empty content, skip", p.ID, p.Title)
 			continue
 		}
+		log.Printf("[autoPersona] using page %d (%s), content len=%d", p.ID, p.Title, len([]rune(p.Content)))
 		sample.WriteString(p.Title)
 		sample.WriteString("\n")
 		content := p.Content
@@ -246,8 +249,11 @@ func autoGeneratePersona(agentID uint, pages []models.CrawlPage) {
 	}
 
 	if sample.Len() == 0 {
+		log.Printf("[autoPersona] agent %d: zero sample content, skip", agentID)
 		return
 	}
+
+	log.Printf("[autoPersona] agent %d: sample=%d chars, calling AI...", agentID, sample.Len())
 
 	// Call AI to generate persona
 	client := services.AIClient
