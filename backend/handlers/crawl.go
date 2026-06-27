@@ -269,8 +269,10 @@ Format: "Kamu adalah [nama bisnis]. [deskripsi singkat]. [produk/layanan utama].
 Konten website:
 %s`, sample.String()[:min(3000, sample.Len())])
 
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	resp, err := client.CreateChatCompletion(
-		context.Background(),
+		ctx,
 		openai.ChatCompletionRequest{
 			Model: config.Env("OPENAI_MODEL", "deepseek-v4-pro"),
 			Messages: []openai.ChatCompletionMessage{
