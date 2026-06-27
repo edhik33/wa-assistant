@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -150,7 +151,7 @@ func TrainCrawlPages(c *gin.Context) {
 		}
 		for _, ch := range chunkList {
 			k := models.Knowledge{
-				AgentID: aid, Question: p.Title, Answer: ch,
+				AgentID: aid, Question: fmt.Sprintf("Informasi dari artikel: %s", p.Title), Answer: ch,
 				Tags: "web", Source: "web", SourceURL: p.URL,
 			}
 			database.DB.Create(&k) // CharCount diisi otomatis oleh hook BeforeSave

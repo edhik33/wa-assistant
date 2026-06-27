@@ -165,7 +165,7 @@ func extractTitleText(root *html.Node) (title, text string) {
 	walk = func(n *html.Node, skip bool) {
 		if n.Type == html.ElementNode {
 			switch n.Data {
-			case "script", "style", "noscript", "svg", "head":
+			case "script", "style", "noscript", "svg", "head", "nav", "footer", "aside":
 				if n.Data != "head" {
 					skip = true
 				}
