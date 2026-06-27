@@ -113,7 +113,14 @@ type ClosingResult struct {
 	Data       map[string]interface{} `json:"data"`
 }
 
-const closingExtractorSystem = `Kamu adalah data extractor. Tugasmu membaca riwayat percakapan dan mengekstrak data sesuai schema. Output HANYA JSON. Kalau data belum lengkap, tetap berikan JSON dengan field yang ada. Jangan menambah field di luar schema.`
+const closingExtractorSystem = `Kamu adalah data extractor order. Baca SELURUH percakapan dan ekstrak data sesuai schema.
+Aturan:
+- Ambil nama pelanggan & produk dari MANA SAJA di percakapan (sering disebut di awal), bukan cuma pesan terakhir.
+- Jika pelanggan memesan BEBERAPA item, gabungkan semua item ke field produk, pisahkan dengan koma.
+- Beri "confidence" TINGGI (>=0.8) bila ada nama pelanggan DAN minimal satu produk yang jelas, walaupun harga/tanggal belum disebut.
+- Beri confidence rendah (<0.5) HANYA bila percakapan jelas belum ada niat order atau belum ada produk.
+- Kalau ada field yang belum diketahui, tetap sertakan field lain yang ada. Jangan menambah field di luar schema.
+Output HANYA JSON: {"confidence": 0.0-1.0, "data": {...}}.`
 
 // extractClosingData menjalankan AI extractor pada satu prompt dan mengembalikan hasil terstruktur.
 // Mencoba hingga 3x karena model kadang flaky membalas kosong / JSON tak lengkap.
@@ -301,7 +308,7 @@ func previewClosing(agentID uint, agent models.Agent, history []models.ChatHisto
 func buildExtractorPrompt(agentID uint, sender string, agent models.Agent, form models.ClosingForm) string {
 	var chats []models.ChatHistory
 	database.DB.Where("agent_id = ? AND sender = ?", agentID, sender).
-		Order("created_at desc").Limit(10).Find(&chats)
+		Order("created_at desc").Limit(30).Find(&chats)
 
 	var sb strings.Builder
 	sb.WriteString("Schema data yang harus diekstrak:\n")
@@ -312,14 +319,15 @@ func buildExtractorPrompt(agentID uint, sender string, agent models.Agent, form 
 	if database.DB.Where("agent_id = ? AND sender = ?", agentID, sender).First(&mem).Error == nil && mem.Summary != "" {
 		sb.WriteString(mem.Summary)
 	}
-	sb.WriteString("\n\n10 chat terakhir:\n")
+	sb.WriteString("\n\nPercakapan (urut lama->baru):\n")
 	for i := len(chats) - 1; i >= 0; i-- {
 		c := chats[i]
-		prefix := "Customer"
-		if c.Reply != "" {
-			prefix = "AI"
+		if strings.TrimSpace(c.Message) != "" {
+			sb.WriteString("Customer: " + c.Message + "\n")
 		}
-		sb.WriteString(fmt.Sprintf("%s: %s\n", prefix, c.Message))
+		if strings.TrimSpace(c.Reply) != "" {
+			sb.WriteString("AI: " + c.Reply + "\n")
+		}
 	}
 	sb.WriteString("\nEkstrak data sesuai schema di atas. Output JSON: {\"confidence\": 0.0-1.0, \"data\": {...}}")
 	return sb.String()
