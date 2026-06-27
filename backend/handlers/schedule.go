@@ -148,6 +148,8 @@ func CreateSchedule(c *gin.Context) {
 		s.MediaType = "document"
 		if strings.HasPrefix(s.Mimetype, "image/") {
 			s.MediaType = "image"
+		} else if strings.HasPrefix(s.Mimetype, "video/") {
+			s.MediaType = "video"
 		}
 		s.MediaPath = storeMedia(id, data, s.Mimetype, fh.Filename)
 	}

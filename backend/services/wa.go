@@ -748,6 +748,35 @@ func (w *waInstance) SendDocument(toNumber, fileName, mimetype, caption string, 
 	return err
 }
 
+// SendVideo mengunggah & mengirim video ke nomor (caption opsional).
+// Mengikuti pola whatsmeow: Upload(MediaVideo) lalu kirim VideoMessage dengan metadata hasil upload.
+func (w *waInstance) SendVideo(toNumber, caption, mimetype string, data []byte) error {
+	w.mu.Lock()
+	client := w.client
+	w.mu.Unlock()
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("client WA tidak terhubung")
+	}
+	ctx := context.Background()
+	up, err := client.Upload(ctx, data, whatsmeow.MediaVideo)
+	if err != nil {
+		return fmt.Errorf("gagal upload video: %w", err)
+	}
+	_, err = client.SendMessage(ctx, types.NewJID(toNumber, types.DefaultUserServer), &waProto.Message{
+		VideoMessage: &waProto.VideoMessage{
+			Caption:       proto.String(caption),
+			Mimetype:      proto.String(mimetype),
+			URL:           proto.String(up.URL),
+			DirectPath:    proto.String(up.DirectPath),
+			MediaKey:      up.MediaKey,
+			FileEncSHA256: up.FileEncSHA256,
+			FileSHA256:    up.FileSHA256,
+			FileLength:    proto.Uint64(up.FileLength),
+		},
+	})
+	return err
+}
+
 // Suspend memutus socket WA tanpa menghapus sesi (device tetap tersimpan di store).
 // Dipakai saat langganan tenant tidak aktif; cukup Connect() lagi untuk menyambung tanpa scan QR.
 func (w *waInstance) Suspend() {

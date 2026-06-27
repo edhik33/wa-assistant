@@ -317,12 +317,13 @@ func InboxSendMedia(c *gin.Context) {
 	if mimetype == "" {
 		mimetype = "application/octet-stream"
 	}
-	isImage := strings.HasPrefix(mimetype, "image/")
-
 	var sendErr error
-	if isImage {
+	switch {
+	case strings.HasPrefix(mimetype, "image/"):
 		sendErr = services.WA(id).SendImage(to, caption, mimetype, data)
-	} else {
+	case strings.HasPrefix(mimetype, "video/"):
+		sendErr = services.WA(id).SendVideo(to, caption, mimetype, data)
+	default:
 		sendErr = services.WA(id).SendDocument(to, fh.Filename, mimetype, caption, data)
 	}
 	if sendErr != nil {
@@ -331,8 +332,10 @@ func InboxSendMedia(c *gin.Context) {
 	}
 
 	mediaType := "document"
-	if isImage {
+	if strings.HasPrefix(mimetype, "image/") {
 		mediaType = "image"
+	} else if strings.HasPrefix(mimetype, "video/") {
+		mediaType = "video"
 	}
 	reply := caption
 	if reply == "" {

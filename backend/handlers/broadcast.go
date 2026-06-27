@@ -192,6 +192,8 @@ func CreateBroadcast(c *gin.Context) {
 			b.MediaType = "document"
 			if strings.HasPrefix(b.Mimetype, "image/") {
 				b.MediaType = "image"
+			} else if strings.HasPrefix(b.Mimetype, "video/") {
+				b.MediaType = "video"
 			}
 			b.MediaPath = storeMedia(id, data, b.Mimetype, fh.Filename)
 		}
@@ -438,6 +440,8 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 		switch {
 		case b.MediaType == "image" && len(mediaBytes) > 0:
 			sendErr = services.WA(agentID).SendImage(r.Number, msg, b.Mimetype, mediaBytes)
+		case b.MediaType == "video" && len(mediaBytes) > 0:
+			sendErr = services.WA(agentID).SendVideo(r.Number, msg, b.Mimetype, mediaBytes)
 		case b.MediaType == "document" && len(mediaBytes) > 0:
 			sendErr = services.WA(agentID).SendDocument(r.Number, b.FileName, b.Mimetype, msg, mediaBytes)
 		default:
