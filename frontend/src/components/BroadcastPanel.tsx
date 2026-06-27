@@ -318,33 +318,40 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                 <SectionTitle
                   icon={<ScheduleIcon fontSize="small" />}
                   title="Jeda Kirim"
-                  subtitle="Mengatur ritme kirim, bukan jaminan nomor bebas pembatasan."
+                  subtitle="Atur ritme pengiriman agar lebih aman."
                 />
+
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Jeda antar pesan</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  Tunggu beberapa detik (acak) sebelum mengirim ke nomor berikutnya.
+                </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                  <TextField type="number" size="small" label="Jeda min (detik)" value={minDelay}
+                  <TextField type="number" size="small" label="Minimal (detik)" value={minDelay}
                     onChange={e => { setMinDelay(Number(e.target.value)); if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
                     error={!!(errors.delay || delayProblem)}
-                    sx={{ width: { xs: '100%', sm: 150 } }} />
-                  <TextField type="number" size="small" label="Jeda maks (detik)" value={maxDelay}
+                    sx={{ width: { xs: '100%', sm: 160 } }} />
+                  <TextField type="number" size="small" label="Maksimal (detik)" value={maxDelay}
                     onChange={e => { setMaxDelay(Number(e.target.value)); if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
                     error={!!(errors.delay || delayProblem)}
                     helperText={errors.delay || delayProblem || ' '}
-                    sx={{ width: { xs: '100%', sm: 150 } }} />
+                    sx={{ width: { xs: '100%', sm: 160 } }} />
                 </Stack>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
-                  <TextField type="number" size="small" label="Istirahat tiap (pesan)" value={restEvery}
+
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mt: 1.5 }}>Jeda istirahat</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  Berhenti sejenak setelah mengirim sejumlah pesan, lalu lanjut otomatis. Isi 0 untuk mematikan.
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <TextField type="number" size="small" label="Berhenti setiap (pesan)" value={restEvery}
                     onChange={e => setRestEvery(Math.max(0, Number(e.target.value)))}
-                    helperText="0 = tanpa istirahat"
-                    sx={{ width: { xs: '100%', sm: 180 } }} />
-                  <TextField type="number" size="small" label="Lama istirahat (detik)" value={restDuration}
+                    helperText={restEvery <= 0 ? 'Mati' : ' '}
+                    sx={{ width: { xs: '100%', sm: 190 } }} />
+                  <TextField type="number" size="small" label="Lama berhenti (detik)" value={restDuration}
                     onChange={e => setRestDuration(Math.max(0, Number(e.target.value)))}
                     disabled={restEvery <= 0}
                     helperText=" "
-                    sx={{ width: { xs: '100%', sm: 180 } }} />
+                    sx={{ width: { xs: '100%', sm: 190 } }} />
                 </Stack>
-                <Typography variant="caption" color="text.secondary">
-                  Istirahat panjang tiap beberapa pesan membuat ritme tidak metronomik, lebih mirip kirim manual.
-                </Typography>
               </Box>
             </Stack>
           </CardContent>
@@ -361,8 +368,8 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
               <ReviewRow label="Pesan" value={message.trim() ? 'Siap' : 'Kosong'} good={!!message.trim()} warning={!message.trim()} />
               <ReviewRow label="Penerima" value={parsed.length ? `${uniqueParsedCount} nomor` : 'Belum ada'} good={parsed.length > 0} warning={parsed.length === 0} />
               <ReviewRow label="Lampiran" value={file ? 'Ada' : 'Tidak ada'} good={!!file} />
-              <ReviewRow label="Jeda" value={`${minDelay}-${maxDelay} detik`} good={!delayProblem} warning={!!delayProblem} />
-              <ReviewRow label="Istirahat" value={restEvery > 0 ? `${restDuration} dtk tiap ${restEvery} pesan` : 'Tidak ada'} good={restEvery > 0} />
+              <ReviewRow label="Jeda antar pesan" value={`${minDelay}-${maxDelay} detik`} good={!delayProblem} warning={!!delayProblem} />
+              <ReviewRow label="Jeda istirahat" value={restEvery > 0 ? `berhenti ${restDuration} dtk tiap ${restEvery} pesan` : 'Mati'} good={restEvery > 0} />
               {message.length > 700 && <Alert severity="warning" icon={false}>Pesan cukup panjang. Pertimbangkan dipersingkat agar lebih mudah dibaca.</Alert>}
               {duplicateCount > 0 && <Alert severity="info" icon={false}>{duplicateCount} nomor duplikat terdeteksi. Sistem akan menggabungkan saat daftar diproses.</Alert>}
               {formIssueCount > 0 && (
