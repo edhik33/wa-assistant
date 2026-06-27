@@ -215,6 +215,7 @@ func DeleteWebKnowledge(c *gin.Context) {
 // autoGeneratePersona generates a system prompt persona from trained crawl pages
 // using AI, then saves it to the agent if the agent's system prompt is empty.
 func autoGeneratePersona(agentID uint, pages []models.CrawlPage) {
+	log.Printf("[autoPersona] start agent %d, pages=%d", agentID, len(pages))
 	var agent models.Agent
 	if database.DB.First(&agent, agentID).Error != nil {
 		return
