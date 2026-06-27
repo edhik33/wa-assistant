@@ -294,7 +294,7 @@ export interface CrawlJob {
   id: number;
   root_url: string;
   domain: string;
-  status: 'pending' | 'crawling' | 'done' | 'failed';
+  status: 'pending' | 'crawling' | 'training' | 'done' | 'failed';
   pages_found: number;
   error?: string;
 }
@@ -303,8 +303,9 @@ export interface CrawlPage {
   id: number;
   url: string;
   title: string;
-  status: 'found' | 'crawled' | 'failed' | 'trained';
+  status: 'found' | 'crawled' | 'training' | 'trained' | 'skipped' | 'failed';
   char_count: number;
+  recommended: boolean;
   error?: string;
 }
 

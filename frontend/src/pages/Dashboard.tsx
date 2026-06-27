@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import {
   Box, Card, CardContent, Typography, Button, Chip, CircularProgress, TextField,
   Stack, IconButton, Paper, Grid, Select, MenuItem, FormControl, InputLabel, Divider,
@@ -53,6 +53,7 @@ import {
   useAgentHandoffs, useResumeHandoff, useAgentAIMetrics,
   useUsage,
   useCrawlStatus, useKnowledgeUsage, useStartCrawl, useTrainCrawlPages, useDeleteWebKnowledge,
+  useRegeneratePersona,
 } from '../hooks';
 import BillingPanel from '../components/BillingPanel';
 
@@ -93,7 +94,7 @@ const NAV_ITEMS = NAV_GROUPS.flatMap(g => g.items);
 export default function Dashboard() {
   const [tab, setTab] = useState(() => {
     const saved = localStorage.getItem('wai_tab');
-    const valid = NAV_ITEMS.some(n => n.id === saved) || saved === 'knowledge';
+    const valid = !!saved && (NAV_ITEMS.some(n => n.id === saved) || saved === 'knowledge');
     return valid ? saved : 'dashboard';
   });
   // seed = data yang dioper antar-tab (mis. dari Kontak ke Broadcast/Inbox). n = pemicu agar efek jalan ulang.
@@ -178,10 +179,23 @@ export default function Dashboard() {
   const startCrawlMut = useStartCrawl(agentId);
   const trainCrawlMut = useTrainCrawlPages(agentId);
   const deleteWebMut = useDeleteWebKnowledge(agentId);
+  const regenPersonaMut = useRegeneratePersona(agentId);
   const [crawlUrl, setCrawlUrl] = useState('');
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
   const crawlJob = crawlData?.job ?? null;
   const crawlPages = crawlData?.pages ?? [];
+  const isTraining = crawlJob?.status === 'training';
+  const trainedCount = crawlPages.filter(p => p.status === 'trained').length;
+
+  // Auto-pilih halaman rekomendasi sekali tiap kali crawl baru selesai (biar user tinggal klik "Latih").
+  const autoPickedJob = useRef<number | null>(null);
+  useEffect(() => {
+    if (!crawlJob || crawlJob.status !== 'done') return;
+    if (autoPickedJob.current === crawlJob.id) return;
+    const recommended = crawlPages.filter(p => p.recommended && p.status === 'crawled').map(p => p.id);
+    if (recommended.length > 0) setSelectedPages(recommended);
+    autoPickedJob.current = crawlJob.id;
+  }, [crawlJob, crawlPages]);
 
   const startCrawl = async () => {
     const u = crawlUrl.trim();
@@ -199,15 +213,23 @@ export default function Dashboard() {
   const trainSelected = async () => {
     if (!crawlJob || selectedPages.length === 0) return;
     try {
-      const res = await trainCrawlMut.mutateAsync({ jobId: crawlJob.id, pageIds: selectedPages });
+      await trainCrawlMut.mutateAsync({ jobId: crawlJob.id, pageIds: selectedPages });
       setSelectedPages([]);
-      if (res.quota_exceeded) {
-        swalAlert('Kuota karakter knowledge paket ini sudah penuh. Sebagian halaman tidak dilatih. Upgrade paket atau hapus knowledge lama.', 'warning');
-      } else {
-        swalToast(`${res.trained} halaman dilatih (${res.chunks} bagian)`, 'success');
-      }
-    } catch {
-      swalToast('Gagal melatih halaman', 'error');
+      swalToast('Pelatihan dimulai. AI sedang merangkum halaman jadi FAQ…', 'success');
+    } catch (e) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal memulai pelatihan';
+      swalToast(msg, 'error');
+    }
+  };
+
+  const regeneratePersona = async () => {
+    if (!await swalConfirm('Buat ulang persona dari konten website?', 'Persona/instruksi AI saat ini akan ditimpa hasil baru.')) return;
+    try {
+      await regenPersonaMut.mutateAsync();
+      swalToast('Persona berhasil dibuat ulang', 'success');
+    } catch (e) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal membuat persona';
+      swalToast(msg, 'error');
     }
   };
 
@@ -774,20 +796,41 @@ export default function Dashboard() {
                     <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.75, flexWrap: 'wrap' }}>
                       <Chip size="small"
                         label={crawlJob.status === 'crawling' || crawlJob.status === 'pending' ? 'Menelusuri…'
+                          : crawlJob.status === 'training' ? 'Melatih AI…'
                           : crawlJob.status === 'failed' ? 'Gagal' : `Selesai · ${crawlJob.pages_found} halaman`}
                         color={crawlJob.status === 'failed' ? 'error' : crawlJob.status === 'done' ? 'success' : 'default'} />
                       {crawlJob.domain && <Typography variant="caption" color="text.secondary">{crawlJob.domain}</Typography>}
                       {crawlJob.error && <Typography variant="caption" color="error">{crawlJob.error}</Typography>}
                     </Stack>
 
+                    {isTraining && (
+                      <Box sx={{ mb: 1 }}>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.25 }}>
+                          <CircularProgress size={14} />
+                          <Typography variant="caption" color="text.secondary">
+                            AI sedang merangkum halaman jadi FAQ ({trainedCount}/{crawlPages.length} halaman)…
+                          </Typography>
+                        </Stack>
+                        <LinearProgress variant="determinate"
+                          value={crawlPages.length ? (trainedCount / crawlPages.length) * 100 : 0}
+                          sx={{ height: 6, borderRadius: 3 }} />
+                      </Box>
+                    )}
+
                     {crawlPages.length > 0 && (
                       <>
-                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
-                          <Button size="small" onClick={() => {
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Halaman <b>rekomendasi</b> sudah dipilih otomatis. Sesuaikan bila perlu, lalu klik Latih.
+                        </Typography>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5, flexWrap: 'wrap' }}>
+                          <Button size="small" disabled={isTraining} onClick={() => {
                             const trainable = crawlPages.filter(p => p.status === 'crawled' && p.char_count > 0).map(p => p.id);
                             setSelectedPages(selectedPages.length === trainable.length ? [] : trainable);
                           }}>{selectedPages.length > 0 ? 'Batal pilih' : 'Pilih semua'}</Button>
-                          <Button size="small" variant="contained" disabled={selectedPages.length === 0 || trainCrawlMut.isPending}
+                          <Button size="small" disabled={isTraining} onClick={() => {
+                            setSelectedPages(crawlPages.filter(p => p.recommended && p.status === 'crawled').map(p => p.id));
+                          }}>Pilih rekomendasi</Button>
+                          <Button size="small" variant="contained" disabled={selectedPages.length === 0 || trainCrawlMut.isPending || isTraining}
                             onClick={trainSelected}
                             startIcon={trainCrawlMut.isPending ? <CircularProgress size={14} /> : <AddIcon />}>
                             Latih {selectedPages.length > 0 ? `(${selectedPages.length})` : ''}
@@ -796,25 +839,44 @@ export default function Dashboard() {
                         <Paper variant="outlined" sx={{ maxHeight: 280, overflow: 'auto' }}>
                           {crawlPages.map((p, i) => {
                             const trainable = p.status === 'crawled' && p.char_count > 0;
+                            const thin = trainable && !p.recommended;
                             return (
-                              <Box key={p.id} sx={{ display: 'flex', gap: 0.5, px: 1, py: 0.5, borderBottom: i < crawlPages.length - 1 ? '1px solid' : 0, borderColor: 'divider', alignItems: 'center' }}>
-                                <Checkbox size="small" sx={{ p: 0.25 }} disabled={!trainable}
+                              <Box key={p.id} sx={{ display: 'flex', gap: 0.5, px: 1, py: 0.5, borderBottom: i < crawlPages.length - 1 ? '1px solid' : 0, borderColor: 'divider', alignItems: 'center', opacity: thin ? 0.7 : 1 }}>
+                                <Checkbox size="small" sx={{ p: 0.25 }} disabled={!trainable || isTraining}
                                   checked={selectedPages.includes(p.id)}
                                   onChange={e => setSelectedPages(s => e.target.checked ? [...s, p.id] : s.filter(x => x !== p.id))} />
                                 <Box sx={{ minWidth: 0, flex: 1 }}>
                                   <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.3, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title || p.url}</Typography>
                                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.url}</Typography>
                                 </Box>
+                                {p.recommended && p.status === 'crawled' && (
+                                  <Chip size="small" label="Rekomendasi" color="primary"
+                                    sx={{ fontSize: '0.6rem', height: 18, flexShrink: 0 }} />
+                                )}
+                                {thin && (
+                                  <Chip size="small" variant="outlined" label="Konten tipis"
+                                    sx={{ fontSize: '0.6rem', height: 18, flexShrink: 0 }} />
+                                )}
                                 <Chip size="small" variant="outlined"
-                                  label={p.status === 'trained' ? 'Dilatih ✓' : p.status === 'failed' ? 'Gagal' : `${p.char_count.toLocaleString()} krkt`}
+                                  label={
+                                    p.status === 'trained' ? 'Dilatih ✓'
+                                    : p.status === 'training' ? 'Melatih…'
+                                    : p.status === 'skipped' ? 'Dilewati'
+                                    : p.status === 'failed' ? 'Gagal'
+                                    : `${p.char_count.toLocaleString()} krkt`}
                                   color={p.status === 'trained' ? 'success' : p.status === 'failed' ? 'error' : 'default'}
                                   sx={{ fontSize: '0.6rem', height: 18, flexShrink: 0 }} />
                               </Box>
                             );
                           })}
                         </Paper>
-                        <Stack direction="row" sx={{ justifyContent: 'flex-end', mt: 0.5 }}>
-                          <Button size="small" color="error" disabled={deleteWebMut.isPending} onClick={async () => {
+                        <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', mt: 0.5, flexWrap: 'wrap' }}>
+                          <Button size="small" disabled={regenPersonaMut.isPending || isTraining || trainedCount === 0}
+                            onClick={regeneratePersona}
+                            startIcon={regenPersonaMut.isPending ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}>
+                            Buat ulang persona
+                          </Button>
+                          <Button size="small" color="error" disabled={deleteWebMut.isPending || isTraining} onClick={async () => {
                             if (!await swalConfirm('Hapus semua knowledge dari website?', 'Knowledge hasil crawl web akan dihapus (Q&A manual tetap aman).')) return;
                             try { await deleteWebMut.mutateAsync(); swalToast('Knowledge web dihapus', 'success'); } catch { swalToast('Gagal', 'error'); }
                           }}>Hapus knowledge web</Button>

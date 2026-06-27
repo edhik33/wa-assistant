@@ -143,6 +143,7 @@ func main() {
 			auth.POST("/agents/:id/crawl/:jobId/train", handlers.TrainCrawlPages)
 			auth.GET("/agents/:id/knowledge-usage", handlers.KnowledgeUsage)
 			auth.DELETE("/agents/:id/knowledge-web", handlers.DeleteWebKnowledge)
+			auth.POST("/agents/:id/persona/regenerate", handlers.RegeneratePersona)
 
 			// Fitur jualan: simulator, analitik, inbox.
 			auth.POST("/agents/:id/test-chat", handlers.TestChat)

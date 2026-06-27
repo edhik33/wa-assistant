@@ -1,19 +1,14 @@
 package handlers
 
 import (
-	"context"
-	"fmt"
 	"log"
 	"net/url"
 	"strings"
 	"time"
 
-	"wa-assistant/backend/config"
 	"wa-assistant/backend/database"
 	"wa-assistant/backend/models"
 	"wa-assistant/backend/services"
-
-	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/gin-gonic/gin"
 )
@@ -116,8 +111,8 @@ func crawlPagesOf(jobID uint) []models.CrawlPage {
 	return pages
 }
 
-// TrainCrawlPages melatih (chunk + embed) halaman terpilih menjadi knowledge agent (source=web),
-// dengan menghormati kuota karakter knowledge per paket.
+// TrainCrawlPages memulai pelatihan halaman terpilih menjadi FAQ (background job).
+// Tiap halaman diubah AI jadi Q&A bersih lalu di-embed. Status job -> "training"; UI polling.
 func TrainCrawlPages(c *gin.Context) {
 	aid, ok := resolveAgent(c)
 	if !ok {
@@ -130,57 +125,97 @@ func TrainCrawlPages(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Pilih minimal satu halaman"})
 		return
 	}
-
+	var job models.CrawlJob
+	if database.DB.Where("agent_id = ?", aid).First(&job, c.Param("jobId")).Error != nil {
+		c.JSON(404, gin.H{"error": "Job tidak ditemukan"})
+		return
+	}
+	if job.Status == "training" {
+		c.JSON(409, gin.H{"error": "Pelatihan sedang berjalan, tunggu sampai selesai"})
+		return
+	}
 	maxChars, _ := crawlLimitsForTenant(currentTenantID(c))
-	used := knowledgeCharsUsed(aid)
+	database.DB.Model(&job).Update("status", "training")
+	go runWebTraining(aid, job.ID, req.PageIDs, maxChars)
+	c.JSON(202, gin.H{"started": true})
+}
 
+// runWebTraining (background) mengubah tiap halaman terpilih menjadi FAQ Q&A via AI lalu menyimpannya
+// sebagai knowledge. Hormati kuota karakter; halaman tanpa info berguna dilewati (bukan sampah masuk KB).
+func runWebTraining(agentID, jobID uint, pageIDs []uint, maxChars int) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[train] PANIC agent %d: %v", agentID, r)
+		}
+		database.DB.Model(&models.CrawlJob{}).Where("id = ?", jobID).Update("status", "done")
+	}()
+
+	used := knowledgeCharsUsed(agentID)
 	var pages []models.CrawlPage
-	database.DB.Where("agent_id = ? AND id IN ?", aid, req.PageIDs).Find(&pages)
+	database.DB.Where("agent_id = ? AND job_id = ? AND id IN ?", agentID, jobID, pageIDs).Find(&pages)
 
-	trained, chunks, skipped := 0, 0, 0
-	quotaHit := false
 	for i := range pages {
 		p := pages[i]
 		if p.Status == "trained" || strings.TrimSpace(p.Content) == "" {
-			skipped++
 			continue
 		}
-		chunkList := services.ChunkText(p.Content)
-		pageChars := 0
-		for _, ch := range chunkList {
-			pageChars += len([]rune(ch))
+		if used >= int64(maxChars) {
+			setPageStatus(p.ID, "failed", "kuota knowledge penuh")
+			continue
 		}
-		if used+int64(pageChars) > int64(maxChars) {
-			quotaHit = true
-			break
+		setPageStatus(p.ID, "training", "")
+
+		faqs, err := services.GenerateWebFAQ(p.Title, p.Content)
+		if err != nil {
+			// AI gagal -> fallback potongan bersih supaya konten tidak hilang.
+			log.Printf("[train] FAQ gagal page %d (%s): %v -> fallback chunk", p.ID, p.URL, err)
+			faqs = fallbackChunks(p.Title, p.Content)
 		}
-		for _, ch := range chunkList {
-			k := models.Knowledge{
-				AgentID: aid, Question: fmt.Sprintf("Informasi dari artikel: %s", p.Title), Answer: ch,
-				Tags: "web", Source: "web", SourceURL: p.URL,
+		if len(faqs) == 0 {
+			setPageStatus(p.ID, "skipped", "tidak ada info berguna untuk pelanggan")
+			continue
+		}
+
+		added := 0
+		for _, f := range faqs {
+			ans := strings.TrimSpace(f.Answer)
+			if ans == "" {
+				continue
 			}
+			if used+int64(len([]rune(ans))) > int64(maxChars) {
+				break // kuota habis
+			}
+			k := models.Knowledge{AgentID: agentID, Question: f.Question, Answer: ans, Tags: "web", Source: "web", SourceURL: p.URL}
 			database.DB.Create(&k) // CharCount diisi otomatis oleh hook BeforeSave
 			services.IndexKnowledge(&k)
-			chunks++
+			used += int64(len([]rune(ans)))
+			added++
 		}
 		now := time.Now()
+		st := "trained"
+		errMsg := ""
+		if added == 0 {
+			st, errMsg = "failed", "kuota knowledge penuh"
+		}
 		database.DB.Model(&models.CrawlPage{}).Where("id = ?", p.ID).
-			Updates(map[string]any{"status": "trained", "trained_at": &now})
-		used += int64(pageChars)
-		trained++
+			Updates(map[string]any{"status": st, "error": errMsg, "trained_at": &now})
 	}
-	services.InvalidateKB(aid)
+	services.InvalidateKB(agentID)
+	maybeAutoPersona(agentID, jobID)
+}
 
-	// Auto-generate Persona dari konten web kalau agent belum punya system prompt
-	if len(req.PageIDs) > 0 {
-		log.Printf("[autoPersona] triggering for agent %d, ids=%v", aid, req.PageIDs)
-		autoGeneratePersona(aid, pages)
+func setPageStatus(pageID uint, status, errMsg string) {
+	database.DB.Model(&models.CrawlPage{}).Where("id = ?", pageID).
+		Updates(map[string]any{"status": status, "error": errMsg})
+}
+
+// fallbackChunks dipakai bila AI FAQ gagal: simpan konten bersih sebagai beberapa potongan.
+func fallbackChunks(title, content string) []services.QAPair {
+	var out []services.QAPair
+	for _, ch := range services.ChunkText(content) {
+		out = append(out, services.QAPair{Question: "Informasi: " + title, Answer: ch})
 	}
-
-	c.JSON(200, gin.H{
-		"trained": trained, "chunks": chunks, "skipped": skipped,
-		"quota_exceeded": quotaHit, "used_chars": used, "max_chars": maxChars,
-	})
+	return out
 }
 
 // KnowledgeUsage menampilkan pemakaian kuota knowledge agent (untuk UI).
@@ -213,95 +248,99 @@ func DeleteWebKnowledge(c *gin.Context) {
 	c.JSON(200, gin.H{"deleted": res.RowsAffected})
 }
 
-// autoGeneratePersona generates a system prompt persona from trained crawl pages
-// using AI, then saves it to the agent if the agent's system prompt is empty.
-func autoGeneratePersona(agentID uint, pages []models.CrawlPage) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("[autoPersona] PANIC agent %d: %v", agentID, r)
-		}
-	}()
-	log.Printf("[autoPersona] start agent %d, pages=%d", agentID, len(pages))
+// maybeAutoPersona membuat persona otomatis dari konten web HANYA bila agent belum punya system prompt.
+func maybeAutoPersona(agentID, jobID uint) {
 	var agent models.Agent
 	if database.DB.First(&agent, agentID).Error != nil {
 		return
 	}
-	// Only generate if persona is empty
 	if strings.TrimSpace(agent.SystemPrompt) != "" {
-		log.Printf("[autoPersona] agent %d already has persona, skip", agentID)
+		log.Printf("[persona] agent %d sudah punya persona, lewati auto-generate", agentID)
 		return
 	}
+	persona := buildPersonaFromJob(agentID, jobID)
+	if persona == "" {
+		return
+	}
+	database.DB.Model(&agent).Update("system_prompt", persona)
+	log.Printf("[persona] auto-generate untuk agent %d (%d karakter)", agentID, len([]rune(persona)))
+}
 
-	// Collect sample content from trained pages (max 3000 chars)
-	var sample strings.Builder
+// RegeneratePersona membuat ulang persona dari job crawl terakhir (dipicu manual oleh user dari UI).
+func RegeneratePersona(c *gin.Context) {
+	aid, ok := resolveAgent(c)
+	if !ok {
+		return
+	}
+	var job models.CrawlJob
+	if database.DB.Where("agent_id = ?", aid).Order("id desc").First(&job).Error != nil {
+		c.JSON(400, gin.H{"error": "Belum ada data website. Latih dari website dulu."})
+		return
+	}
+	persona := buildPersonaFromJob(aid, job.ID)
+	if persona == "" {
+		c.JSON(502, gin.H{"error": "Gagal membuat persona dari konten web. Coba lagi."})
+		return
+	}
+	database.DB.Model(&models.Agent{}).Where("id = ?", aid).Update("system_prompt", persona)
+	c.JSON(200, gin.H{"system_prompt": persona})
+}
+
+// buildPersonaFromJob menyusun persona dari halaman terkaya pada satu job (prioritas Home/About).
+func buildPersonaFromJob(agentID, jobID uint) string {
+	var pages []models.CrawlPage
+	database.DB.Where("agent_id = ? AND job_id = ? AND char_count >= ?", agentID, jobID, 100).
+		Order("char_count desc").Find(&pages)
+	if len(pages) == 0 {
+		return ""
+	}
+	persona, err := services.GenerateWebPersona(pickPersonaSamples(pages))
+	if err != nil {
+		log.Printf("[persona] gagal generate agent %d: %v", agentID, err)
+		return ""
+	}
+	return persona
+}
+
+// pickPersonaSamples memilih maksimal 3 cuplikan konten paling relevan untuk persona (Home/About dulu).
+func pickPersonaSamples(pages []models.CrawlPage) []string {
+	var home, about, rest []models.CrawlPage
 	for _, p := range pages {
-		if strings.TrimSpace(p.Content) == "" {
-			log.Printf("[autoPersona] page %d (%s) empty content, skip", p.ID, p.Title)
-			continue
+		lu := strings.ToLower(p.URL)
+		switch {
+		case isHomeURL(p.URL):
+			home = append(home, p)
+		case strings.Contains(lu, "about") || strings.Contains(lu, "tentang") ||
+			strings.Contains(lu, "profil") || strings.Contains(lu, "company") ||
+			strings.Contains(lu, "perusahaan"):
+			about = append(about, p)
+		default:
+			rest = append(rest, p)
 		}
-		log.Printf("[autoPersona] using page %d (%s), content len=%d", p.ID, p.Title, len([]rune(p.Content)))
-		sample.WriteString(p.Title)
-		sample.WriteString("\n")
-		content := p.Content
-		if len([]rune(content)) > 1500 {
-			content = string([]rune(content)[:1500])
-		}
-		sample.WriteString(content)
-		sample.WriteString("\n\n")
-		if sample.Len() > 3000 {
+	}
+	ordered := append(append(home, about...), rest...)
+
+	var samples []string
+	for _, p := range ordered {
+		if len(samples) >= 3 {
 			break
 		}
+		c := p.Content
+		if len([]rune(c)) > 1500 {
+			c = string([]rune(c)[:1500])
+		}
+		if strings.TrimSpace(c) != "" {
+			samples = append(samples, p.Title+"\n"+c)
+		}
 	}
+	return samples
+}
 
-	if sample.Len() == 0 {
-		log.Printf("[autoPersona] agent %d: zero sample content, skip", agentID)
-		return
-	}
-
-	log.Printf("[autoPersona] agent %d: sample=%d chars, calling AI (model=%s)...", agentID, sample.Len(), config.Env("OPENAI_MODEL", "deepseek-v4-pro"))
-
-	// Call AI to generate persona
-	client := services.AIClient
-	if client == nil {
-		log.Printf("[autoPersona] AI client nil, skip agent %d", agentID)
-		return
-	}
-
-	prompt := fmt.Sprintf(`Berdasarkan konten website berikut, buat persona customer service WhatsApp yang singkat dan natural. 
-Tulis dalam Bahasa Indonesia, 3-5 kalimat saja. 
-Format: "Kamu adalah [nama bisnis]. [deskripsi singkat]. [produk/layanan utama]. [cara order/kontak]."
-
-Konten website:
-%s`, sample.String()[:min(3000, sample.Len())])
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	resp, err := client.CreateChatCompletion(
-		ctx,
-		openai.ChatCompletionRequest{
-			Model: config.Env("OPENAI_MODEL", "deepseek-v4-pro"),
-			Messages: []openai.ChatCompletionMessage{
-				{Role: "system", Content: "Kamu adalah generator persona CS. Output HANYA teks persona, tanpa kata pembuka/penutup."},
-				{Role: "user", Content: prompt},
-			},
-			MaxTokens: 300,
-		},
-	)
+// isHomeURL true bila URL menunjuk ke halaman beranda (tanpa path atau hanya "/").
+func isHomeURL(raw string) bool {
+	u, err := url.Parse(raw)
 	if err != nil {
-		log.Printf("[autoPersona] AI error agent %d: %v", agentID, err)
-		return
+		return false
 	}
-	if len(resp.Choices) == 0 {
-		log.Printf("[autoPersona] agent %d: AI returned 0 choices", agentID)
-		return
-	}
-
-	persona := strings.TrimSpace(resp.Choices[0].Message.Content)
-	if persona == "" {
-		log.Printf("[autoPersona] agent %d: AI returned empty persona, raw=%q", agentID, resp.Choices[0].Message.Content)
-		return
-	}
-
-	database.DB.Model(&agent).Update("system_prompt", persona)
-	log.Printf("[autoPersona] Generated persona for agent %d (%d chars): %q", agentID, len(persona), persona[:min(80, len(persona))])
+	return u.Path == "" || u.Path == "/"
 }

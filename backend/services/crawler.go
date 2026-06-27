@@ -25,7 +25,53 @@ const (
 	maxSitemapDepth = 2                      // sitemap index boleh bersarang sampai 2 level
 	chunkSize       = 800                    // ukuran chunk (rune) saat melatih
 	chunkOverlap    = 100                    // tumpang-tindih antar-chunk agar konteks tak terpotong
+	minContentChars = 200                    // halaman di bawah ini dianggap "tipis" (tak direkomendasi)
 )
+
+// shouldSkipURL: URL yang tak pernah berguna untuk training (aset & halaman fungsional).
+// Halaman ini tidak di-fetch sama sekali agar daftar bersih & hemat waktu.
+func shouldSkipURL(rawurl string) bool {
+	u, err := url.Parse(rawurl)
+	if err != nil {
+		return true
+	}
+	p := strings.ToLower(u.Path)
+	for _, ext := range []string{".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico",
+		".css", ".js", ".pdf", ".zip", ".rar", ".mp4", ".mp3", ".woff", ".woff2", ".ttf", ".xml", ".json"} {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
+	}
+	for _, kw := range []string{
+		"/cart", "/keranjang", "/checkout", "/login", "/signin", "/masuk", "/logout",
+		"/register", "/signup", "/daftar-akun", "/my-account", "/akun", "/account",
+		"/wp-admin", "/wp-login", "/xmlrpc", "/feed", "/rss", "/wishlist", "/compare",
+	} {
+		if strings.Contains(p, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// isLowValueURL: halaman yang biasanya tak penting untuk CS (tetap di-list, tapi tak direkomendasi).
+func isLowValueURL(rawurl string) bool {
+	u, err := url.Parse(rawurl)
+	if err != nil {
+		return true
+	}
+	p := strings.ToLower(u.Path)
+	for _, kw := range []string{
+		"privacy", "kebijakan", "privasi", "terms", "syarat", "ketentuan", "/tos",
+		"/tag/", "/tags/", "/category/", "/categories/", "/kategori/", "/author/",
+		"/search", "/cari", "/page/", "/404", "/disclaimer",
+	} {
+		if strings.Contains(p, kw) {
+			return true
+		}
+	}
+	return false
+}
 
 var crawlClient = &http.Client{Timeout: crawlTimeout}
 
@@ -65,6 +111,8 @@ func RunCrawl(jobID uint, maxPages int) {
 			p.Status, p.Error = "failed", ferr.Error()
 		} else {
 			p.Status, p.Content, p.CharCount = "crawled", text, len([]rune(text))
+			// Direkomendasi bila kontennya cukup tebal & bukan halaman low-value.
+			p.Recommended = p.CharCount >= minContentChars && !isLowValueURL(pageURL)
 		}
 		database.DB.Create(&p)
 		pages++
@@ -77,7 +125,7 @@ func RunCrawl(jobID uint, maxPages int) {
 			if pages >= maxPages {
 				break
 			}
-			if pathDisallowed(u, disallow) {
+			if shouldSkipURL(u) || pathDisallowed(u, disallow) {
 				continue
 			}
 			title, text, _, ferr := fetchPage(u)
@@ -98,7 +146,7 @@ func RunCrawl(jobID uint, maxPages int) {
 			continue
 		}
 		visited[u] = true
-		if pathDisallowed(u, disallow) {
+		if shouldSkipURL(u) || pathDisallowed(u, disallow) {
 			continue
 		}
 		title, text, links, ferr := fetchPage(u)
@@ -109,7 +157,7 @@ func RunCrawl(jobID uint, maxPages int) {
 		}
 		for _, l := range links {
 			ln := normalizeURL(l)
-			if ln != "" && canonicalHost(hostOf(ln)) == host && !visited[ln] {
+			if ln != "" && canonicalHost(hostOf(ln)) == host && !visited[ln] && !shouldSkipURL(ln) {
 				queue = append(queue, ln)
 			}
 		}

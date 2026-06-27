@@ -152,7 +152,7 @@ type CrawlJob struct {
 	AgentID    uint       `gorm:"index;not null" json:"agent_id"`
 	RootURL    string     `gorm:"type:text" json:"root_url"`
 	Domain     string     `gorm:"size:255" json:"domain"`
-	Status     string     `gorm:"size:16;index;default:pending" json:"status"` // pending, crawling, done, failed
+	Status     string     `gorm:"size:16;index;default:pending" json:"status"` // pending, crawling, training, done, failed
 	PagesFound int        `gorm:"not null;default:0" json:"pages_found"`
 	Error      string     `gorm:"type:text" json:"error"`
 	CreatedAt  time.Time  `json:"created_at"`
@@ -166,12 +166,15 @@ type CrawlPage struct {
 	AgentID   uint       `gorm:"index;not null" json:"agent_id"`
 	URL       string     `gorm:"type:text" json:"url"`
 	Title     string     `gorm:"type:text" json:"title"`
-	Status    string     `gorm:"size:16;index;default:found" json:"status"` // found, crawled, failed, trained
+	Status    string     `gorm:"size:16;index;default:found" json:"status"` // found, crawled, failed, training, trained, skipped
 	CharCount int        `gorm:"not null;default:0" json:"char_count"`
 	Content   string     `gorm:"type:longtext" json:"-"` // teks bersih (tidak dikirim ke frontend, bisa besar)
 	Error     string     `gorm:"type:text" json:"error"`
-	TrainedAt *time.Time `json:"trained_at"`
-	CreatedAt time.Time  `json:"created_at"`
+	// Recommended = halaman layak dilatih (konten cukup & bukan halaman low-value seperti
+	// privacy/terms/tag). Dipakai UI untuk auto-centang halaman penting saja.
+	Recommended bool       `gorm:"not null;default:false" json:"recommended"`
+	TrainedAt   *time.Time `json:"trained_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type User struct {
