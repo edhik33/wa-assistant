@@ -72,7 +72,7 @@ export default function GroupModerationFeed({ agentId }: { agentId: number }) {
       await confirmKick.mutateAsync(row.id);
       swalToast(`${sender} dikeluarkan dari grup`);
     } catch {
-      swalToast('Anggota belum bisa dikeluarkan. Pastikan Wai masih menjadi admin.', 'error');
+      swalToast('Anggota belum bisa dikeluarkan. Pastikan nomor ini masih menjadi admin.', 'error');
     }
   };
 

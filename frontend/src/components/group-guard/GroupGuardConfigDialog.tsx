@@ -166,7 +166,7 @@ function ConfigEditor({ agentId, group, initialForm, fullScreen, onClose }: {
 
           {!group.bot_is_admin && (
             <Alert severity="warning" icon={<AdminIcon fontSize="small" />}>
-              Wai belum menjadi admin. Deteksi tetap berjalan setelah penjaga aktif, tetapi hapus pesan dan keluarkan anggota belum dapat dijalankan.
+              Nomor ini belum menjadi admin. Deteksi tetap berjalan setelah penjaga aktif, tetapi hapus pesan dan keluarkan anggota belum dapat dijalankan.
             </Alert>
           )}
 
@@ -235,11 +235,11 @@ function ConfigEditor({ agentId, group, initialForm, fullScreen, onClose }: {
             )}
           </RuleSection>
 
-          <RuleSection title="2. Tindakan saat spam terdeteksi" description="Wai dapat menghapus pesan, lalu menentukan apakah anggota perlu ditinjau.">
+          <RuleSection title="2. Tindakan saat spam terdeteksi" description="Nomor ini dapat menghapus pesan, lalu menentukan apakah anggota perlu ditinjau.">
             <SettingSwitch
               icon={<DeleteIcon fontSize="small" />}
               title="Hapus pesan spam"
-              description="Pesan dihapus otomatis bila Wai memiliki akses admin."
+              description="Pesan dihapus otomatis bila nomor ini memiliki akses admin."
               checked={form.delete_spam}
               onChange={checked => set({ delete_spam: checked })}
             />

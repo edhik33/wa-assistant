@@ -86,14 +86,14 @@ function GroupList({ agentId }: { agentId: number }) {
       <SummaryGrid items={[
         { label: 'Total grup', value: totals.total },
         { label: 'Penjaga aktif', value: totals.active, tone: totals.active ? 'success.main' : 'text.secondary' },
-        { label: 'Wai sudah admin', value: totals.admin, tone: totals.admin ? 'primary.main' : 'text.secondary' },
+        { label: 'Nomor ini admin', value: totals.admin, tone: totals.admin ? 'primary.main' : 'text.secondary' },
         { label: 'Perlu akses admin', value: totals.needsAdmin, tone: totals.needsAdmin ? 'warning.main' : 'text.secondary' },
       ]} />
 
       {totals.needsAdmin > 0 && (
         <Alert severity="warning" icon={<AdminIcon fontSize="small" />} sx={{ mb: 1.5 }}>
           <Typography variant="body2">
-            <b>{totals.needsAdmin} grup belum memberi Wai akses admin.</b> Aturan bisa disiapkan, tetapi Wai belum dapat menghapus pesan atau mengeluarkan anggota di grup tersebut.
+            <b>{totals.needsAdmin} grup belum memberi nomor ini akses admin.</b> Aturan bisa disiapkan, tetapi nomor ini belum dapat menghapus pesan atau mengeluarkan anggota di grup tersebut.
           </Typography>
         </Alert>
       )}
@@ -187,7 +187,7 @@ function GroupList({ agentId }: { agentId: number }) {
                     />
                   </Stack>
                   <Typography variant="caption" color={group.bot_is_admin ? 'text.secondary' : 'warning.main'} sx={{ display: 'block', mt: 0.15 }}>
-                    {group.participants} anggota · {group.bot_is_admin ? 'Wai memiliki akses admin' : 'Wai belum admin'}
+                    {group.participants} anggota · {group.bot_is_admin ? 'Nomor ini admin' : 'Nomor ini belum admin'}
                   </Typography>
                 </Box>
                 <Button size="small" variant={group.guard_enabled ? 'outlined' : 'contained'} startIcon={<TuneIcon />} onClick={() => setEditing(group)}>
