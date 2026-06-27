@@ -86,7 +86,22 @@ func Groups(c *gin.Context) {
 		c.JSON(502, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(200, gin.H{"data": groups})
+	// Status penjaga (aktif/tidak) per grup, supaya kelihatan di daftar.
+	var enabledJIDs []string
+	database.DB.Model(&models.GroupGuardConfig{}).
+		Where("agent_id = ? AND enabled = ?", id, true).Pluck("group_jid", &enabledJIDs)
+	enabledSet := make(map[string]bool, len(enabledJIDs))
+	for _, j := range enabledJIDs {
+		enabledSet[j] = true
+	}
+	data := make([]gin.H, 0, len(groups))
+	for _, g := range groups {
+		data = append(data, gin.H{
+			"jid": g.JID, "name": g.Name, "participants": g.Participants,
+			"bot_is_admin": g.BotIsAdmin, "guard_enabled": enabledSet[g.JID],
+		})
+	}
+	c.JSON(200, gin.H{"data": data})
 }
 
 // GroupMembers = nomor anggota grup (untuk dijadikan penerima broadcast).

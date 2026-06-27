@@ -265,6 +265,7 @@ export interface WAGroup {
   name: string;
   participants: number;
   bot_is_admin: boolean;
+  guard_enabled?: boolean;
 }
 
 export interface GroupGuardConfig {

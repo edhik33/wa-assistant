@@ -73,8 +73,11 @@ function GroupList({ agentId }: { agentId: number }) {
                     </Typography>
                     <Typography variant="caption" color="text.secondary">{g.participants} anggota</Typography>
                   </Box>
+                  {g.guard_enabled
+                    ? <Chip size="small" color="success" label="Penjaga aktif" />
+                    : <Chip size="small" variant="outlined" label="Penjaga nonaktif" />}
                   {g.bot_is_admin
-                    ? <Chip size="small" color="success" label="Wai admin" />
+                    ? <Chip size="small" color="success" variant="outlined" label="Wai admin" />
                     : <Chip size="small" color="warning" variant="outlined" label="Wai bukan admin" />}
                   <Button size="small" variant="outlined" startIcon={<TuneIcon />} onClick={() => setEditing(g)}>Atur</Button>
                 </Stack>
@@ -130,6 +133,11 @@ function ConfigDialog({ agentId, group, onClose }: { agentId: number; group: WAG
               control={<Switch checked={form.enabled} onChange={e => set({ enabled: e.target.checked })} />}
               label={<Typography variant="body2" sx={{ fontWeight: 700 }}>Aktifkan penjaga di grup ini</Typography>}
             />
+            {!form.enabled && (
+              <Alert severity="warning" icon={false} sx={{ py: 0.25 }}>
+                Penjaga belum aktif — aturan di bawah tidak akan berjalan sampai ini dinyalakan.
+              </Alert>
+            )}
             <Divider />
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Deteksi spam</Typography>
             <FormControlLabel control={<Switch checked={form.block_links} onChange={e => set({ block_links: e.target.checked })} />} label="Blokir pesan berisi tautan/link" />
