@@ -172,7 +172,7 @@ func TrainCrawlPages(c *gin.Context) {
 	services.InvalidateKB(aid)
 
 	// Auto-generate Persona dari konten web kalau agent belum punya system prompt
-	if trained > 0 {
+	if len(pages) > 0 {
 		go autoGeneratePersona(aid, pages)
 	}
 
