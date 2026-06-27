@@ -93,7 +93,8 @@ const NAV_ITEMS = NAV_GROUPS.flatMap(g => g.items);
 export default function Dashboard() {
   const [tab, setTab] = useState(() => {
     const saved = localStorage.getItem('wai_tab');
-    return saved && NAV_ITEMS.some(n => n.id === saved) ? saved : 'dashboard';
+    const valid = NAV_ITEMS.some(n => n.id === saved) || saved === 'knowledge';
+    return valid ? saved : 'dashboard';
   });
   // seed = data yang dioper antar-tab (mis. dari Kontak ke Broadcast/Inbox). n = pemicu agar efek jalan ulang.
   const [seed, setSeed] = useState<{ kind: 'broadcast' | 'inbox'; value: string; n: number } | null>(null);
