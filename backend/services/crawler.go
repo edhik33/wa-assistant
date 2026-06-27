@@ -519,7 +519,8 @@ func collapseSpaces(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// ChunkText memecah teks jadi potongan ~chunkSize rune dengan tumpang-tindih, untuk di-embed.
+// ChunkText memecah teks jadi potongan ~chunkSize rune, diakhiri di batas kalimat
+// (titik + spasi, baris baru) agar tidak terpotong di tengah kata.
 func ChunkText(text string) []string {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -530,18 +531,43 @@ func ChunkText(text string) []string {
 		return []string{text}
 	}
 	var chunks []string
-	for start := 0; start < len(runes); {
+	start := 0
+	for start < len(runes) {
 		end := start + chunkSize
-		if end > len(runes) {
+		if end >= len(runes) {
 			end = len(runes)
+		} else {
+			// Mundur cari batas kalimat: ". " atau "\n" dalam 200 karakter terakhir
+			searchStart := end - 200
+			if searchStart < start {
+				searchStart = start
+			}
+			segment := string(runes[searchStart:end])
+			// Cari ". " terakhir
+			if idx := strings.LastIndex(segment, ". "); idx >= 0 {
+				end = searchStart + idx + 1 // setelah titik
+				// Jangan mundur terlalu jauh
+				if end < start+chunkSize/2 {
+					end = start + chunkSize // fallback
+				}
+			} else if idx := strings.LastIndex(segment, "\n"); idx >= 0 {
+				end = searchStart + idx
+				if end < start+chunkSize/2 {
+					end = start + chunkSize
+				}
+			}
 		}
-		if c := strings.TrimSpace(string(runes[start:end])); c != "" {
-			chunks = append(chunks, c)
+		chunk := strings.TrimSpace(string(runes[start:end]))
+		if chunk != "" {
+			chunks = append(chunks, chunk)
 		}
-		if end == len(runes) {
+		if end >= len(runes) {
 			break
 		}
 		start = end - chunkOverlap
+		if start < 0 {
+			start = 0
+		}
 	}
 	return chunks
 }
