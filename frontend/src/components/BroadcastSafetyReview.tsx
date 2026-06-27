@@ -35,56 +35,22 @@ export default function BroadcastSafetyReview({
         </Typography>
       </Box>
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-        <FormControl size="small" fullWidth>
-          <InputLabel>Jenis pesan</InputLabel>
-          <Select
-            value={value.consent_category}
-            label="Jenis pesan"
-            onChange={e => onChange({ consent_category: e.target.value as BroadcastSafetyForm['consent_category'] }, true)}
-          >
-            <MenuItem value="marketing">Promo atau penawaran</MenuItem>
-            <MenuItem value="order_update">Update pesanan</MenuItem>
-            <MenuItem value="reminder">Pengingat</MenuItem>
-            <MenuItem value="service_info">Informasi layanan</MenuItem>
-          </Select>
-        </FormControl>
-        <FormControl size="small" fullWidth>
-          <InputLabel>Sumber izin (opsional)</InputLabel>
-          <Select
-            value={value.consent_source}
-            label="Sumber izin (opsional)"
-            onChange={e => onChange({ consent_source: e.target.value }, true)}
-          >
-            <MenuItem value=""><em>Tidak dicatat</em></MenuItem>
-            <MenuItem value="form">Form persetujuan</MenuItem>
-            <MenuItem value="checkout">Checkout atau pemesanan</MenuItem>
-            <MenuItem value="customer_request">Permintaan pelanggan</MenuItem>
-            <MenuItem value="event">Event atau pendaftaran offline</MenuItem>
-            <MenuItem value="other">Sumber lain yang terdokumentasi</MenuItem>
-          </Select>
-        </FormControl>
-      </Stack>
-
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-        <TextField
-          type="date"
-          size="small"
-          label="Tanggal izin (opsional)"
-          value={value.consent_granted_at}
-          onChange={e => onChange({ consent_granted_at: e.target.value }, true)}
-          slotProps={{ inputLabel: { shrink: true } }}
-          sx={{ width: { xs: '100%', sm: 210 }, flexShrink: 0 }}
-        />
-        <TextField
-          size="small"
-          fullWidth
-          label="Catatan bukti (opsional)"
-          placeholder="Contoh: Form promo Juni 2026"
-          value={value.consent_note}
-          onChange={e => onChange({ consent_note: e.target.value }, true)}
-        />
-      </Stack>
+      <FormControl size="small" fullWidth>
+        <InputLabel>Jenis pesan</InputLabel>
+        <Select
+          value={value.consent_category}
+          label="Jenis pesan"
+          onChange={e => onChange({ consent_category: e.target.value as BroadcastSafetyForm['consent_category'] }, true)}
+        >
+          <MenuItem value="marketing">Promo atau penawaran</MenuItem>
+          <MenuItem value="order_update">Update pesanan</MenuItem>
+          <MenuItem value="reminder">Pengingat</MenuItem>
+          <MenuItem value="service_info">Informasi layanan</MenuItem>
+        </Select>
+      </FormControl>
+      <Typography variant="caption" color="text.secondary" sx={{ mt: -0.5 }}>
+        Promo paling berisiko bikin nomor dibatasi, jadi diperiksa lebih ketat daripada pesan transaksional.
+      </Typography>
 
       <FormControlLabel
         control={(

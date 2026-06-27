@@ -248,15 +248,18 @@ func assessBroadcast(agentID uint, message string, recipients []broadcastGuardRe
 			Recommendation: "Jadwalkan kampanye untuk hari berikutnya.",
 		})
 	} else {
+		// Ambang risiko menyesuaikan jenis pesan: promo (marketing) adalah pemicu pembatasan
+		// terbesar, jadi diperketat; pesan transaksional (update pesanan/pengingat/info) dilonggarkan.
+		mediumRatio, highRatio, highMin := consentRiskThresholds(consent.Category)
 		noInteractionRatio := float64(assessment.NoInteraction) / float64(assessment.EligibleRecipients)
-		if noInteractionRatio > 0.7 && assessment.EligibleRecipients > 100 {
+		if noInteractionRatio > highRatio && assessment.EligibleRecipients > highMin {
 			assessment.Level = "high"
 			assessment.Findings = append(assessment.Findings, broadcastGuardFinding{
 				Code: "mostly_no_interaction", Severity: "danger",
 				Message:        intText(assessment.NoInteraction) + " penerima belum pernah mengirim pesan ke nomor ini.",
 				Recommendation: "Mulai dari penerima yang pernah berinteraksi atau pecah menjadi kampanye lebih kecil.",
 			})
-		} else if noInteractionRatio > 0.4 {
+		} else if noInteractionRatio > mediumRatio {
 			assessment.Level = "medium"
 			assessment.Findings = append(assessment.Findings, broadcastGuardFinding{
 				Code: "many_no_interaction", Severity: "warning",
@@ -302,6 +305,16 @@ func assessBroadcast(agentID uint, message string, recipients []broadcastGuardRe
 		assessment.OverridePhrase = broadcastOverridePhrase
 	}
 	return assessment
+}
+
+// consentRiskThresholds mengembalikan ambang rasio "belum pernah berinteraksi" untuk naik ke
+// medium/high, plus jumlah penerima minimal agar dianggap high — disesuaikan per jenis pesan.
+// Promo (marketing) jauh lebih berisiko di mata WhatsApp, jadi ambangnya lebih rendah.
+func consentRiskThresholds(category string) (mediumRatio, highRatio float64, highMin int) {
+	if category == "marketing" {
+		return 0.25, 0.5, 50 // promo: ketat, berlaku di volume lebih kecil
+	}
+	return 0.4, 0.7, 100 // transaksional & lainnya: lebih longgar (perilaku lama)
 }
 
 func messageRiskFindings(message string, recipientCount int) []broadcastGuardFinding {
@@ -392,6 +405,11 @@ func recordAttestedConsents(tx *gorm.DB, agentID, userID uint, recipients []broa
 	if !validConsentAttestation(consent) {
 		return nil
 	}
+	// Tanggal izin opsional; bila kosong, pakai waktu pencatatan agar kolom tetap terisi.
+	grantedAt := consent.GrantedAt
+	if grantedAt.IsZero() {
+		grantedAt = time.Now()
+	}
 	rows := make([]models.ContactConsent, 0, len(recipients))
 	for _, recipient := range normalizeGuardRecipients(recipients) {
 		if !eligible[recipient.Number] {
@@ -399,7 +417,7 @@ func recordAttestedConsents(tx *gorm.DB, agentID, userID uint, recipients []broa
 		}
 		rows = append(rows, models.ContactConsent{
 			AgentID: agentID, Number: recipient.Number, Category: consent.Category,
-			Source: consent.Source, Note: consent.Note, GrantedAt: consent.GrantedAt, RecordedBy: userID,
+			Source: consent.Source, Note: consent.Note, GrantedAt: grantedAt, RecordedBy: userID,
 		})
 	}
 	if len(rows) == 0 {
@@ -408,7 +426,7 @@ func recordAttestedConsents(tx *gorm.DB, agentID, userID uint, recipients []broa
 	return tx.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "agent_id"}, {Name: "number"}, {Name: "category"}},
 		DoUpdates: clause.Assignments(map[string]interface{}{
-			"source": consent.Source, "note": consent.Note, "granted_at": consent.GrantedAt,
+			"source": consent.Source, "note": consent.Note, "granted_at": grantedAt,
 			"revoked_at": nil, "recorded_by": userID, "updated_at": time.Now(),
 		}),
 	}).Create(&rows).Error

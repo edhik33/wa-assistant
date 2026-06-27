@@ -143,9 +143,6 @@ export type BroadcastConsentCategory = 'marketing' | 'order_update' | 'reminder'
 
 export interface BroadcastSafetyForm {
   consent_category: BroadcastConsentCategory;
-  consent_source: string;
-  consent_granted_at: string;
-  consent_note: string;
   consent_confirmed: boolean;
   risk_acknowledged: boolean;
   override_phrase: string;
