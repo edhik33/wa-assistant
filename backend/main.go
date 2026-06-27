@@ -30,6 +30,7 @@ func main() {
 	services.SetHandlers(handlers.OnWAMessage, handlers.OnDeviceLinked)
 	services.SetLabelHandlers(handlers.OnLabelEdit, handlers.OnLabelAssoc)
 	services.SetConnectedHandler(handlers.OnAgentConnected)
+	handlers.InitGroupGuard()
 
 	// Sambungkan ulang semua agent yang sudah ter-link.
 	go handlers.StartAgents()
@@ -184,6 +185,11 @@ func main() {
 			auth.GET("/agents/:id/wa-contacts", handlers.WAContacts)
 			auth.GET("/agents/:id/groups", handlers.Groups)
 			auth.GET("/agents/:id/group-members", handlers.GroupMembers)
+			auth.GET("/agents/:id/group-config", handlers.GroupConfig)
+			auth.PUT("/agents/:id/group-config", handlers.SaveGroupConfig)
+			auth.GET("/agents/:id/group-moderation", handlers.GroupModeration)
+			auth.POST("/agents/:id/group-moderation/:logid/confirm-kick", handlers.ConfirmKick)
+			auth.POST("/agents/:id/group-moderation/:logid/dismiss", handlers.DismissModeration)
 			auth.GET("/agents/:id/labels", handlers.Labels)
 			auth.GET("/agents/:id/label-contacts", handlers.LabelContacts)
 			auth.POST("/agents/:id/schedule", handlers.CreateSchedule)

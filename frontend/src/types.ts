@@ -267,6 +267,35 @@ export interface WAGroup {
   bot_is_admin: boolean;
 }
 
+export interface GroupGuardConfig {
+  id?: number;
+  group_jid: string;
+  group_name: string;
+  enabled: boolean;
+  delete_spam: boolean;
+  flag_for_kick: boolean;
+  auto_kick: boolean;
+  block_links: boolean;
+  block_phones: boolean;
+  block_words: string;
+  flood_count: number;
+  flood_window_sec: number;
+  allow_numbers: string;
+}
+
+export interface GroupModerationLog {
+  id: number;
+  group_jid: string;
+  group_name: string;
+  sender: string;
+  sender_name: string;
+  action: string;
+  reason: string;
+  excerpt: string;
+  status: string;
+  created_at: string;
+}
+
 export interface LabelInfo {
   label_id: string;
   name: string;

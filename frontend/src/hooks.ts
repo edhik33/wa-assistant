@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from './services/api';
-import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, Invoice, PaymentChannel, Analytics, AIMetrics, Contact, ChatMsg, CheckResult, Broadcast, BroadcastRecipient, BroadcastAssessment, BroadcastPreflightBody, BroadcastSafetyForm, WAGroup, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff, CrawlJob, CrawlPage, KnowledgeUsage } from './types';
+import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, Invoice, PaymentChannel, Analytics, AIMetrics, Contact, ChatMsg, CheckResult, Broadcast, BroadcastRecipient, BroadcastAssessment, BroadcastPreflightBody, BroadcastSafetyForm, WAGroup, GroupGuardConfig, GroupModerationLog, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff, CrawlJob, CrawlPage, KnowledgeUsage } from './types';
 
 type ContactList = { number: string; name: string }[];
 
@@ -252,6 +252,51 @@ export function useManagedGroups(agentId: number, enabled = true) {
     queryFn: async () => (await api.get(`/agents/${agentId}/groups`)).data.data as WAGroup[],
     enabled,
     retry: false,
+  });
+}
+
+export function useGroupConfig(agentId: number, gjid: string, enabled = true) {
+  return useQuery({
+    queryKey: ['group-config', agentId, gjid],
+    queryFn: async () => (await api.get(`/agents/${agentId}/group-config`, { params: { gjid } })).data.data as GroupGuardConfig,
+    enabled: enabled && !!gjid,
+    retry: false,
+  });
+}
+
+export function useSaveGroupConfig(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: GroupGuardConfig) => (await api.put(`/agents/${agentId}/group-config`, body)).data.data as GroupGuardConfig,
+    onSuccess: (_d, b) => {
+      qc.invalidateQueries({ queryKey: ['group-config', agentId, b.group_jid] });
+      qc.invalidateQueries({ queryKey: ['managed-groups', agentId] });
+    },
+  });
+}
+
+export function useGroupModeration(agentId: number, enabled = true) {
+  return useQuery({
+    queryKey: ['group-moderation', agentId],
+    queryFn: async () => (await api.get(`/agents/${agentId}/group-moderation`)).data.data as GroupModerationLog[],
+    enabled,
+    retry: false,
+  });
+}
+
+export function useConfirmKick(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (logid: number) => (await api.post(`/agents/${agentId}/group-moderation/${logid}/confirm-kick`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['group-moderation', agentId] }),
+  });
+}
+
+export function useDismissModeration(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (logid: number) => (await api.post(`/agents/${agentId}/group-moderation/${logid}/dismiss`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['group-moderation', agentId] }),
   });
 }
 

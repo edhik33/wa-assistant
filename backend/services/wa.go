@@ -39,6 +39,19 @@ type MessageHandler func(agentID uint, sender types.JID, in IncomingMessage)
 // DeviceLinkedHandler dipanggil saat agent berhasil login via QR.
 type DeviceLinkedHandler func(agentID uint, jid, number string)
 
+// GroupMessageMeta = ringkasan pesan grup untuk moderasi (tanpa unduh media).
+type GroupMessageMeta struct {
+	GroupJID   string
+	SenderJID  string // JID asli pengirim (untuk revoke/kick)
+	SenderPN   string // nomor telepon pengirim (untuk cocokkan allowlist/admin & tampil)
+	SenderName string
+	Text       string // isi/caption (tanpa unduh media)
+	MessageID  string
+}
+
+// GroupMessageHandler dipanggil tiap pesan grup masuk (jalur moderasi, terpisah dari CS).
+type GroupMessageHandler func(agentID uint, m GroupMessageMeta)
+
 type waInstance struct {
 	mu             sync.Mutex
 	agentID        uint
@@ -53,8 +66,9 @@ var (
 	instances    = make(map[uint]*waInstance)
 	globalMu     sync.Mutex
 	legacyDBPath = "./wa-assistant.db"
-	onMessage    MessageHandler
-	onLinked     DeviceLinkedHandler
+	onMessage      MessageHandler
+	onLinked       DeviceLinkedHandler
+	onGroupMessage GroupMessageHandler
 	waLogger     waLog.Logger = waLog.Noop // logger whatsmeow (default senyap; diaktifkan via WA_LOG_LEVEL)
 )
 
@@ -76,6 +90,11 @@ func InitWA(dbPath string) {
 func SetHandlers(msg MessageHandler, linked DeviceLinkedHandler) {
 	onMessage = msg
 	onLinked = linked
+}
+
+// SetGroupMessageHandler mendaftarkan callback moderasi pesan grup (dipanggil sekali dari main).
+func SetGroupMessageHandler(h GroupMessageHandler) {
+	onGroupMessage = h
 }
 
 // Handler event label WhatsApp (Business).
@@ -283,8 +302,27 @@ func (w *waInstance) handleEvent(evt interface{}) {
 		}
 
 	case *events.Message:
-		// Lewati pesan grup & pesan yang kita kirim sendiri (cegah balas ke diri sendiri / loop).
-		if v.Info.IsGroup || v.Info.IsFromMe {
+		// Pesan kita sendiri dilewati (cegah loop).
+		if v.Info.IsFromMe {
+			return
+		}
+		// Pesan grup TIDAK masuk pipeline CS (AI tidak balas di grup). Diarahkan ke jalur
+		// moderasi terpisah, dan hanya kalau handler moderasi terpasang.
+		if v.Info.IsGroup {
+			if onGroupMessage != nil {
+				sender := v.Info.Sender
+				if sender.Server == types.HiddenUserServer && !v.Info.SenderAlt.IsEmpty() {
+					sender = v.Info.SenderAlt
+				}
+				go onGroupMessage(w.agentID, GroupMessageMeta{
+					GroupJID:   v.Info.Chat.String(),
+					SenderJID:  v.Info.Sender.String(),
+					SenderPN:   sender.User,
+					SenderName: v.Info.PushName,
+					Text:       groupMessageText(v),
+					MessageID:  string(v.Info.ID),
+				})
+			}
 			return
 		}
 		_ = w.client.MarkRead(context.Background(), []types.MessageID{v.Info.ID}, time.Now(), v.Info.Chat, v.Info.Sender)
@@ -522,6 +560,104 @@ func (w *waInstance) GetGroups() ([]WAGroup, error) {
 		})
 	}
 	return out, nil
+}
+
+// groupMessageText mengambil teks/caption pesan grup TANPA mengunduh media (hemat & cepat).
+func groupMessageText(v *events.Message) string {
+	m := v.Message
+	if m == nil {
+		return ""
+	}
+	if t := m.GetConversation(); t != "" {
+		return t
+	}
+	if e := m.GetExtendedTextMessage(); e != nil {
+		return e.GetText()
+	}
+	if img := m.GetImageMessage(); img != nil {
+		return img.GetCaption()
+	}
+	if vid := m.GetVideoMessage(); vid != nil {
+		return vid.GetCaption()
+	}
+	if doc := m.GetDocumentMessage(); doc != nil {
+		return doc.GetCaption()
+	}
+	return ""
+}
+
+// GroupModerationInfo mengembalikan himpunan identitas admin grup + apakah bot sendiri admin.
+// Satu panggilan GetGroupInfo dipakai untuk keduanya; pemanggil sebaiknya men-cache hasilnya.
+func (w *waInstance) GroupModerationInfo(groupJID string) (admins map[string]bool, botIsAdmin bool, err error) {
+	w.mu.Lock()
+	client := w.client
+	w.mu.Unlock()
+	if client == nil || !client.IsConnected() {
+		return nil, false, fmt.Errorf("client WA tidak terhubung")
+	}
+	gjid, err := types.ParseJID(groupJID)
+	if err != nil {
+		return nil, false, err
+	}
+	info, err := client.GetGroupInfo(context.Background(), gjid)
+	if err != nil {
+		return nil, false, err
+	}
+	admins = map[string]bool{}
+	for _, p := range info.Participants {
+		if p.IsAdmin || p.IsSuperAdmin {
+			if p.JID.User != "" {
+				admins[p.JID.User] = true
+			}
+			if p.PhoneNumber.User != "" {
+				admins[p.PhoneNumber.User] = true
+			}
+			if p.LID.User != "" {
+				admins[p.LID.User] = true
+			}
+		}
+	}
+	return admins, botIsAdminOf(client, info), nil
+}
+
+// DeleteGroupMessage menghapus (revoke) pesan anggota lain di grup — butuh bot jadi admin.
+func (w *waInstance) DeleteGroupMessage(groupJID, senderJID, msgID string) error {
+	w.mu.Lock()
+	client := w.client
+	w.mu.Unlock()
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("client WA tidak terhubung")
+	}
+	gjid, err := types.ParseJID(groupJID)
+	if err != nil {
+		return err
+	}
+	sjid, err := types.ParseJID(senderJID)
+	if err != nil {
+		return err
+	}
+	_, err = client.SendMessage(context.Background(), gjid, client.BuildRevoke(gjid, sjid, types.MessageID(msgID)))
+	return err
+}
+
+// KickFromGroup mengeluarkan satu anggota dari grup — butuh bot jadi admin.
+func (w *waInstance) KickFromGroup(groupJID, userJID string) error {
+	w.mu.Lock()
+	client := w.client
+	w.mu.Unlock()
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("client WA tidak terhubung")
+	}
+	gjid, err := types.ParseJID(groupJID)
+	if err != nil {
+		return err
+	}
+	ujid, err := types.ParseJID(userJID)
+	if err != nil {
+		return err
+	}
+	_, err = client.UpdateGroupParticipants(context.Background(), gjid, []types.JID{ujid}, whatsmeow.ParticipantChangeRemove)
+	return err
 }
 
 // GetGroupMembers mengambil nomor anggota sebuah grup (untuk dijadikan penerima).

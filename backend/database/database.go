@@ -65,6 +65,7 @@ func Init() {
 		&models.AppSetting{},
 		&models.ClosingForm{}, &models.ClosingRecord{},
 		&models.ShippingCity{},
+		&models.GroupGuardConfig{}, &models.GroupModerationLog{},
 	)
 
 	seedPlans()
