@@ -141,7 +141,9 @@ func buildSystemPrompt(agentID uint, persona string) string {
 	sb.WriteString("- Untuk OBROLAN UMUM (terima kasih, oke, siap, basa-basi): jawab singkat ramah, jangan eskalasi.\n")
 	sb.WriteString("- Jawab HANYA berdasarkan basis pengetahuan yang disediakan. Kalau info tidak ada, bilang jujur tidak tahu.\n")
 	sb.WriteString("- JANGAN pura-pura 'menghitung', 'diproses', atau 'nanti dikabari' — kamu tidak bisa menghitung. Setelah order dicatat, akhiri dengan tawaran bantuan lain.\n")
-	sb.WriteString("- JANGAN menjanjikan mengirim katalog, gambar, foto, PDF, atau media apapun — kamu TIDAK BISA mengirim file/media. Kalau customer minta katalog, arahkan ke website atau minta hubungi admin via WhatsApp.\n")
+	sb.WriteString("- JANGAN menjanjikan mengirim katalog, gambar, foto, PDF, atau media apapun — kamu TIDAK BISA mengirim file/media. Kalau customer minta katalog/foto, arahkan ke website untuk lihat koleksi ATAU tawarkan bantu pilihkan langsung di sini. JANGAN menyuruh pelanggan menghubungi admin/nomor lain — pelanggan sudah terhubung denganmu.\n")
+	sb.WriteString("- NOMOR WHATSAPP PELANGGAN SUDAH otomatis kamu ketahui dari chat ini. JANGAN PERNAH meminta 'nomor WA yang bisa dihubungi' — itu mubazir dan membingungkan.\n")
+	sb.WriteString("- JANGAN menanyakan ulang data yang SUDAH diberikan pelanggan di percakapan ini (nama, produk, alamat, budget). Cek riwayat chat dulu; kalau sudah ada, pakai—jangan tanya lagi.\n")
 	sb.WriteString("- JANGAN MENGARANG detail spesifik (harga, syarat, jam, kebijakan) yang tidak ada di basis pengetahuan.\n")
 	sb.WriteString("- Tolak pertanyaan di luar topik bisnis dengan sopan — jangan bahas topik tidak relevan.\n")
 	sb.WriteString("- JANGAN sebut dirimu AI/model bahasa — kamu adalah staf CS bisnis ini.\n")
@@ -172,7 +174,7 @@ func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history
 		"Untuk sapaan/obrolan umum, jawab normal & ramah. " +
 		"TAPI jika pelanggan menanyakan informasi SPESIFIK yang tidak ada di basis pengetahuan dan kamu tidak yakin jawabannya, " +
 		"JANGAN menebak dan JANGAN menyuruh menghubungi admin—cukup balas PERSIS dengan token ini saja tanpa teks lain: [[ESCALATE]]" +
-		"\n\nPENGECUALIAN: Jika pelanggan ingin ORDER/BELI/PESAN/CLOSING, JANGAN eskalasi! Itu bukan pertanyaan informasi spesifik — itu adalah niat membeli. Tanyakan langsung: nama customer, produk yang dipilih, dan nomor WA. Kamu hanya mengumpulkan data order, bukan mengarang detail produk." +
+		"\n\nPENGECUALIAN: Jika pelanggan ingin ORDER/BELI/PESAN/CLOSING, JANGAN eskalasi! Itu niat membeli. Kumpulkan HANYA yang BELUM diberikan: nama customer & produk yang dipilih (plus alamat/tanggal pengiriman bila relevan). JANGAN minta nomor WhatsApp—nomor pelanggan sudah otomatis tercatat dari chat ini. JANGAN tanya ulang data yang sudah dijawab. Begitu nama & produk lengkap, konfirmasikan singkat bahwa pesanan dicatat—jangan ulangi pertanyaan." +
 		toneInstruction(tone)
 
 	if strings.Contains(systemPrompt, "ONGKIR_") {
