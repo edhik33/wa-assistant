@@ -291,9 +291,14 @@ Konten website:
 		log.Printf("[autoPersona] AI error agent %d: %v", agentID, err)
 		return
 	}
+	if len(resp.Choices) == 0 {
+		log.Printf("[autoPersona] agent %d: AI returned 0 choices", agentID)
+		return
+	}
 
 	persona := strings.TrimSpace(resp.Choices[0].Message.Content)
 	if persona == "" {
+		log.Printf("[autoPersona] agent %d: AI returned empty persona, raw=%q", agentID, resp.Choices[0].Message.Content)
 		return
 	}
 
