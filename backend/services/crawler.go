@@ -61,10 +61,12 @@ func isLowValueURL(rawurl string) bool {
 		return true
 	}
 	p := strings.ToLower(u.Path)
+	// Hanya halaman yang HAMPIR PASTI tak berguna untuk CS. Catatan: /category /tag TIDAK
+	// dimasukkan—pada situs e-commerce itu justru halaman katalog produk (berisi harga).
+	// Biar kekayaan konten (char_count) + AI saat training yang memutuskan halaman archive.
 	for _, kw := range []string{
 		"privacy", "kebijakan", "privasi", "terms", "syarat", "ketentuan", "/tos",
-		"/tag/", "/tags/", "/category/", "/categories/", "/kategori/", "/author/",
-		"/search", "/cari", "/page/", "/404", "/disclaimer",
+		"/author/", "/search", "/cari", "/page/", "/404", "/disclaimer",
 	} {
 		if strings.Contains(p, kw) {
 			return true
@@ -591,10 +593,10 @@ func ChunkText(text string) []string {
 				searchStart = start
 			}
 			segment := string(runes[searchStart:end])
-			best := -1  // posisi terbaik untuk memotong
+			best := -1 // posisi terbaik untuk memotong
 			for _, sep := range []string{". ", "? ", "! ", ".\n", "\n"} {
 				if idx := strings.LastIndex(segment, sep); idx >= 0 {
-					cut := searchStart + idx + len(sep) - 1  // setelah separator
+					cut := searchStart + idx + len(sep) - 1 // setelah separator
 					if cut > best && cut >= start+chunkSize/2 {
 						best = cut
 					}

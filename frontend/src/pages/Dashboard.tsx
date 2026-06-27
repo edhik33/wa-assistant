@@ -187,6 +187,10 @@ export default function Dashboard() {
   const crawlPages = crawlData?.pages ?? [];
   const isTraining = crawlJob?.status === 'training' || crawlJob?.status === 'stopping';
   const trainedCount = crawlPages.filter(p => p.status === 'trained').length;
+  const skippedCount = crawlPages.filter(p => p.status === 'skipped').length;
+  const failedTrainCount = crawlPages.filter(p => p.status === 'failed' && p.char_count > 0).length;
+  // Pelatihan selesai bila job idle tapi sudah ada halaman yang diproses (dilatih/dilewati/gagal).
+  const trainingDone = !isTraining && (trainedCount > 0 || skippedCount > 0);
 
   // Auto-pilih halaman rekomendasi sekali tiap kali crawl baru selesai (biar user tinggal klik "Latih").
   const autoPickedJob = useRef<number | null>(null);
@@ -838,6 +842,20 @@ export default function Dashboard() {
                       </Box>
                     )}
 
+                    {trainingDone && (
+                      <Alert severity={trainedCount > 0 ? 'success' : 'warning'} sx={{ mb: 1, py: 0.25, '& .MuiAlert-message': { py: 0.5 } }}>
+                        <Typography variant="caption" sx={{ fontWeight: 700, display: 'block' }}>
+                          Pelatihan selesai
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.5 }}>
+                          ✅ {trainedCount} halaman dilatih
+                          {skippedCount > 0 && ` · ⏭️ ${skippedCount} dilewati (tak ada info berguna)`}
+                          {failedTrainCount > 0 && ` · ⚠️ ${failedTrainCount} gagal`}
+                          {trainedCount > 0 && '. FAQ-nya tersimpan di daftar Knowledge di bawah ⬇️'}
+                        </Typography>
+                      </Alert>
+                    )}
+
                     {crawlPages.length > 0 && (
                       <>
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
@@ -861,8 +879,14 @@ export default function Dashboard() {
                           {crawlPages.map((p, i) => {
                             const trainable = p.status === 'crawled' && p.char_count > 0;
                             const thin = trainable && !p.recommended;
+                            const rowBg =
+                              p.status === 'trained' ? 'rgba(46,125,50,0.12)'
+                              : p.status === 'training' ? 'rgba(2,136,209,0.12)'
+                              : p.status === 'skipped' ? 'rgba(0,0,0,0.05)'
+                              : p.status === 'failed' ? 'rgba(211,47,47,0.10)'
+                              : 'transparent';
                             return (
-                              <Box key={p.id} sx={{ display: 'flex', gap: 0.5, px: 1, py: 0.5, borderBottom: i < crawlPages.length - 1 ? '1px solid' : 0, borderColor: 'divider', alignItems: 'center', opacity: thin ? 0.7 : 1 }}>
+                              <Box key={p.id} sx={{ display: 'flex', gap: 0.5, px: 1, py: 0.5, borderBottom: i < crawlPages.length - 1 ? '1px solid' : 0, borderColor: 'divider', alignItems: 'center', opacity: thin ? 0.7 : 1, bgcolor: rowBg }}>
                                 <Checkbox size="small" sx={{ p: 0.25 }} disabled={!trainable || isTraining}
                                   checked={selectedPages.includes(p.id)}
                                   onChange={e => setSelectedPages(s => e.target.checked ? [...s, p.id] : s.filter(x => x !== p.id))} />

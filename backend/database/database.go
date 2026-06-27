@@ -70,6 +70,7 @@ func Init() {
 	seedPlans()
 	seedPlanCrawlLimits()
 	backfillKnowledgeCharCount()
+	recoverStuckCrawlJobs()
 	seedSuperAdmin()
 	migrateLegacyTenant()
 
@@ -134,6 +135,21 @@ func backfillKnowledgeCharCount() {
 	}
 	if len(rows) > 0 {
 		log.Printf("Backfill char_count untuk %d knowledge lama", len(rows))
+	}
+}
+
+// recoverStuckCrawlJobs membereskan job yang menggantung saat server restart di tengah proses.
+// Goroutine crawl/training mati saat restart, jadi statusnya tak akan pernah berubah sendiri:
+// crawl yang belum kelar -> failed; training yang belum kelar -> done (halaman yang sudah jadi tetap aman).
+func recoverStuckCrawlJobs() {
+	c := DB.Model(&models.CrawlJob{}).Where("status IN ?", []string{"pending", "crawling"}).
+		Updates(map[string]any{"status": "failed", "error": "terhenti karena server restart"})
+	t := DB.Model(&models.CrawlJob{}).Where("status IN ?", []string{"training", "stopping"}).
+		Update("status", "done")
+	// Halaman yang sempat berstatus "training" saat restart -> kembalikan ke "crawled" agar bisa dilatih ulang.
+	DB.Model(&models.CrawlPage{}).Where("status = ?", "training").Update("status", "crawled")
+	if c.RowsAffected > 0 || t.RowsAffected > 0 {
+		log.Printf("Recover crawl job menggantung: %d crawl -> failed, %d training -> done", c.RowsAffected, t.RowsAffected)
 	}
 }
 
