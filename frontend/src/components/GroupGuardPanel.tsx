@@ -146,12 +146,19 @@ function ConfigDialog({ agentId, group, onClose }: { agentId: number; group: WAG
               size="small" label="Kata terlarang (pisah baris/koma)" value={form.block_words} multiline minRows={2}
               onChange={e => set({ block_words: e.target.value })} placeholder={'judi\npinjol\npromo'}
             />
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <TextField type="number" size="small" label="Anti-flood: jml pesan" value={form.flood_count}
-                onChange={e => set({ flood_count: Math.max(0, Number(e.target.value)) })} helperText="0 = mati" sx={{ width: { xs: '100%', sm: 170 } }} />
-              <TextField type="number" size="small" label="dalam (detik)" value={form.flood_window_sec}
-                onChange={e => set({ flood_window_sec: Math.max(1, Number(e.target.value)) })} sx={{ width: { xs: '100%', sm: 150 } }} />
-            </Stack>
+            <Box>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>Anti-flood (banjir pesan)</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Tandai sebagai spam bila satu anggota mengirim terlalu banyak pesan dalam waktu singkat. Contoh: 5 pesan dalam 10 detik. Isi 0 untuk mematikan.
+              </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: 'center' }}>
+                <TextField type="number" size="small" label="Jumlah pesan" value={form.flood_count}
+                  onChange={e => set({ flood_count: Math.max(0, Number(e.target.value)) })} helperText="0 = mati" sx={{ width: { xs: '100%', sm: 150 } }} />
+                <Typography variant="body2" color="text.secondary">dalam</Typography>
+                <TextField type="number" size="small" label="Detik" value={form.flood_window_sec}
+                  onChange={e => set({ flood_window_sec: Math.max(1, Number(e.target.value)) })} sx={{ width: { xs: '100%', sm: 130 } }} />
+              </Stack>
+            </Box>
             <Divider />
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Tindakan saat spam</Typography>
             <FormControlLabel control={<Switch checked={form.delete_spam} onChange={e => set({ delete_spam: e.target.checked })} />} label="Hapus pesan spam otomatis (butuh admin)" />
