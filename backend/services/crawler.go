@@ -537,23 +537,30 @@ func ChunkText(text string) []string {
 		if end >= len(runes) {
 			end = len(runes)
 		} else {
-			// Mundur cari batas kalimat: ". " atau "\n" dalam 200 karakter terakhir
+			// Mundur cari batas kalimat: ". ", "? ", "! ", atau "\n" dalam 200 karakter terakhir
 			searchStart := end - 200
 			if searchStart < start {
 				searchStart = start
 			}
 			segment := string(runes[searchStart:end])
-			// Cari ". " terakhir
-			if idx := strings.LastIndex(segment, ". "); idx >= 0 {
-				end = searchStart + idx + 1 // setelah titik
-				// Jangan mundur terlalu jauh
-				if end < start+chunkSize/2 {
-					end = start + chunkSize // fallback
+			best := -1  // posisi terbaik untuk memotong
+			for _, sep := range []string{". ", "? ", "! ", ".\n", "\n"} {
+				if idx := strings.LastIndex(segment, sep); idx >= 0 {
+					cut := searchStart + idx + len(sep) - 1  // setelah separator
+					if cut > best && cut >= start+chunkSize/2 {
+						best = cut
+					}
 				}
-			} else if idx := strings.LastIndex(segment, "\n"); idx >= 0 {
-				end = searchStart + idx
-				if end < start+chunkSize/2 {
-					end = start + chunkSize
+			}
+			if best >= 0 {
+				end = best
+			} else {
+				// Fallback: potong di spasi terakhir
+				if idx := strings.LastIndex(segment, " "); idx >= 0 {
+					cut := searchStart + idx
+					if cut >= start+chunkSize/2 {
+						end = cut
+					}
 				}
 			}
 		}
