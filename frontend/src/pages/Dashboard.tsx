@@ -562,6 +562,15 @@ export default function Dashboard() {
   const atNumberLimit = maxNumbers > 0 && usedNumbers >= maxNumbers;
   // Jumlah CS yang WhatsApp-nya benar-benar tersambung (bukan sekadar jumlah dibuat).
   const connectedCS = agents.filter(a => statusMap[a.id] === 'connected').length;
+
+  // Status langganan untuk banner dashboard.
+  const tenantStatus = usage?.tenant?.status;
+  const trialEndsAt = usage?.tenant?.trial_ends_at;
+  const trialDaysLeft = trialEndsAt ? Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / 86_400_000) : null;
+  const subExpired = tenantStatus === 'expired' || tenantStatus === 'suspended';
+  const onTrial = tenantStatus === 'trial';
+  const trialEnded = onTrial && trialDaysLeft !== null && trialDaysLeft <= 0; // sweep belum jalan tapi waktu lewat
+  const trialEndingSoon = onTrial && trialDaysLeft !== null && trialDaysLeft > 0 && trialDaysLeft <= 3;
   const setupIssues = [
     (knowledge.length > 0 || prompt.trim() !== '') ? '' : 'Sebelum mengaktifkan Balasan AI, lakukan setup terlebih dahulu di Settings.',
   ].filter(Boolean);
@@ -779,6 +788,26 @@ export default function Dashboard() {
       </Paper>
 
       <Box component="main" sx={{ flex: 1, p: { xs: 1.25, md: 2 }, overflowY: 'auto', height: { md: '100vh' }, minHeight: 0, width: '100%', minWidth: 0 }}>
+        {/* Banner status langganan — tampil di semua tab supaya jelas */}
+        {usage && (subExpired || onTrial) && (
+          <Alert
+            severity={subExpired || trialEnded ? 'error' : trialEndingSoon ? 'warning' : 'info'}
+            sx={{ mb: 1.5, alignItems: 'center' }}
+            action={
+              <Button color="inherit" size="small" variant="outlined" onClick={() => setBillingOpen(true)} sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                {subExpired || trialEnded ? 'Upgrade Sekarang' : 'Lihat Paket'}
+              </Button>
+            }
+          >
+            {subExpired
+              ? 'Masa aktif sudah habis — koneksi WhatsApp dinonaktifkan. Upgrade untuk menyambungkan kembali. Semua data kamu tetap aman.'
+              : trialEnded
+                ? 'Masa trial sudah berakhir — WhatsApp akan segera diputus. Upgrade untuk melanjutkan layanan tanpa terputus.'
+                : trialEndingSoon
+                  ? `Masa trial berakhir dalam ${trialDaysLeft} hari. Upgrade sekarang agar WhatsApp tidak terputus saat trial habis.`
+                  : `Kamu sedang masa trial${trialDaysLeft !== null ? ` — sisa ${trialDaysLeft} hari` : ''}. Semua fitur terbuka, hanya dibatasi kuota.`}
+          </Alert>
+        )}
         {tab === 'dashboard' && (
           <Box>
             <PageHeader
