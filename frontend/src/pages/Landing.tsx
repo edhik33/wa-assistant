@@ -146,28 +146,26 @@ export default function Landing() {
         <Container maxWidth="md" sx={{ textAlign: 'center', py: { xs: 8, md: 12 } }}>
           <Chip label="Asisten WhatsApp bertenaga AI" color="primary" variant="outlined" sx={{ mb: 3, fontWeight: 700 }} />
           <Typography variant="h2" sx={{ fontWeight: 900, fontSize: { xs: 32, md: 52 }, lineHeight: 1.1, mb: 2 }}>
-            Balas semua chat WhatsApp otomatis, orderan tetap masuk walau kamu tidur
+            Balas semua chat WhatsApp otomatis, walau kamu tidur
           </Typography>
           <Typography variant="body1" sx={{ fontWeight: 400, color: 'text.secondary', mb: 4, maxWidth: 640, mx: 'auto', fontSize: 18 }}>
-            ChatLoop menjawab pelanggan dalam hitungan detik, hafal produk dan harga tokomu, dan menyerahkan ke kamu saat butuh sentuhan manusia. Pasang sekali, jualan jalan terus.
+            ChatLoop menjawab pelanggan dalam hitungan detik, hafal produk dan harga tokomu, dan menyerahkan ke kamu saat butuh sentuhan manusia.
           </Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ justifyContent: 'center', alignItems: 'center' }}>
             <CtaButton loggedIn={loggedIn} onClick={goToCta} />
-            <Button variant="outlined" size="large" href="#harga" sx={{ fontWeight: 700, px: 4, py: 1.4 }}>Lihat Paket dan Harga</Button>
           </Stack>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            Tanpa kartu kredit. Aktif dalam 5 menit. Berhenti kapan saja.
+            Kamu bisa coba semua fitur gratis selama 7 hari.
           </Typography>
 
           {/* Trust strip */}
           <Grid container spacing={2} sx={{ mt: 5, maxWidth: 720, mx: 'auto' }}>
             {[
-              { big: 'Detik', small: 'Waktu balas pertama' },
               { big: '24/7', small: 'Nonstop tanpa libur' },
               { big: 'Hafal', small: 'Produk dan harga tokomu' },
               { big: '7 hari', small: 'Coba gratis dulu' },
             ].map((s) => (
-              <Grid size={{ xs: 6, sm: 3 }} key={s.small}>
+              <Grid size={{ xs: 12, sm: 4 }} key={s.small}>
                 <Typography sx={{ fontWeight: 900, fontSize: 24, color: 'primary.dark', lineHeight: 1.1 }}>{s.big}</Typography>
                 <Typography variant="caption" color="text.secondary">{s.small}</Typography>
               </Grid>
@@ -226,7 +224,8 @@ export default function Landing() {
         </Grid>
       </Container>
 
-      {/* Harga */}
+      {/* Harga — disembunyikan sementara (ubah false -> true untuk menampilkan lagi) */}
+      {false && (
       <Box id="harga" sx={{ bgcolor: '#fff', borderTop: '1px solid', borderColor: 'divider' }}>
         <Container maxWidth="lg" sx={{ py: { xs: 7, md: 10 } }}>
           <Typography variant="h4" sx={{ fontWeight: 800, textAlign: 'center', mb: 1 }}>
@@ -285,6 +284,7 @@ export default function Landing() {
           </Typography>
         </Container>
       </Box>
+      )}
 
       {/* FAQ */}
       <Container maxWidth="md" sx={{ py: { xs: 7, md: 10 } }}>
@@ -334,7 +334,6 @@ export default function Landing() {
               <Stack spacing={0.5}>
                 <Link href="#kenapa" color="inherit" underline="hover">Kenapa ChatLoop</Link>
                 <Link href="#fitur" color="inherit" underline="hover">Fitur</Link>
-                <Link href="#harga" color="inherit" underline="hover">Harga</Link>
                 <Link href="/privacy" color="inherit" underline="hover">Kebijakan Privasi</Link>
                 <Link href="/terms" color="inherit" underline="hover">Syarat dan Ketentuan</Link>
               </Stack>
