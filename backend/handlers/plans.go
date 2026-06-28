@@ -34,5 +34,7 @@ func TenantUsage(c *gin.Context) {
 		"max_numbers":     planMaxNumbers(tid),
 		"ai_replies_used": usage.Replies,
 		"ai_replies_max":  aiReplyLimit(tid),
+		"broadcast_used":  broadcastMonthlyUsed(tid),
+		"broadcast_max":   broadcastMonthlyLimit(tid),
 	})
 }

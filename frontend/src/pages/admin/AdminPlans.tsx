@@ -15,7 +15,8 @@ import PageHeader from '../../components/PageHeader';
 
 const EMPTY: Partial<Plan> = {
   code: '', name: '', description: '', price: 0, billing_period: 'monthly',
-  max_numbers: 1, max_ai_replies_monthly: 1000, max_knowledge_chars: 0, max_crawl_pages: 0,
+  max_numbers: 1, max_ai_replies_monthly: 1000, max_broadcast_monthly: 1000,
+  max_knowledge_chars: 0, max_crawl_pages: 0,
   allow_followup: true, allow_group_guard: true, allow_schedule: true, allow_sheets: true,
   is_active: true, is_popular: false, sort_order: 0,
 };
@@ -96,6 +97,7 @@ export default function AdminPlans() {
               <TextField label="Max Nomor" type="number" value={form.max_numbers ?? 1} onChange={num('max_numbers')} size="small" fullWidth />
               <TextField label="Balasan AI/bln (0=∞)" type="number" value={form.max_ai_replies_monthly ?? 0} onChange={num('max_ai_replies_monthly')} size="small" fullWidth />
             </Stack>
+            <TextField label="Broadcast/bln (0=∞)" type="number" value={form.max_broadcast_monthly ?? 0} onChange={num('max_broadcast_monthly')} size="small" fullWidth />
             <Stack direction="row" spacing={2}>
               <TextField label="Knowledge/nomor (char, 0=default)" type="number" value={form.max_knowledge_chars ?? 0} onChange={num('max_knowledge_chars')} size="small" fullWidth />
               <TextField label="Crawl halaman (0=default)" type="number" value={form.max_crawl_pages ?? 0} onChange={num('max_crawl_pages')} size="small" fullWidth />

@@ -145,6 +145,7 @@ func AdminUpdatePlan(c *gin.Context) {
 	p.MaxAIRepliesMonthly = req.MaxAIRepliesMonthly
 	p.MaxKnowledgeChars = req.MaxKnowledgeChars
 	p.MaxCrawlPages = req.MaxCrawlPages
+	p.MaxBroadcastMonthly = req.MaxBroadcastMonthly
 	p.AllowFollowUp = req.AllowFollowUp
 	p.AllowGroupGuard = req.AllowGroupGuard
 	p.AllowSchedule = req.AllowSchedule

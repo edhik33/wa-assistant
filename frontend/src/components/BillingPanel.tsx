@@ -57,10 +57,13 @@ export default function BillingPanel() {
               Paket saat ini: <b>{usage.tenant.plan?.name || 'Trial'}</b> · <Chip label={usage.tenant.status} size="small" color={usage.tenant.status === 'active' ? 'success' : 'warning'} sx={{ height: 20, fontSize: '0.7rem', verticalAlign: 'middle' }} />
             </Typography>
             {usage.tenant.status === 'trial' && usage.tenant.trial_ends_at && (
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                 Trial berakhir {new Date(usage.tenant.trial_ends_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
               </Typography>
             )}
+            <Typography variant="caption" color="text.secondary">
+              Bulan ini: Balasan AI {usage.ai_replies_used}/{usage.ai_replies_max || '∞'} · Broadcast {usage.broadcast_used}/{usage.broadcast_max || '∞'}
+            </Typography>
           </Box>
         </Paper>
       )}

@@ -119,6 +119,12 @@ func CreateBroadcast(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Maksimal 1000 penerima per broadcast"})
 		return
 	}
+	// Tolak lebih awal kalau kuota broadcast bulanan paket sudah habis (UX lebih jelas
+	// daripada semua penerima ter-skip saat pengiriman).
+	if broadcastQuotaRemaining(tid) == 0 {
+		c.JSON(403, gin.H{"error": "Kuota broadcast bulanan paket kamu sudah habis. Upgrade paket atau tunggu bulan depan."})
+		return
+	}
 
 	minD, _ := strconv.Atoi(c.PostForm("min_delay"))
 	maxD, _ := strconv.Atoi(c.PostForm("max_delay"))
@@ -395,6 +401,9 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 	optedOut := optedOutSet(agentID)
 	consented := activeConsentSet(agentID, b.ConsentCategory, recipientNumbers)
 	daily := int(dailySentCount(agentID))
+	// Kuota broadcast bulanan dari paket (0 = tanpa batas).
+	bcLimit := broadcastMonthlyLimit(b.TenantID)
+	bcUsed := broadcastMonthlyUsed(b.TenantID)
 
 	for i, r := range recipients {
 		// Cek cancel_requested di awal setiap iterasi.
@@ -438,6 +447,13 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 			updateBroadcastCounters(broadcastID, sent, failed, skipped)
 			continue
 		}
+		// Hormati kuota broadcast bulanan dari paket langganan.
+		if bcLimit > 0 && bcUsed >= bcLimit {
+			markRecipient(r.ID, "skipped", "kuota broadcast bulanan habis")
+			skipped++
+			updateBroadcastCounters(broadcastID, sent, failed, skipped)
+			continue
+		}
 
 		msg := personalize(b.Message, r.Name)
 		// Cek cancel_requested sebelum kirim.
@@ -475,7 +491,9 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 			database.DB.Model(&models.BroadcastRecipient{}).Where("id = ?", r.ID).
 				Updates(map[string]any{"status": "sent", "sent_at": &now, "error": ""})
 			sent++
-			daily++         // hitung pemakaian jatah harian secara in-memory
+			daily++  // hitung pemakaian jatah harian secara in-memory
+			bcUsed++ // hitung menuju kuota broadcast bulanan
+			incrementBroadcastUsage(b.TenantID, 1)
 			sentSinceRest++ // hitung menuju istirahat berkala
 		}
 		updateBroadcastCounters(broadcastID, sent, failed, skipped)

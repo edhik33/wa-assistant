@@ -11,6 +11,7 @@ export interface Plan {
   max_ai_replies_monthly: number;
   max_knowledge_chars: number;
   max_crawl_pages: number;
+  max_broadcast_monthly: number;
   allow_followup: boolean;
   allow_group_guard: boolean;
   allow_schedule: boolean;
@@ -42,6 +43,8 @@ export interface Usage {
   max_numbers: number;
   ai_replies_used: number;
   ai_replies_max: number;
+  broadcast_used: number;
+  broadcast_max: number;
 }
 
 export interface AdminStats {

@@ -35,8 +35,9 @@ type Plan struct {
 	// Batasan "training" knowledge per agent (nomor). CATATAN: beda dari MaxAIRepliesMonthly —
 	// di sini 0 = belum diset (kode fallback ke default aman), BUKAN tanpa batas, karena crawl
 	// tanpa batas berisiko ke memori & biaya embedding.
-	MaxKnowledgeChars int `gorm:"not null;default:0" json:"max_knowledge_chars"` // total karakter knowledge per agent
-	MaxCrawlPages     int `gorm:"not null;default:0" json:"max_crawl_pages"`     // batas halaman per crawl
+	MaxKnowledgeChars   int `gorm:"not null;default:0" json:"max_knowledge_chars"`   // total karakter knowledge per agent
+	MaxCrawlPages       int `gorm:"not null;default:0" json:"max_crawl_pages"`       // batas halaman per crawl
+	MaxBroadcastMonthly int `gorm:"not null;default:0" json:"max_broadcast_monthly"` // pesan broadcast per bulan, 0 = tanpa batas
 	// Saklar fitur per paket. Default true supaya paket lama tidak kehilangan fitur;
 	// admin bisa mematikan untuk membedakan tier (mis. Sheets hanya untuk Pro).
 	AllowFollowUp   bool      `gorm:"not null;default:true" json:"allow_followup"`    // follow-up / drip otomatis
@@ -77,6 +78,16 @@ type Invoice struct {
 	PaidAt          *time.Time `json:"paid_at"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+// BroadcastUsage = jumlah pesan broadcast terkirim per tenant per bulan (kuota paket).
+// Unik per (tenant, period). Period format "YYYY-MM".
+type BroadcastUsage struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	TenantID  uint      `gorm:"not null;uniqueIndex:idx_bc_usage_tenant_period,priority:1" json:"tenant_id"`
+	Period    string    `gorm:"size:7;not null;uniqueIndex:idx_bc_usage_tenant_period,priority:2" json:"period"`
+	Sent      int       `gorm:"not null;default:0" json:"sent"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // AIUsage = pemakaian balasan AI per tenant per bulan (kuota & kontrol biaya).
