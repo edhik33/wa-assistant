@@ -796,7 +796,9 @@ func CreateAgent(c *gin.Context) {
 	if req.Tone == "" {
 		req.Tone = "ramah"
 	}
-	a := models.Agent{TenantID: tid, Name: strings.TrimSpace(req.Name), SystemPrompt: req.SystemPrompt, Tone: req.Tone, AIEnabled: true}
+	// Balasan AI sengaja default OFF untuk nomor baru — user wajib setup (knowledge/persona)
+	// dulu lalu mengaktifkannya manual. (Tanpa tag default DB, false ikut ter-insert eksplisit.)
+	a := models.Agent{TenantID: tid, Name: strings.TrimSpace(req.Name), SystemPrompt: req.SystemPrompt, Tone: req.Tone, AIEnabled: false}
 	if err := database.DB.Create(&a).Error; err != nil {
 		log.Printf("Gagal membuat agent tenant %d: %v", tid, err)
 		c.JSON(500, gin.H{"error": "Gagal membuat agent"})

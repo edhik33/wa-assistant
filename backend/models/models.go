@@ -13,7 +13,7 @@ type Agent struct {
 	Name         string `json:"name"`
 	SystemPrompt string `gorm:"type:text" json:"system_prompt"`
 	Tone         string `gorm:"default:ramah" json:"tone"`
-	AIEnabled    bool   `gorm:"not null;default:true" json:"ai_enabled"` // master switch balasan otomatis AI
+	AIEnabled    bool   `gorm:"not null" json:"ai_enabled"` // master switch balasan AI — default OFF, diaktifkan user setelah setup
 	DeviceJID    string `json:"device_jid"`
 	Number       string `json:"number"`
 

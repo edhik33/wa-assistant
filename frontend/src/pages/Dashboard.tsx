@@ -538,7 +538,7 @@ export default function Dashboard() {
   const usageRepliesUsed = usage?.ai_replies_used || 0;
   const usageReplyPct = usageRepliesMax ? Math.min(100, Math.round((usageRepliesUsed / usageRepliesMax) * 100)) : 0;
   const setupIssues = [
-    (knowledge.length > 0 || prompt.trim() !== '') ? '' : 'Sebelum mengaktifkan Balasan AI, isi profil bisnis lewat Setup Cepat — AI akan generate FAQ + System Prompt otomatis.',
+    (knowledge.length > 0 || prompt.trim() !== '') ? '' : 'Sebelum mengaktifkan Balasan AI, lakukan setup terlebih dahulu — pakai Setup Cepat (otomatis isi FAQ + persona) atau isi Knowledge & persona manual di Settings.',
   ].filter(Boolean);
   const dashboardStats = {
     utama: [
@@ -791,7 +791,10 @@ export default function Dashboard() {
                       <Alert severity="warning" icon={false} sx={{ mt: 1.5 }}>
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between' }}>
                           <Typography variant="body2">{setupIssues[0]}</Typography>
-                          <Button size="small" variant="contained" onClick={() => setWizardOpen(true)}>Setup</Button>
+                          <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                            <Button size="small" variant="contained" onClick={() => setWizardOpen(true)}>Setup Cepat</Button>
+                            <Button size="small" variant="outlined" onClick={() => setTab('settings')}>Buka Settings</Button>
+                          </Stack>
                         </Stack>
                       </Alert>
                     )}
