@@ -7,6 +7,8 @@ import {
   Accordion, AccordionSummary, AccordionDetails, FormHelperText, Tooltip,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
+import TelegramIcon from '@mui/icons-material/Telegram';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
@@ -57,7 +59,7 @@ import {
   useCreateAgent, useDeleteAgent, useSaveAgent, useAgentConnect, useAgentDisconnect,
   useAddKnowledge, useDeleteKnowledge, useDeleteAllKnowledge, useGenerateKnowledge,
   useAgentHandoffs, useResumeHandoff, useAgentAIMetrics,
-  useUsage,
+  useUsage, useCommunityLinks,
   useCrawlStatus, useKnowledgeUsage, useStartCrawl, useTrainCrawlPages, useDeleteWebKnowledge,
   useRegeneratePersona, useStopTraining,
 } from '../hooks';
@@ -219,6 +221,7 @@ export default function Dashboard() {
   const { data: handoffs = [] } = useAgentHandoffs(agentId);
   const resumeHandoff = useResumeHandoff(agentId);
   const { data: usage } = useUsage();
+  const { data: community } = useCommunityLinks();
   const { data: aiMetrics, isLoading: aiMetricsLoading } = useAgentAIMetrics(agentId);
 
   const status = statusData?.status || '';
@@ -710,6 +713,23 @@ export default function Dashboard() {
           ))}
         </Box>
         <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
+        {/* Gabung grup komunitas (link diatur super-admin) */}
+        {community && (community.whatsapp || community.telegram) && (
+          <Stack spacing={0.5} sx={{ display: { xs: 'none', md: 'flex' }, mx: 0.5, mb: 0.5 }}>
+            {community.whatsapp && (
+              <Button size="small" variant="outlined" startIcon={<WhatsAppIcon />} component="a" href={community.whatsapp} target="_blank" rel="noopener noreferrer"
+                sx={{ justifyContent: 'flex-start', color: '#1F8A50', borderColor: 'divider' }}>
+                Grup WhatsApp
+              </Button>
+            )}
+            {community.telegram && (
+              <Button size="small" variant="outlined" startIcon={<TelegramIcon />} component="a" href={community.telegram} target="_blank" rel="noopener noreferrer"
+                sx={{ justifyContent: 'flex-start', color: '#229ED9', borderColor: 'divider' }}>
+                Grup Telegram
+              </Button>
+            )}
+          </Stack>
+        )}
         {/* Indikator Langganan */}
         {usage && (
           <Paper

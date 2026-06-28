@@ -1,8 +1,10 @@
+import { useState, useEffect } from 'react';
 import {
   Box, Card, CardContent, Typography, Grid, CircularProgress,
   Select, MenuItem, FormControl, InputLabel, Alert, Stack, Chip,
+  TextField, Button,
 } from '@mui/material';
-import { useAdminStats, useAdminAIModel, useSetAdminAIModel } from '../../hooks';
+import { useAdminStats, useAdminAIModel, useSetAdminAIModel, useAdminCommunityLinks, useSetAdminCommunityLinks } from '../../hooks';
 import { rupiah } from '../../types';
 import { swalToast } from '../../services/swal';
 import PageHeader from '../../components/PageHeader';
@@ -65,6 +67,51 @@ function AIModelCard() {
   );
 }
 
+function CommunityCard() {
+  const { data, isLoading } = useAdminCommunityLinks();
+  const save = useSetAdminCommunityLinks();
+  const [whatsapp, setWhatsapp] = useState('');
+  const [telegram, setTelegram] = useState('');
+
+  // Sinkronkan form sekali data dari server tiba.
+  useEffect(() => {
+    if (data) { setWhatsapp(data.whatsapp || ''); setTelegram(data.telegram || ''); }
+  }, [data]);
+
+  const submit = async () => {
+    try {
+      await save.mutateAsync({ whatsapp: whatsapp.trim(), telegram: telegram.trim() });
+      swalToast('Link komunitas disimpan', 'success');
+    } catch {
+      swalToast('Gagal menyimpan link', 'error');
+    }
+  };
+
+  if (isLoading) return null;
+
+  return (
+    <Card>
+      <CardContent>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>Grup Komunitas</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
+          Tautan ini muncul sebagai tombol "Gabung Grup" di dashboard semua user. Kosongkan untuk menyembunyikannya.
+        </Typography>
+        <Stack spacing={1.5} sx={{ maxWidth: 480 }}>
+          <TextField size="small" fullWidth label="Link Grup WhatsApp" placeholder="https://chat.whatsapp.com/..."
+            value={whatsapp} onChange={e => setWhatsapp(e.target.value)} />
+          <TextField size="small" fullWidth label="Link Grup/Channel Telegram" placeholder="https://t.me/..."
+            value={telegram} onChange={e => setTelegram(e.target.value)} />
+          <Box>
+            <Button variant="contained" onClick={submit} disabled={save.isPending}>
+              {save.isPending ? 'Menyimpan…' : 'Simpan'}
+            </Button>
+          </Box>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AdminOverview() {
   const { data, isLoading } = useAdminStats();
 
@@ -80,6 +127,7 @@ export default function AdminOverview() {
         <Grid size={{ xs: 6, md: 3 }}><StatCard label={`Balasan AI (${data?.period ?? ''})`} value={data?.ai_replies_month ?? 0} /></Grid>
         <Grid size={{ xs: 12, md: 4 }}><StatCard label="Total Pendapatan (lunas)" value={rupiah(data?.revenue_total ?? 0)} color="#1565c0" /></Grid>
         <Grid size={{ xs: 12 }}><AIModelCard /></Grid>
+        <Grid size={{ xs: 12 }}><CommunityCard /></Grid>
       </Grid>
     </Box>
   );

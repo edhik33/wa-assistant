@@ -69,6 +69,36 @@ export function useSetAdminAIModel() {
   });
 }
 
+// ---- Link grup komunitas (WhatsApp/Telegram) ----
+export type CommunityLinks = { whatsapp: string; telegram: string };
+
+// Dipakai user (publik) untuk menampilkan tombol gabung grup.
+export function useCommunityLinks() {
+  return useQuery<CommunityLinks>({
+    queryKey: ['community'],
+    queryFn: async () => (await api.get('/community')).data,
+  });
+}
+
+// Dipakai super-admin untuk membaca & mengatur link grup.
+export function useAdminCommunityLinks() {
+  return useQuery<CommunityLinks>({
+    queryKey: ['admin', 'community'],
+    queryFn: async () => (await api.get('/admin/community')).data,
+  });
+}
+
+export function useSetAdminCommunityLinks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: CommunityLinks) => (await api.put('/admin/community', body)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'community'] });
+      qc.invalidateQueries({ queryKey: ['community'] });
+    },
+  });
+}
+
 export function useAdminTenants() {
   return useQuery<TenantRow[]>({
     queryKey: ['admin', 'tenants'],

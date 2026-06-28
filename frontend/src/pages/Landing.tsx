@@ -7,6 +7,16 @@ import SupportAgentOutlinedIcon from '@mui/icons-material/SupportAgentOutlined';
 import TrendingUpOutlinedIcon from '@mui/icons-material/TrendingUpOutlined';
 import AccessTimeOutlinedIcon from '@mui/icons-material/AccessTimeOutlined';
 import DevicesOutlinedIcon from '@mui/icons-material/DevicesOutlined';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutlined';
+import CampaignOutlinedIcon from '@mui/icons-material/CampaignOutlined';
+import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined';
+import ReplayOutlinedIcon from '@mui/icons-material/ReplayOutlined';
+import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined';
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
+import ContactsOutlinedIcon from '@mui/icons-material/ContactsOutlined';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
+import InsightsOutlinedIcon from '@mui/icons-material/InsightsOutlined';
+import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { usePublicPlans } from '../hooks';
@@ -45,10 +55,19 @@ const BENEFITS = [
   },
 ];
 
-const STEPS = [
-  { n: '1', title: 'Hubungkan WhatsApp', body: 'Pindai satu QR, nomormu langsung tersambung.' },
-  { n: '2', title: 'Ajari sebentar', body: 'Isi profil bisnis, AI otomatis menyusun FAQ dan gaya bicaranya.' },
-  { n: '3', title: 'Biarkan bekerja', body: 'Pelanggan dibalas otomatis siang dan malam, tanpa kamu pegang HP.' },
+const FEATURES_FULL = [
+  { icon: <ChatBubbleOutlineIcon />, title: 'Balasan AI Otomatis', body: 'Jawab pelanggan 24 jam dengan gaya bahasa tokomu, terasa seperti manusia.' },
+  { icon: <AutoAwesomeOutlinedIcon />, title: 'Knowledge Base dan Latih Website', body: 'AI hafal produk, harga, dan aturan toko. Bisa ditarik otomatis dari websitemu.' },
+  { icon: <CampaignOutlinedIcon />, title: 'Broadcast Aman', body: 'Kirim promo massal dengan jeda acak dan istirahat otomatis biar nomor lebih aman.' },
+  { icon: <ScheduleOutlinedIcon />, title: 'Pesan Terjadwal', body: 'Atur kapan pesan dikirim, jalan otomatis sesuai jadwal yang kamu tentukan.' },
+  { icon: <ReplayOutlinedIcon />, title: 'Follow Up Otomatis', body: 'Ingatkan calon pembeli yang belum lanjut, tanpa kamu pegang HP.' },
+  { icon: <ForumOutlinedIcon />, title: 'Inbox dan Alih ke CS', body: 'Pantau semua chat dalam satu layar dan ambil alih kapan saja saat butuh.' },
+  { icon: <ShieldOutlinedIcon />, title: 'Anti-Spam Grup', body: 'Jaga grup WhatsApp dari spam dan link sampah secara otomatis.' },
+  { icon: <ContactsOutlinedIcon />, title: 'CRM Kontak', body: 'Impor, beri label, dan kelola kontak pelanggan dari satu tempat.' },
+  { icon: <ReceiptLongOutlinedIcon />, title: 'Deteksi Order dan Ekspor Sheets', body: 'Order dari chat terdeteksi otomatis dan bisa diekspor ke Google Sheets.' },
+  { icon: <DevicesOutlinedIcon />, title: 'Multi Nomor dan Multi CS', body: 'Kelola banyak nomor WhatsApp dan tim CS dari satu dashboard.' },
+  { icon: <InsightsOutlinedIcon />, title: 'Laporan dan Analitik', body: 'Lihat berapa chat yang dijawab AI dan berapa yang ditangani manusia.' },
+  { icon: <ScienceOutlinedIcon />, title: 'Simulasi AI', body: 'Uji jawaban AI sebelum dipakai ke pelanggan, tanpa perlu konek WhatsApp.' },
 ];
 
 const FAQS = [
@@ -158,7 +177,7 @@ export default function Landing() {
       </Box>
 
       {/* Manfaat */}
-      <Box id="fitur" sx={{ bgcolor: '#fff', borderTop: '1px solid', borderBottom: '1px solid', borderColor: 'divider' }}>
+      <Box id="kenapa" sx={{ bgcolor: '#fff', borderTop: '1px solid', borderBottom: '1px solid', borderColor: 'divider' }}>
         <Container maxWidth="lg" sx={{ py: { xs: 7, md: 10 } }}>
           <Typography variant="h4" sx={{ fontWeight: 800, textAlign: 'center', mb: 1 }}>
             Satu asisten, kerjanya seperti tim CS
@@ -180,19 +199,26 @@ export default function Landing() {
         </Container>
       </Box>
 
-      {/* Cara kerja */}
-      <Container id="cara" maxWidth="lg" sx={{ py: { xs: 7, md: 10 } }}>
-        <Typography variant="h4" sx={{ fontWeight: 800, textAlign: 'center', mb: 5 }}>
-          Siap pakai dalam hitungan menit
+      {/* Fitur lengkap */}
+      <Container id="fitur" maxWidth="lg" sx={{ py: { xs: 7, md: 10 } }}>
+        <Typography variant="h4" sx={{ fontWeight: 800, textAlign: 'center', mb: 1 }}>
+          Semua yang kamu butuh untuk jualan di WhatsApp
         </Typography>
-        <Grid container spacing={3}>
-          {STEPS.map((s) => (
-            <Grid size={{ xs: 12, md: 4 }} key={s.n}>
-              <Card sx={{ height: '100%', textAlign: 'center', bgcolor: '#fff' }}>
-                <CardContent sx={{ py: 4 }}>
-                  <Avatar sx={{ bgcolor: 'primary.main', width: 48, height: 48, mx: 'auto', mb: 2, fontSize: 22, fontWeight: 800 }}>{s.n}</Avatar>
-                  <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>{s.title}</Typography>
-                  <Typography color="text.secondary">{s.body}</Typography>
+        <Typography color="text.secondary" sx={{ textAlign: 'center', mb: 5 }}>
+          Satu langganan, banyak alat. Dari balas otomatis sampai broadcast, follow up, dan laporan.
+        </Typography>
+        <Grid container spacing={2}>
+          {FEATURES_FULL.map((f) => (
+            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={f.title}>
+              <Card sx={{ height: '100%', bgcolor: '#fff' }}>
+                <CardContent>
+                  <Stack direction="row" spacing={1.5} sx={{ alignItems: 'flex-start' }}>
+                    <Avatar variant="rounded" sx={{ bgcolor: 'primary.light', color: 'primary.dark', width: 40, height: 40 }}>{f.icon}</Avatar>
+                    <Box>
+                      <Typography sx={{ fontWeight: 800, fontSize: 15 }}>{f.title}</Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.5 }}>{f.body}</Typography>
+                    </Box>
+                  </Stack>
                 </CardContent>
               </Card>
             </Grid>
@@ -306,9 +332,9 @@ export default function Landing() {
             <Grid size={{ xs: 6, md: 4 }}>
               <Typography sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>Tautan</Typography>
               <Stack spacing={0.5}>
+                <Link href="#kenapa" color="inherit" underline="hover">Kenapa ChatLoop</Link>
                 <Link href="#fitur" color="inherit" underline="hover">Fitur</Link>
                 <Link href="#harga" color="inherit" underline="hover">Harga</Link>
-                <Link href="#cara" color="inherit" underline="hover">Cara Kerja</Link>
               </Stack>
             </Grid>
             <Grid size={{ xs: 6, md: 4 }}>
