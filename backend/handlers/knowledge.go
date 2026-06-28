@@ -35,8 +35,12 @@ func GenerateKnowledge(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Text is required"})
 		return
 	}
-	if req.Count <= 0 { req.Count = 10 }
-	if req.Count > 20 { req.Count = 20 }
+	if req.Count <= 0 {
+		req.Count = 10
+	}
+	if req.Count > 20 {
+		req.Count = 20
+	}
 
 	bizCtx := bizPrompts[req.BizType]
 	if bizCtx == "" {
@@ -258,7 +262,7 @@ Nama: %s | Produk: %s | Harga: %s | Order: %s | Kirim: %s | Jam: %s`, req.BizNam
 		}
 
 		resp, err := client.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-			Model:  config.Env("OPENAI_MODEL", "deepseek-v4-pro"),
+			Model: config.Env("OPENAI_MODEL", "deepseek-v4-pro"),
 			Messages: []openai.ChatCompletionMessage{
 				{Role: openai.ChatMessageRoleSystem, Content: "Kamu adalah generator knowledge base FAQ. Output HANYA JSON array. JANGAN sertakan teks apapun selain JSON."},
 				{Role: openai.ChatMessageRoleUser, Content: kbPrompt},
@@ -315,9 +319,9 @@ func SetupWizard(c *gin.Context) {
 	// 1. Generate System Prompt
 	sysPrompt := buildWizardSystemPrompt(req)
 	resp1, err := client.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-		Model:  config.Env("OPENAI_MODEL", "deepseek-v4-pro"),
+		Model: config.Env("OPENAI_MODEL", "deepseek-v4-pro"),
 		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleSystem, Content: "Kamu adalah prompt engineer. Buat persona AI customer service WhatsApp dalam bahasa Indonesia. Ramah, santai, jelas. Maks 6 kalimat."},
+			{Role: openai.ChatMessageRoleSystem, Content: "Kamu adalah prompt engineer. Buat persona AI customer service WhatsApp dalam bahasa Indonesia. Fokus pada peran, tugas, batasan, dan alur layanan. Jangan menentukan tone atau gaya bahasa karena diatur terpisah. Maks 6 kalimat."},
 			{Role: openai.ChatMessageRoleUser, Content: sysPrompt},
 		},
 		MaxTokens: 500,
@@ -328,7 +332,7 @@ func SetupWizard(c *gin.Context) {
 	}
 	// Fallback: kalau AI gagal, build dari form langsung
 	if systemPrompt == "" {
-		systemPrompt = fmt.Sprintf("Kamu adalah %s, CS %s. Kami menjual %s. Harga %s. Cara order: %s. Pengiriman: %s. Jam operasional: %s. Ramah, panggil \"kak\". Saat customer mau beli, tanya nama, produk, alamat, dan metode bayar.", req.CSName, req.BizName, req.Products, req.PriceRange, req.OrderFlow, req.Shipping, req.Hours)
+		systemPrompt = fmt.Sprintf("Kamu adalah %s, CS %s. Kami menjual %s. Harga %s. Cara order: %s. Pengiriman: %s. Jam operasional: %s. Saat customer mau beli, bantu memilih produk lalu kumpulkan nama, produk, alamat, dan metode bayar yang belum diberikan.", req.CSName, req.BizName, req.Products, req.PriceRange, req.OrderFlow, req.Shipping, req.Hours)
 	}
 	if systemPrompt != "" {
 		database.DB.Model(&models.Agent{}).Where("id = ?", aid).
@@ -382,5 +386,5 @@ Pengiriman: %s
 Jam Operasional: %s
 Nama CS: %s
 
-Buat system prompt singkat (maks 6 kalimat) yang mencakup: siapa AI ini, produk apa yang dijual, cara order, gaya bicara (ramah, panggil "kak"), dan aturan closing (tanya nama+produk+nomer).`, req.BizName, req.BizType, req.Products, req.PriceRange, req.OrderFlow, req.Shipping, req.Hours, req.CSName)
+Buat persona singkat (maks 6 kalimat) yang mencakup: siapa AI ini, produk yang dijual, cara order, batasan layanan, dan aturan closing. Jangan menentukan tone atau gaya bahasa karena diatur terpisah. Saat closing, kumpulkan nama, produk, alamat, dan metode bayar yang belum diberikan; jangan meminta nomor WhatsApp karena sudah diketahui dari chat.`, req.BizName, req.BizType, req.Products, req.PriceRange, req.OrderFlow, req.Shipping, req.Hours, req.CSName)
 }

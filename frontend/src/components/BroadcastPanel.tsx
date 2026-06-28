@@ -254,7 +254,11 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
       <PageHeader title="Broadcast"
         subtitle="Susun pesan, pastikan izin penerima, lalu tinjau risiko sebelum mengirim." />
 
-      <Alert severity="info" icon={<InfoIcon fontSize="small" />} sx={{ mb: 2 }}>
+      <Alert
+        severity="info"
+        icon={<InfoIcon fontSize="small" />}
+        sx={{ mb: 2, alignItems: 'flex-start', '& .MuiAlert-icon': { py: '2px' } }}
+      >
         <Typography variant="body2">
           Tidak ada pola kirim yang menjamin nomor bebas pembatasan. Sistem akan memeriksa izin penerima, riwayat interaksi, dan batas internal sebelum kampanye dimulai.
         </Typography>

@@ -1,10 +1,24 @@
 package services
 
 import (
+	"strings"
 	"testing"
 
 	"wa-assistant/backend/models"
 )
+
+func TestToneInstructionOverridesPersonaStyle(t *testing.T) {
+	for _, tone := range []string{"ramah", "formal", "santai", "persuasif"} {
+		instruction := toneInstruction(tone)
+		if !strings.Contains(instruction, "mengesampingkan gaya bahasa berbeda") {
+			t.Errorf("tone %q harus menegaskan prioritas terhadap gaya di persona: %q", tone, instruction)
+		}
+	}
+
+	if instruction := toneInstruction("custom"); instruction != "" {
+		t.Errorf("tone custom harus mengikuti persona tanpa instruksi tambahan, dapat %q", instruction)
+	}
+}
 
 func TestTokenizeQuery(t *testing.T) {
 	got := tokenizeQuery("Berapa harga kaos ini ya kak?")

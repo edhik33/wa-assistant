@@ -1,8 +1,17 @@
 import {
-  Alert, AlertTitle, Box, Checkbox, Chip, FormControl, FormControlLabel,
-  InputLabel, MenuItem, Select, Stack, TextField, Typography,
+  Accordion, AccordionDetails, AccordionSummary, Alert, AlertTitle, Box, Checkbox,
+  Chip, FormControl, FormControlLabel, InputLabel, MenuItem, Select, Stack,
+  TextField, Typography,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import type { BroadcastAssessment, BroadcastSafetyForm } from '../types';
+
+function localDateValue() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}
 
 export default function BroadcastSafetyReview({
   value,
@@ -22,13 +31,14 @@ export default function BroadcastSafetyReview({
       : assessment.level === 'medium'
         ? 'warning'
         : 'error';
+  const needsConsentStatement = !assessment || stale || assessment.missing_consent > 0;
 
   return (
     <Stack spacing={1.25}>
       <Box>
         <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 0.25 }}>Izin penerima</Typography>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-          Ini pernyataan Anda, bukan verifikasi sistem. WhatsApp tidak mengecek izin ini.
+          Catatan ini hanya disimpan di ChatLoop dan tidak dikirim atau diverifikasi oleh WhatsApp.
         </Typography>
         <Typography variant="caption" color="success.main" sx={{ display: 'block', fontWeight: 600 }}>
           Cara paling aman: kirim ke kontak yang pernah berinteraksi (tombol "Pernah chat").
@@ -52,19 +62,76 @@ export default function BroadcastSafetyReview({
         Promo paling berisiko bikin nomor dibatasi, jadi diperiksa lebih ketat daripada pesan transaksional.
       </Typography>
 
-      <FormControlLabel
-        control={(
-          <Checkbox
-            checked={value.consent_confirmed}
-            onChange={e => onChange({ consent_confirmed: e.target.checked }, true)}
-          />
-        )}
-        label={(
+      {needsConsentStatement ? (
+        <FormControlLabel
+          control={(
+            <Checkbox
+              checked={value.consent_confirmed}
+              onChange={e => onChange({ consent_confirmed: e.target.checked }, true)}
+            />
+          )}
+          label={(
+            <Typography variant="body2">
+              Saya memastikan penerima dalam daftar ini memang memberi izin untuk menerima jenis pesan tersebut.
+            </Typography>
+          )}
+        />
+      ) : (
+        <Alert severity="success" icon={false} sx={{ py: 0.25 }}>
           <Typography variant="body2">
-            Saya menyatakan penerima sudah memberi izin untuk jenis pesan ini, dan saya bertanggung jawab atas pernyataan ini.
+            {assessment?.consent_to_record
+              ? `${assessment.consent_to_record} catatan izin akan disimpan saat kampanye dimulai.`
+              : `Catatan izin untuk ${assessment?.existing_consent || 0} penerima sudah tersedia. Tidak perlu konfirmasi ulang.`}
           </Typography>
-        )}
-      />
+        </Alert>
+      )}
+
+      {value.consent_confirmed && (
+        <Accordion disableGutters elevation={0} sx={{ border: '1px solid', borderColor: 'divider', '&:before': { display: 'none' } }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 40, '& .MuiAccordionSummary-content': { my: 0.75 } }}>
+            <Box>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>Detail izin</Typography>
+              <Typography variant="caption" color="text.secondary">Opsional, untuk catatan internal.</Typography>
+            </Box>
+          </AccordionSummary>
+          <AccordionDetails sx={{ pt: 0 }}>
+            <Stack spacing={1}>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Sumber izin</InputLabel>
+                <Select
+                  value={value.consent_source}
+                  label="Sumber izin"
+                  onChange={e => onChange({ consent_source: e.target.value as BroadcastSafetyForm['consent_source'] }, true)}
+                >
+                  <MenuItem value=""><em>Tidak dicatat</em></MenuItem>
+                  <MenuItem value="form">Formulir</MenuItem>
+                  <MenuItem value="checkout">Checkout atau transaksi</MenuItem>
+                  <MenuItem value="customer_request">Permintaan pelanggan</MenuItem>
+                  <MenuItem value="event">Acara atau pendaftaran</MenuItem>
+                  <MenuItem value="other">Sumber lain</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField
+                type="date"
+                size="small"
+                fullWidth
+                label="Tanggal izin"
+                value={value.consent_granted_at}
+                onChange={e => onChange({ consent_granted_at: e.target.value }, true)}
+                slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: localDateValue() } }}
+              />
+              <TextField
+                size="small"
+                fullWidth
+                label="Catatan"
+                value={value.consent_note}
+                onChange={e => onChange({ consent_note: e.target.value }, true)}
+                placeholder="Contoh: mendaftar promo saat acara 12 Juni"
+              />
+            </Stack>
+          </AccordionDetails>
+        </Accordion>
+      )}
 
       <Alert severity={severity} icon={false}>
         <AlertTitle sx={{ fontWeight: 800 }}>

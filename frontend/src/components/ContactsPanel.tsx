@@ -15,10 +15,12 @@ import ChatIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
 import CampaignIcon from '@mui/icons-material/CampaignOutlined';
 import LocalOfferIcon from '@mui/icons-material/LocalOfferOutlined';
 import CloseIcon from '@mui/icons-material/Close';
-import { useCrmContacts, useSaveCrmContact, useDeleteCrmContact, useCrmContactsExport } from '../hooks';
+import UploadFileIcon from '@mui/icons-material/UploadFileOutlined';
+import { useBroadcastConsentSummary, useCrmContacts, useSaveCrmContact, useDeleteCrmContact, useCrmContactsExport, useBulkDeleteCrmContacts } from '../hooks';
 import type { SavedContact } from '../types';
 import api from '../services/api';
 import PageHeader from './PageHeader';
+import ContactImportDialog from './contacts/ContactImportDialog';
 import { swalConfirm, swalToast } from '../services/swal';
 
 const EMPTY: Partial<SavedContact> = { number: '', name: '', notes: '', tags: '' };
@@ -42,9 +44,8 @@ function GridLikeSummary({ total, selected, tags, syncing }: { total: number; se
   );
 }
 
-export default function ContactsPanel({ agentId, agentStatus, onBroadcast, onOpenChat }: {
+export default function ContactsPanel({ agentId, onBroadcast, onOpenChat }: {
   agentId: number;
-  agentStatus: string;
   onBroadcast: (recipients: string) => void;
   onOpenChat: (number: string) => void;
 }) {
@@ -60,10 +61,13 @@ export default function ContactsPanel({ agentId, agentStatus, onBroadcast, onOpe
   const [bulkTag, setBulkTag] = useState('');
   const [bulkApplying, setBulkApplying] = useState(false);
   const [tagModalOpen, setTagModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const { data, isLoading } = useCrmContacts(agentId, q, tag, page);
+  const { data: consentSummary } = useBroadcastConsentSummary(agentId);
   const saveCrmContact = useSaveCrmContact(agentId);
   const deleteCrmContact = useDeleteCrmContact(agentId);
+  const bulkDelete = useBulkDeleteCrmContacts(agentId);
   const crmExport = useCrmContactsExport(agentId);
   const queryClient = useQueryClient();
 
@@ -73,7 +77,6 @@ export default function ContactsPanel({ agentId, agentStatus, onBroadcast, onOpe
   const totalPages = Math.max(1, Math.ceil(totalContacts / (data?.limit ?? 20)));
   const selectedContacts = contacts.filter(c => selected.has(c.id));
   const hasFilter = !!q.trim() || !!tag;
-  const isSyncing = contacts.length === 0 && agentStatus === 'connected' && !q && !tag;
 
   const openAdd = () => { setForm(EMPTY); setFormErrors({}); setAddOpen(true); };
   const openEdit = (ct: SavedContact) => { setForm(ct); setFormErrors({}); setEdit(ct); setOpen(true); };
@@ -117,7 +120,7 @@ export default function ContactsPanel({ agentId, agentStatus, onBroadcast, onOpe
   const handleBroadcast = async () => {
     try {
       const list = selectedContacts.length > 0 ? selectedContacts : await crmExport.mutateAsync({ q, tag });
-      const lines = list.map((c: any) => `${c.number},${c.name || ''}`);
+      const lines = list.map(c => `${c.number},${c.name || ''}`);
       onBroadcast(lines.join('\n'));
       swalToast(`${list.length} kontak dikirim ke Broadcast`);
     } catch {
@@ -128,7 +131,8 @@ export default function ContactsPanel({ agentId, agentStatus, onBroadcast, onOpe
   const toggleSelect = (id: number) => {
     setSelected(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -153,10 +157,35 @@ export default function ContactsPanel({ agentId, agentStatus, onBroadcast, onOpe
       setSelected(new Set());
       setBulkTag('');
       swalToast('Tag ditambahkan');
-    } catch (e) {
+    } catch {
       swalToast('Tag belum bisa ditambahkan', 'error');
     } finally {
       setBulkApplying(false);
+    }
+  };
+
+  const handleBulkDeleteSelected = async () => {
+    if (selected.size === 0) return;
+    if (!await swalConfirm(`Hapus ${selected.size} kontak terpilih?`, 'Kontak yang dihapus tidak muncul lagi di daftar CRM.')) return;
+    try {
+      const res = await bulkDelete.mutateAsync({ ids: Array.from(selected) });
+      setSelected(new Set());
+      swalToast(`${res.deleted} kontak dihapus`);
+    } catch {
+      swalToast('Kontak belum bisa dihapus', 'error');
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    const scope = hasFilter ? 'semua kontak yang cocok filter ini' : 'SEMUA kontak';
+    if (!await swalConfirm(`Hapus ${scope}?`, 'Tindakan ini tidak bisa dibatalkan. Kontak akan hilang dari daftar CRM.')) return;
+    try {
+      const res = await bulkDelete.mutateAsync({ all: true, q, tag });
+      setSelected(new Set());
+      setPage(0);
+      swalToast(`${res.deleted} kontak dihapus`);
+    } catch {
+      swalToast('Kontak belum bisa dihapus', 'error');
     }
   };
 
@@ -169,19 +198,36 @@ export default function ContactsPanel({ agentId, agentStatus, onBroadcast, onOpe
     <Box>
       <PageHeader
         title="Kontak"
-        subtitle="Daftar pelanggan yang pernah tersimpan dari WhatsApp. Pakai filter, pilih kontak, lalu lanjut ke Inbox atau Broadcast."
+        subtitle="Buku kontak pelanggan. Masuk otomatis saat ada yang chat, atau impor manual / dari nomor terkoneksi / CSV. Pakai filter, pilih kontak, lalu lanjut ke Inbox atau Broadcast."
         action={
           <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
             <Button variant="outlined" startIcon={<CampaignIcon />} onClick={handleBroadcast}
               disabled={(selectedContacts.length === 0 && totalContacts === 0) || crmExport.isPending}>
               {selectedContacts.length > 0 ? `Broadcast ${selectedContacts.length}` : hasFilter ? 'Broadcast hasil filter' : 'Broadcast semua'}
             </Button>
+            <Button variant="outlined" startIcon={<UploadFileIcon />} onClick={() => setImportOpen(true)}>Impor</Button>
             <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd}>Tambah Kontak</Button>
           </Stack>
         }
       />
 
-      <GridLikeSummary total={totalContacts} selected={selected.size} tags={allTags.length} syncing={isSyncing} />
+      <GridLikeSummary total={totalContacts} selected={selected.size} tags={allTags.length} syncing={false} />
+
+      {consentSummary && (
+        <Paper variant="outlined" sx={{ px: 1.25, py: 1, mb: 1.5 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'flex-start', sm: 'center' } }}>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 750 }}>Kesiapan broadcast</Typography>
+              <Typography variant="caption" color="text.secondary">Ringkasan aktivitas yang tercatat di ChatLoop, bukan status resmi dari WhatsApp.</Typography>
+            </Box>
+            <Stack direction="row" sx={{ gap: 0.5, flexWrap: 'wrap' }}>
+              <Chip size="small" color="success" variant="outlined" label={`${consentSummary.marketing_consent} izin promo`} />
+              <Chip size="small" variant="outlined" label={`${consentSummary.interacted} pernah chat`} />
+              <Chip size="small" color={consentSummary.opted_out ? 'warning' : 'default'} variant="outlined" label={`${consentSummary.opted_out} STOP`} />
+            </Stack>
+          </Stack>
+        </Paper>
+      )}
 
       <Card sx={{ mb: 1.5 }}>
         <CardContent sx={{ pb: 1.25, '&:last-child': { pb: 1.25 } }}>
@@ -227,21 +273,15 @@ export default function ContactsPanel({ agentId, agentStatus, onBroadcast, onOpe
           <CircularProgress size={24} />
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Memuat kontak...</Typography>
         </Paper>
-      ) : isSyncing ? (
-        <Paper variant="outlined" sx={{ p: { xs: 3, md: 5 }, textAlign: 'center', borderStyle: 'dashed', borderColor: 'divider', borderRadius: 2, bgcolor: 'action.hover' }}>
-          <Box sx={{ mb: 1.5, color: 'primary.main' }}>
-            <CircularProgress size={36} />
-          </Box>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>Menyinkronkan kontak...</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400, mx: 'auto' }}>
-            Kontak dari WhatsApp sedang ditarik. Proses ini berjalan otomatis, biasanya selesai dalam 1-2 menit.
-          </Typography>
-        </Paper>
       ) : contacts.length === 0 ? (
         <EmptyState
           icon={<PeopleIcon sx={{ fontSize: 48 }} />}
-          title={q || tag ? 'Tidak ada kontak' : 'Belum ada kontak'}
-          description={q || tag ? 'Coba ubah filter atau kata kunci.' : 'Kontak tersimpan otomatis saat pelanggan chat WhatsApp kamu.'}
+          title={hasFilter ? 'Tidak ada kontak' : 'Belum ada kontak'}
+          description={hasFilter
+            ? 'Coba ubah filter atau kata kunci.'
+            : 'Kontak masuk otomatis saat pelanggan chat. Atau impor manual, dari nomor terkoneksi, maupun file CSV.'}
+          actionLabel={hasFilter ? undefined : 'Impor Kontak'}
+          onAction={hasFilter ? undefined : () => setImportOpen(true)}
         />
       ) : (
         <>
@@ -255,6 +295,10 @@ export default function ContactsPanel({ agentId, agentStatus, onBroadcast, onOpe
                 </Button>
                 <Button variant="contained" size="small" startIcon={<LocalOfferIcon />} onClick={() => setTagModalOpen(true)}>
                   Tambah Tag
+                </Button>
+                <Button variant="outlined" size="small" color="error" startIcon={<DeleteIcon />}
+                  onClick={handleBulkDeleteSelected} disabled={bulkDelete.isPending}>
+                  Hapus terpilih
                 </Button>
               </Stack>
             </Paper>
@@ -363,9 +407,14 @@ export default function ContactsPanel({ agentId, agentStatus, onBroadcast, onOpe
           </Stack>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', mb: 1, gap: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              Menampilkan {contacts.length} dari {totalContacts} kontak
-            </Typography>
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+              <Typography variant="body2" color="text.secondary">
+                Menampilkan {contacts.length} dari {totalContacts} kontak
+              </Typography>
+              <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={handleDeleteAll} disabled={bulkDelete.isPending}>
+                {hasFilter ? 'Hapus hasil filter' : 'Hapus semua'}
+              </Button>
+            </Stack>
             <Pagination
               count={totalPages}
               page={page + 1}
@@ -440,6 +489,8 @@ export default function ContactsPanel({ agentId, agentStatus, onBroadcast, onOpe
           <Button variant="contained" onClick={save} disabled={saveCrmContact.isPending}>Simpan</Button>
         </DialogActions>
       </Dialog>
+
+      <ContactImportDialog agentId={agentId} open={importOpen} onClose={() => setImportOpen(false)} />
     </Box>
   );
 }

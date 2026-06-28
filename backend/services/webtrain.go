@@ -82,10 +82,11 @@ WhatsApp, berdasarkan konten website. Bahasa Indonesia, RINGKAS & UTUH — sekit
 MAKSIMAL ~1200 karakter, dan WAJIB selesaikan kalimat terakhir (jangan terpotong).
 Cakup secara ringkas: (1) identitas — nama brand yang BENAR (bukan judul SEO panjang) & bidang usaha;
 (2) JENIS produk/layanan secara umum (sebut kategorinya saja); (3) area/jam layanan & cara kontak bila ada;
-(4) gaya ramah, sopan, menyapa "kak"; (5) cara order; (6) hal yang TIDAK boleh dijanjikan (kirim
-file/katalog/gambar lewat chat, atau harga/stok/detail yang tidak pasti — arahkan ke admin/website).
+(4) peran dan batasan layanan; (5) cara order; (6) hal yang TIDAK boleh dijanjikan (kirim
+file/katalog/gambar lewat chat, atau harga/stok/detail yang tidak pasti).
 PENTING: JANGAN menyalin daftar kode produk atau harga satu per satu. Detail itu sudah tersimpan di basis
 pengetahuan dan diambil otomatis saat pelanggan bertanya — persona cukup menyebut kategori produk umum.
+JANGAN menentukan tone, gaya bahasa, sapaan, atau penggunaan emoji karena semuanya diatur terpisah.
 Jangan mengarang. Output HANYA teks persona, tanpa kalimat pembuka/penutup.`
 
 // GenerateWebPersona menyusun system prompt persona dari beberapa cuplikan konten web (Home/About).

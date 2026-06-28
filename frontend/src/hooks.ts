@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from './services/api';
-import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, Invoice, PaymentChannel, Analytics, AIMetrics, Contact, ChatMsg, CheckResult, Broadcast, BroadcastRecipient, BroadcastAssessment, BroadcastPreflightBody, BroadcastSafetyForm, WAGroup, GroupGuardConfig, GroupModerationLog, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff, CrawlJob, CrawlPage, KnowledgeUsage } from './types';
+import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, Invoice, PaymentChannel, Analytics, AIMetrics, Contact, ChatMsg, CheckResult, Broadcast, BroadcastRecipient, BroadcastAssessment, BroadcastPreflightBody, BroadcastSafetyForm, BroadcastConsentSummary, WAGroup, GroupGuardConfig, GroupModerationLog, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff, CrawlJob, CrawlPage, KnowledgeUsage } from './types';
 
 type ContactList = { number: string; name: string }[];
 
@@ -220,6 +220,15 @@ export function useBroadcastPreflight(agentId: number) {
   });
 }
 
+export function useBroadcastConsentSummary(agentId: number) {
+  return useQuery<BroadcastConsentSummary>({
+    queryKey: ['broadcast-consent-summary', agentId],
+    queryFn: async () => (await api.get(`/agents/${agentId}/broadcast/consent-summary`)).data.data,
+    enabled: !!agentId,
+    staleTime: 30_000,
+  });
+}
+
 export function useBroadcasts(agentId: number, page: number) {
   return useQuery<{ data: Broadcast[]; total: number; page: number; limit: number }>({
     queryKey: ['broadcasts', agentId, page],
@@ -408,6 +417,26 @@ export function useCrmContactsExport(agentId: number) {
   });
 }
 
+// useImportCrmContacts memasukkan banyak kontak sekaligus (manual/terkoneksi/CSV).
+export function useImportCrmContacts(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { contacts: { number: string; name: string }[]; tag?: string }) =>
+      (await api.post(`/agents/${agentId}/crm/contacts/import`, body)).data as { imported: number; skipped: number },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm-contacts', agentId] }),
+  });
+}
+
+// useBulkDeleteCrmContacts menghapus kontak terpilih (ids) atau semua sesuai filter (all+q/tag).
+export function useBulkDeleteCrmContacts(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { ids?: number[]; all?: boolean; q?: string; tag?: string }) =>
+      (await api.post(`/agents/${agentId}/crm/contacts/bulk-delete`, body)).data as { deleted: number },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm-contacts', agentId] }),
+  });
+}
+
 // ---- Follow-up (drip) ----
 
 export function useFollowUps(agentId: number) {
@@ -461,7 +490,10 @@ export function useCreateSchedule(agentId: number) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (fd: FormData) => (await api.post(`/agents/${agentId}/schedule`, fd)).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules', agentId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['schedules', agentId] });
+      qc.invalidateQueries({ queryKey: ['broadcast-consent-summary', agentId] });
+    },
   });
 }
 
@@ -497,7 +529,10 @@ export function useCreateBroadcast(agentId: number) {
       if (body.file) fd.append('file', body.file);
       return (await api.post(`/agents/${agentId}/broadcast`, fd)).data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['broadcasts', agentId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['broadcasts', agentId] });
+      qc.invalidateQueries({ queryKey: ['broadcast-consent-summary', agentId] });
+    },
   });
 }
 

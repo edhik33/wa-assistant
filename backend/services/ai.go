@@ -260,17 +260,18 @@ func ChatWithKnowledge(agentID uint, systemPrompt, tone, userMsg string, history
 // nonaktif atau error, jatuh ke pencocokan kata kunci/tag (cara lama).
 // toneInstruction menerjemahkan pilihan tone dari dashboard menjadi arahan gaya bahasa.
 func toneInstruction(tone string) string {
+	const override = " Instruksi GAYA BAHASA ini mengesampingkan gaya bahasa berbeda yang mungkin tertulis di persona."
 	switch strings.ToLower(strings.TrimSpace(tone)) {
 	case "formal":
-		return " Pakai bahasa formal, sopan, dan profesional; hindari slang dan emoji."
+		return override + " Pakai bahasa formal, sopan, dan profesional; hindari slang dan emoji."
 	case "santai":
-		return " Pakai gaya santai dan akrab seperti ngobrol dengan teman; boleh sedikit emoji."
+		return override + " Pakai gaya santai dan akrab seperti ngobrol dengan teman; boleh sedikit emoji."
 	case "persuasif":
-		return " Pakai gaya persuasif yang meyakinkan dan lembut mengajak (mis. mendorong untuk berdonasi), tetap sopan."
+		return override + " Pakai gaya persuasif yang meyakinkan dan lembut mengajak, tetap sopan."
 	case "ramah", "":
-		return " Pakai gaya ramah dan hangat, sopan, boleh menyapa akrab seperti \"kak\"."
+		return override + " Pakai gaya ramah dan hangat, sopan, boleh menyapa akrab seperti \"kak\"."
 	default:
-		return "" // tone custom: ikuti system prompt apa adanya
+		return "" // Ikuti Persona: tidak menambahkan aturan gaya.
 	}
 }
 

@@ -144,6 +144,9 @@ export type BroadcastConsentCategory = 'marketing' | 'order_update' | 'reminder'
 export interface BroadcastSafetyForm {
   consent_category: BroadcastConsentCategory;
   consent_confirmed: boolean;
+  consent_source: '' | 'form' | 'checkout' | 'customer_request' | 'event' | 'other';
+  consent_granted_at: string;
+  consent_note: string;
   risk_acknowledged: boolean;
   override_phrase: string;
   override_reason: string;
@@ -176,6 +179,13 @@ export interface BroadcastAssessment {
   daily_limit: number;
   findings: BroadcastGuardFinding[];
   override_phrase?: string;
+}
+
+export interface BroadcastConsentSummary {
+  active_consent: number;
+  marketing_consent: number;
+  interacted: number;
+  opted_out: number;
 }
 
 export interface BroadcastPreflightBody extends BroadcastSafetyForm {

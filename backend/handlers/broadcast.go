@@ -693,31 +693,12 @@ func contactNames(agentID uint) map[string]string {
 	return m
 }
 
-// OnAgentConnected mengisi tabel Contact dari buku alamat WA saat agent tersambung.
-// Hanya menambah nomor yang belum punya nama (tidak menimpa nama hasil PushName/chat).
+// OnAgentConnected dijalankan saat agent tersambung. Buku kontak (CRM) sengaja
+// TIDAK lagi diisi otomatis dari buku alamat WhatsApp — dulu ini sumber "noise"
+// (ratusan nomor yang belum tentu pernah berinteraksi). Kontak kini diisi user
+// lewat impor (manual / nomor terkoneksi / CSV) + auto dari yang pernah chat.
+// Buku alamat WA tetap tersedia on-demand sebagai salah satu sumber impor.
 func OnAgentConnected(agentID uint) {
-	contacts, err := services.WA(agentID).GetContacts()
-	if err != nil || len(contacts) == 0 {
-		return
-	}
-	var existing []models.Contact
-	database.DB.Where("agent_id = ?", agentID).Find(&existing)
-	have := make(map[string]bool, len(existing))
-	for _, c := range existing {
-		have[c.Number] = true
-	}
-	fresh := make([]models.Contact, 0)
-	for _, ct := range contacts {
-		if ct.Number == "" || ct.Name == "" || have[ct.Number] {
-			continue
-		}
-		have[ct.Number] = true // cegah duplikat dalam batch yang sama
-		fresh = append(fresh, models.Contact{AgentID: agentID, Number: ct.Number, Name: ct.Name})
-	}
-	if len(fresh) > 0 {
-		database.DB.CreateInBatches(fresh, 200)
-		log.Printf("Backfill kontak (agent %d): %d nama dari buku alamat WhatsApp", agentID, len(fresh))
-	}
 	// Rapikan data lama yang menyimpan pengirim sebagai LID -> nomor telepon.
 	migrateLIDSenders(agentID)
 }

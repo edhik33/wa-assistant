@@ -74,6 +74,36 @@ type broadcastPreflightRequest struct {
 	RunAt            string                    `json:"run_at"`
 }
 
+// BroadcastConsentSummary mengembalikan ringkasan catatan lokal untuk tampilan Kontak.
+// Angka ini berasal dari aktivitas ChatLoop, bukan quality rating atau verifikasi WhatsApp.
+func BroadcastConsentSummary(c *gin.Context) {
+	agentID, ok := resolveAgent(c)
+	if !ok {
+		return
+	}
+
+	var activeConsent, marketingConsent, optedOut, interacted int64
+	database.DB.Model(&models.ContactConsent{}).
+		Where("agent_id = ? AND revoked_at IS NULL", agentID).
+		Distinct("number").Count(&activeConsent)
+	database.DB.Model(&models.ContactConsent{}).
+		Where("agent_id = ? AND category = ? AND revoked_at IS NULL", agentID, "marketing").
+		Distinct("number").Count(&marketingConsent)
+	database.DB.Model(&models.OptOut{}).
+		Where("agent_id = ?", agentID).
+		Count(&optedOut)
+	database.DB.Model(&models.ChatHistory{}).
+		Where("agent_id = ? AND message <> ''", agentID).
+		Distinct("sender").Count(&interacted)
+
+	c.JSON(200, gin.H{"data": gin.H{
+		"active_consent":    activeConsent,
+		"marketing_consent": marketingConsent,
+		"interacted":        interacted,
+		"opted_out":         optedOut,
+	}})
+}
+
 func parseConsentAttestation(category, source, grantedAt, note string, confirmed bool) consentAttestation {
 	a := consentAttestation{
 		Category:  strings.TrimSpace(category),
@@ -124,8 +154,8 @@ func assessBroadcast(agentID uint, message string, recipients []broadcastGuardRe
 	if fullCap := configuredDailyCap(); assessment.DailyLimit < fullCap {
 		assessment.Findings = append(assessment.Findings, broadcastGuardFinding{
 			Code: "warmup_active", Severity: "info",
-			Message:        "Nomor masih dalam masa pemanasan. Batas aman hari ini " + intText(assessment.DailyLimit) + " dari target " + intText(fullCap) + ".",
-			Recommendation: "Naikkan volume secara bertahap tiap hari agar reputasi nomor terbentuk sebelum kirim massal.",
+			Message:        "Pembatasan volume internal sedang aktif. Batas internal hari ini " + intText(assessment.DailyLimit) + " dari target " + intText(fullCap) + ".",
+			Recommendation: "Naikkan volume secara bertahap dan pantau respons penerima sebelum menambah jumlah kiriman.",
 		})
 	}
 

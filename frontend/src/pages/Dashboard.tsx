@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import {
   Box, Card, CardContent, Typography, Button, Chip, CircularProgress, TextField,
   Stack, IconButton, Paper, Grid, Select, MenuItem, FormControl, InputLabel, Divider,
   Switch, FormControlLabel, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions,
-  Badge, Popover, Avatar, Alert, LinearProgress,
+  Badge, Popover, Avatar, Alert, LinearProgress, ToggleButton, ToggleButtonGroup,
+  Accordion, AccordionSummary, AccordionDetails, FormHelperText,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AddIcon from '@mui/icons-material/Add';
@@ -37,6 +38,8 @@ import WarningIcon from '@mui/icons-material/WarningAmberOutlined';
 import ErrorIcon from '@mui/icons-material/ErrorOutlineOutlined';
 import ShippingIcon from '@mui/icons-material/LocalShippingOutlined';
 import ReceiptIcon from '@mui/icons-material/ReceiptLongOutlined';
+import LanguageIcon from '@mui/icons-material/LanguageOutlined';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 import InboxPanel from '../components/InboxPanel';
 import TestChatPanel from '../components/TestChatPanel';
@@ -58,13 +61,50 @@ import {
   useRegeneratePersona, useStopTraining,
 } from '../hooks';
 import BillingPanel from '../components/BillingPanel';
+import type { Agent } from '../types';
+
+type AgentSettingsDraft = {
+  name: string;
+  system_prompt: string;
+  tone: string;
+  greeting_enabled: boolean;
+  greeting_message: string;
+  business_hours_enabled: boolean;
+  business_start: string;
+  business_end: string;
+  away_message: string;
+  spreadsheet_url: string;
+  spreadsheet_sheet_name: string;
+  sheet_sync_enabled: boolean;
+};
+
+function settingsFromAgent(agent: Agent): AgentSettingsDraft {
+  return {
+    name: agent.name || '',
+    system_prompt: agent.system_prompt || '',
+    tone: agent.tone || 'ramah',
+    greeting_enabled: !!agent.greeting_enabled,
+    greeting_message: agent.greeting_message || '',
+    business_hours_enabled: !!agent.business_hours_enabled,
+    business_start: agent.business_start || '08:00',
+    business_end: agent.business_end || '21:00',
+    away_message: agent.away_message || '',
+    spreadsheet_url: agent.spreadsheet_url || '',
+    spreadsheet_sheet_name: agent.spreadsheet_sheet_name || 'Leads',
+    sheet_sync_enabled: !!agent.sheet_sync_enabled,
+  };
+}
+
+function settingsKey(settings: AgentSettingsDraft) {
+  return JSON.stringify(settings);
+}
 
 const TONES = [
   { value: 'ramah', label: '😊 Ramah' },
   { value: 'formal', label: '👔 Formal' },
   { value: 'santai', label: '🏖️ Santai' },
   { value: 'persuasif', label: '💪 Persuasif' },
-  { value: 'custom', label: '✏️ Custom' },
+  { value: 'custom', label: '✏️ Ikuti Persona' },
 ];
 
 const NAV_GROUPS = [
@@ -113,7 +153,7 @@ export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
   const [guardMissing, setGuardMissing] = useState<string[]>([]);
-  const [saved, setSaved] = useState(false);
+  const [settingsBaseline, setSettingsBaseline] = useState<string | null>(null);
   const [greetEnabled, setGreetEnabled] = useState(false);
   const [greetMsg, setGreetMsg] = useState('');
   const [bhEnabled, setBhEnabled] = useState(false);
@@ -127,6 +167,7 @@ export default function Dashboard() {
   const [genCount, setGenCount] = useState(10);
   const [bizType, setBizType] = useState('produk_fisik');
   const [knowledgePage, setKnowledgePage] = useState(0);
+  const [knowledgeSource, setKnowledgeSource] = useState<'web' | 'text' | 'manual'>('web');
   const [knowledgeErrors, setKnowledgeErrors] = useState<Record<string, string>>({});
   const KNOWLEDGE_PER_PAGE = 10;
   const [settingsErrors, setSettingsErrors] = useState<Record<string, string>>({});
@@ -136,6 +177,21 @@ export default function Dashboard() {
   const [sheetSync, setSheetSync] = useState(false);
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [loadingNames, setLoadingNames] = useState(false);
+  const currentSettings = useMemo<AgentSettingsDraft>(() => ({
+    name: agentName,
+    system_prompt: prompt,
+    tone,
+    greeting_enabled: greetEnabled,
+    greeting_message: greetMsg,
+    business_hours_enabled: bhEnabled,
+    business_start: bhStart,
+    business_end: bhEnd,
+    away_message: awayMsg,
+    spreadsheet_url: sheetUrl,
+    spreadsheet_sheet_name: sheetName,
+    sheet_sync_enabled: sheetSync,
+  }), [agentName, prompt, tone, greetEnabled, greetMsg, bhEnabled, bhStart, bhEnd, awayMsg, sheetUrl, sheetName, sheetSync]);
+  const hasUnsavedSettings = settingsBaseline !== null && settingsKey(currentSettings) !== settingsBaseline;
   // Setup Wizard
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardBiz, setWizardBiz] = useState({ biz_name: '', biz_type: 'produk_fisik', products: '', price_range: '', order_flow: '', shipping: '', hours: '08:00-21:00', cs_name: '' });
@@ -151,10 +207,10 @@ export default function Dashboard() {
 
   // ---- TanStack Query: data fetching + auto-polling, tanpa useEffect/setInterval manual ----
 
-  const { data: agents = [] } = useAgents();
+  const { data: agents = [], refetch: refetchAgents } = useAgents();
   const { data: statusMap = {} } = useAgentStatuses();
   const { data: statusData } = useAgentStatus(agentId);
-  const { data: knowledge = [] } = useAgentKnowledge(agentId);
+  const { data: knowledge = [], refetch: refetchKnowledge } = useAgentKnowledge(agentId);
   const { data: handoffs = [] } = useAgentHandoffs(agentId);
   const resumeHandoff = useResumeHandoff(agentId);
   const { data: usage } = useUsage();
@@ -258,13 +314,37 @@ export default function Dashboard() {
   };
 
   const regeneratePersona = async () => {
-    if (!await swalConfirm('Buat ulang persona dari konten website?', 'Persona/instruksi AI saat ini akan ditimpa hasil baru.')) return;
+    if (!await swalConfirm('Susun ulang persona dari website?', 'Persona saat ini akan diganti berdasarkan konten website terakhir yang sudah dilatih.')) return;
     try {
       await regenPersonaMut.mutateAsync();
-      swalToast('Persona berhasil dibuat ulang', 'success');
+      swalToast('Persona berhasil diperbarui dari website', 'success');
     } catch (e) {
       const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal membuat persona';
       swalToast(msg, 'error');
+    }
+  };
+
+  const runSetupWizard = async () => {
+    if (knowledge.length > 0) {
+      const confirmed = await swalConfirm(
+        'Ganti knowledge dengan hasil Setup Cepat?',
+        `${knowledge.length} FAQ yang tersimpan akan dihapus dan diganti dengan hasil baru.`,
+      );
+      if (!confirmed) return;
+    }
+
+    setWizardLoading(true);
+    try {
+      const res = await api.post(`/agents/${agentId}/setup-wizard`, wizardBiz);
+      setPrompt(res.data.system_prompt || '');
+      await Promise.all([refetchAgents(), refetchKnowledge()]);
+      setWizardOpen(false);
+      swalToast(`Setup selesai. ${res.data.knowledge} FAQ dibuat.`, 'success');
+    } catch (e) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Setup belum berhasil';
+      swalToast(msg, 'error');
+    } finally {
+      setWizardLoading(false);
     }
   };
 
@@ -289,13 +369,15 @@ export default function Dashboard() {
     setKnowledgePage(0);
     const a = agents.find(x => x.id === agentId);
     if (a) {
-      setAgentName(a.name || ''); setPrompt(a.system_prompt || ''); setTone(a.tone || 'ramah');
+      const settings = settingsFromAgent(a);
+      setAgentName(settings.name); setPrompt(settings.system_prompt); setTone(settings.tone);
       setAiEnabled(a.ai_enabled !== false);
-      setGreetEnabled(!!a.greeting_enabled); setGreetMsg(a.greeting_message || '');
-      setBhEnabled(!!a.business_hours_enabled); setBhStart(a.business_start || '08:00');
-      setBhEnd(a.business_end || '21:00'); setAwayMsg(a.away_message || '');
-      setSheetUrl(a.spreadsheet_url || ''); setSheetName(a.spreadsheet_sheet_name || 'Leads');
-      setSheetSync(!!a.sheet_sync_enabled);
+      setGreetEnabled(settings.greeting_enabled); setGreetMsg(settings.greeting_message);
+      setBhEnabled(settings.business_hours_enabled); setBhStart(settings.business_start);
+      setBhEnd(settings.business_end); setAwayMsg(settings.away_message);
+      setSheetUrl(settings.spreadsheet_url); setSheetName(settings.spreadsheet_sheet_name);
+      setSheetSync(settings.sheet_sync_enabled);
+      setSettingsBaseline(settingsKey(settings));
     }
   }, [agentId, agents]);
 
@@ -356,15 +438,14 @@ export default function Dashboard() {
     setSettingsErrors(e);
     if (Object.keys(e).length > 0) return;
     try {
-      await saveAgentMut.mutateAsync({
-        name: agentName, system_prompt: prompt, tone,
-        greeting_enabled: greetEnabled, greeting_message: greetMsg,
-        business_hours_enabled: bhEnabled, business_start: bhStart, business_end: bhEnd, away_message: awayMsg,
-        spreadsheet_url: sheetUrl, spreadsheet_sheet_name: sheetName, sheet_sync_enabled: sheetSync,
-      });
-      setSaved(true); setTimeout(() => setSaved(false), 2000);
-    } catch (err: any) {
-      alert('Gagal menyimpan: ' + (err?.response?.data?.error || err?.message || 'Unknown'));
+      await saveAgentMut.mutateAsync(currentSettings);
+      setSettingsBaseline(settingsKey(currentSettings));
+      swalToast('Perubahan pengaturan disimpan');
+    } catch (err) {
+      const message = (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error
+        || (err as { message?: string })?.message
+        || 'Pengaturan belum bisa disimpan';
+      swalToast(message, 'error');
     }
   };
 
@@ -791,10 +872,37 @@ export default function Dashboard() {
 
         {tab === 'knowledge' && (
           <Box>
-            <PageHeader title={<>Knowledge Base {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>} />
+            <PageHeader
+              title={<>Knowledge Base {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>}
+              subtitle="Tambahkan informasi bisnis yang boleh dipakai AI saat menjawab pelanggan. Pilih satu cara untuk memulai; sumber lain bisa ditambahkan kapan saja."
+            />
+
+            <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 0.25 }}>Pilih sumber pengetahuan AI</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Informasi dari sumber ini akan dipakai AI untuk menjawab pelanggan. Kamu tidak perlu mengisi semuanya sekaligus.
+              </Typography>
+              <ToggleButtonGroup
+                value={knowledgeSource}
+                exclusive
+                onChange={(_, value: 'web' | 'text' | 'manual' | null) => value && setKnowledgeSource(value)}
+                size="small"
+                aria-label="Sumber knowledge"
+                sx={{ width: '100%', '& .MuiToggleButton-root': { flex: 1, gap: 0.75 } }}
+              >
+                <ToggleButton value="web"><LanguageIcon fontSize="small" sx={{ display: { xs: 'none', sm: 'block' } }} /> Website</ToggleButton>
+                <ToggleButton value="text"><AutoAwesomeIcon fontSize="small" sx={{ display: { xs: 'none', sm: 'block' } }} /> Tulis Info</ToggleButton>
+                <ToggleButton value="manual"><AddIcon fontSize="small" sx={{ display: { xs: 'none', sm: 'block' } }} /> FAQ Manual</ToggleButton>
+              </ToggleButtonGroup>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+                {knowledgeSource === 'web' && 'Cocok jika informasi produk dan bisnis sudah lengkap di website.'}
+                {knowledgeSource === 'text' && 'Cocok jika kamu punya deskripsi bisnis yang ingin diubah AI menjadi beberapa FAQ.'}
+                {knowledgeSource === 'manual' && 'Cocok untuk menambahkan satu pertanyaan dan jawaban yang harus presisi.'}
+              </Typography>
+            </Paper>
 
             {/* Latih dari Website */}
-            <Card sx={{ mb: 1.5 }}>
+            {knowledgeSource === 'web' && <Card sx={{ mb: 1.5 }}>
               <CardContent>
                 <Typography variant="subtitle2" sx={{ mb: 0.25 }}>🌐 Latih dari Website</Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
@@ -935,12 +1043,7 @@ export default function Dashboard() {
                             );
                           })}
                         </Paper>
-                        <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between', mt: 0.5, flexWrap: 'wrap' }}>
-                          <Button size="small" disabled={regenPersonaMut.isPending || isTraining || trainedCount === 0}
-                            onClick={regeneratePersona}
-                            startIcon={regenPersonaMut.isPending ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}>
-                            Buat ulang persona
-                          </Button>
+                        <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end', mt: 0.5, flexWrap: 'wrap' }}>
                           <Button size="small" color="error" disabled={deleteWebMut.isPending || isTraining} onClick={async () => {
                             if (!await swalConfirm('Hapus semua knowledge dari website?', 'Knowledge hasil crawl web akan dihapus (Q&A manual tetap aman).')) return;
                             try { await deleteWebMut.mutateAsync(); swalToast('Knowledge web dihapus', 'success'); } catch { swalToast('Gagal', 'error'); }
@@ -951,15 +1054,14 @@ export default function Dashboard() {
                   </>
                 )}
               </CardContent>
-            </Card>
+            </Card>}
 
-            <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Atau tulis sendiri</Typography>
+            {knowledgeSource === 'text' && (
+              <Card sx={{ mb: 1.5 }}>
+                <CardContent>
+                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Ubah deskripsi menjadi FAQ</Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ mb: 0.75, display: 'block' }}>
-                      Punya deskripsi produk sendiri? Paste di sini, AI ubah jadi FAQ.
+                      Tempel informasi produk atau layanan. AI akan merangkumnya menjadi beberapa pertanyaan dan jawaban.
                     </Typography>
 
                     <FormControl size="small" fullWidth sx={{ mb: 1 }}>
@@ -985,13 +1087,17 @@ export default function Dashboard() {
                         Generate
                       </Button>
                     </Stack>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Card sx={{ height: '100%' }}>
-                  <CardContent>
-                    <Typography variant="subtitle2" sx={{ mb: 0.75 }}>Tambah Manual</Typography>
+                </CardContent>
+              </Card>
+            )}
+
+            {knowledgeSource === 'manual' && (
+              <Card sx={{ mb: 1.5 }}>
+                <CardContent>
+                    <Typography variant="subtitle2" sx={{ mb: 0.25 }}>Tambah satu FAQ</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 0.75, display: 'block' }}>
+                      Gunakan cara ini untuk informasi yang jawabannya harus ditulis secara presisi.
+                    </Typography>
                     <Stack spacing={0.75}>
                       <TextField size="small" label="Pertanyaan" value={newQ}
                         onChange={e => { setNewQ(e.target.value); if (knowledgeErrors.newQ) setKnowledgeErrors(p => ({...p, newQ: ''})); }}
@@ -1002,10 +1108,9 @@ export default function Dashboard() {
                       <TextField size="small" label="Tags (koma)" value={newTags} onChange={e => setNewTags(e.target.value)} />
                       <Button size="small" startIcon={<AddIcon />} variant="contained" onClick={addKnowledge} disabled={addKnowledgeMut.isPending}>Tambah</Button>
                     </Stack>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
+                </CardContent>
+              </Card>
+            )}
 
             {(() => {
               const totalPages = Math.ceil(knowledge.length / KNOWLEDGE_PER_PAGE);
@@ -1014,17 +1119,28 @@ export default function Dashboard() {
               const pageItems = knowledge.slice(start, start + KNOWLEDGE_PER_PAGE);
               return (
                 <>
-                  {knowledge.length > 0 && (
-                    <Stack direction="row" sx={{ justifyContent: 'flex-end', mb: 0.75 }}>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>FAQ tersimpan</Typography>
+                      <Typography variant="caption" color="text.secondary">Informasi inilah yang dipakai AI saat menjawab pelanggan.</Typography>
+                    </Box>
+                    {knowledge.length > 0 && (
                       <Button size="small" color="error" variant="outlined" onClick={async () => {
                         if (!await swalConfirm('Hapus semua knowledge?', 'Semua Q&A akan dihapus permanen.')) return;
                         try { await deleteAllKnowledgeMut.mutateAsync(); swalToast('Semua knowledge dihapus', 'success'); } catch { swalToast('Gagal', 'error'); }
                       }} disabled={deleteAllKnowledgeMut.isPending}>
                         {deleteAllKnowledgeMut.isPending ? '…' : 'Hapus Semua'}
                       </Button>
-                    </Stack>
-                  )}
-                  <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+                    )}
+                  </Stack>
+                  {knowledge.length === 0 ? (
+                    <Paper variant="outlined" sx={{ p: 3, textAlign: 'center', borderStyle: 'dashed', bgcolor: 'action.hover' }}>
+                      <KnowledgeIcon sx={{ fontSize: 36, color: 'text.disabled', mb: 0.75 }} />
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>Belum ada FAQ</Typography>
+                      <Typography variant="caption" color="text.secondary">Gunakan pilihan di atas untuk menambahkan knowledge pertama.</Typography>
+                    </Paper>
+                  ) : (
+                    <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
                     {pageItems.map((k, i) => (
                       <Box key={k.id} sx={{ display: 'flex', gap: 0.75, px: 1.5, py: 1, borderBottom: i < pageItems.length - 1 ? '1px solid' : 0, borderColor: 'divider', alignItems: 'flex-start' }}>
                         <Typography variant="caption" sx={{ fontWeight: 700, color: 'primary.main', flexShrink: 0, minWidth: 28, lineHeight: 1.5 }}>Q{k.id}:</Typography>
@@ -1036,7 +1152,8 @@ export default function Dashboard() {
                         <IconButton onClick={async () => { if (await delKnowledge(k.id) && pageItems.length === 1 && safePage > 0) setKnowledgePage(safePage - 1); }} size="small" color="error" sx={{ flexShrink: 0, mt: -0.25 }}><DeleteIcon fontSize="small" /></IconButton>
                       </Box>
                     ))}
-                  </Paper>
+                    </Paper>
+                  )}
                   {totalPages > 1 && (
                     <Stack direction="row" spacing={1} sx={{ justifyContent: 'center', alignItems: 'center', mt: 1 }}>
                       <Button size="small" variant="outlined" disabled={safePage === 0}
@@ -1060,7 +1177,10 @@ export default function Dashboard() {
 
         {tab === 'settings' && (
           <Box>
-            <PageHeader title={<><SettingsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />Pengaturan {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>} />
+            <PageHeader
+              title={<><SettingsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />Pengaturan {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>}
+              subtitle="Atur identitas, sumber pengetahuan AI, dan persona agar jawaban sesuai dengan bisnismu."
+            />
 
             <Card sx={{ mb: 1.5 }}>
               <CardContent>
@@ -1080,89 +1200,120 @@ export default function Dashboard() {
                 </Box>
                 <Divider sx={{ mb: 1.5 }} />
 
-                <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Nama CS</Typography>
-                    <TextField fullWidth size="small" value={agentName}
-                      onChange={e => { setAgentName(e.target.value); if (settingsErrors.agentName) setSettingsErrors(p => ({...p, agentName: ''})); }}
-                      error={!!settingsErrors.agentName} helperText={settingsErrors.agentName} />
+                <Box sx={{ mb: 1.5 }}>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+                    <Box sx={{ width: 24, height: 24, display: 'grid', placeItems: 'center', bgcolor: 'primary.main', color: 'primary.contrastText', borderRadius: 1, fontSize: '0.75rem', fontWeight: 800 }}>1</Box>
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Identitas dan gaya bicara</Typography>
+                      <Typography variant="caption" color="text.secondary">Tentukan nama yang tampil dan cara AI berbicara kepada pelanggan.</Typography>
+                    </Box>
+                  </Stack>
+                  <Grid container spacing={1.5}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField fullWidth size="small" label="Nama CS" value={agentName}
+                        onChange={e => { setAgentName(e.target.value); if (settingsErrors.agentName) setSettingsErrors(p => ({...p, agentName: ''})); }}
+                        error={!!settingsErrors.agentName} helperText={settingsErrors.agentName} />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Gaya bahasa</InputLabel>
+                        <Select value={tone} label="Gaya bahasa" onChange={e => setTone(e.target.value)}>
+                          {TONES.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
+                        </Select>
+                        <FormHelperText>
+                          {tone === 'custom'
+                            ? 'AI mengikuti gaya bahasa yang ditulis di Persona.'
+                            : 'Pilihan ini berlaku pada semua jawaban dan mengesampingkan gaya berbeda di Persona.'}
+                        </FormHelperText>
+                      </FormControl>
+                    </Grid>
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Tone / Gaya Bahasa</Typography>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Tone</InputLabel>
-                      <Select value={tone} label="Tone" onChange={e => setTone(e.target.value)}>
-                        {TONES.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                </Grid>
+                </Box>
 
-                {(knowledge.length === 0 && !prompt.trim()) && (
-                  <Card sx={{ mb: 1.5, borderLeft: '4px solid', borderColor: 'success.main', bgcolor: 'rgba(37,211,102,0.05)' }}>
-                    <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+                <Divider sx={{ mb: 1.5 }} />
+
+                <Box sx={{ mb: 1.5 }}>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
+                    <Box sx={{ width: 24, height: 24, display: 'grid', placeItems: 'center', bgcolor: 'primary.main', color: 'primary.contrastText', borderRadius: 1, fontSize: '0.75rem', fontWeight: 800 }}>2</Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Pengetahuan AI tentang bisnis</Typography>
+                        <Chip size="small" variant="outlined" color={knowledge.length ? 'success' : 'warning'} label={`${knowledge.length} FAQ tersimpan`} />
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">
+                        Informasi di bagian ini dipakai AI untuk menjawab pelanggan. Pilih satu sumber untuk memulai. Website, deskripsi, dan FAQ manual dapat digabungkan nanti.
+                      </Typography>
+                    </Box>
+                  </Stack>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' }, gap: 1, mt: 1 }}>
+                    <Button variant="outlined" color="success" onClick={() => setWizardOpen(true)} disabled={!agentId} sx={{ justifyContent: 'flex-start', alignItems: 'flex-start', textAlign: 'left', p: 1.25, bgcolor: 'rgba(37,211,102,0.04)' }}>
+                      <AutoAwesomeIcon sx={{ mr: 1, mt: 0.1 }} />
                       <Box>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                          <AutoAwesomeIcon sx={{ mr: 0.5, verticalAlign: 'middle', color: '#25D366', fontSize: 18 }} />
-                          Setup Cepat — Direkomendasikan
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Isi profil bisnis kamu, AI akan otomatis generate System Prompt.
-                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 800 }}>Setup Cepat</Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Buat knowledge awal sekaligus persona dari profil bisnis.</Typography>
+                        {knowledge.length > 0 && <Typography variant="caption" color="warning.main" sx={{ display: 'block', mt: 0.25 }}>Akan mengganti {knowledge.length} FAQ yang tersimpan.</Typography>}
                       </Box>
-                      <Button variant="contained" color="success" size="small" startIcon={<AutoAwesomeIcon />} onClick={() => setWizardOpen(true)} disabled={!agentId}>
-                        Mulai Setup Cepat
-                      </Button>
-                    </CardContent>
-                  </Card>
-                )}
+                    </Button>
+                    <Button variant="outlined" onClick={() => { setKnowledgeSource('web'); setTab('knowledge'); }} sx={{ justifyContent: 'flex-start', alignItems: 'flex-start', textAlign: 'left', p: 1.25, color: 'text.primary', borderColor: 'divider' }}>
+                      <LanguageIcon color="primary" sx={{ mr: 1, mt: 0.1 }} />
+                      <Box><Typography variant="body2" sx={{ fontWeight: 700 }}>Dari website</Typography><Typography variant="caption" color="text.secondary">Impor halaman yang sudah ada.</Typography></Box>
+                    </Button>
+                    <Button variant="outlined" onClick={() => { setKnowledgeSource('text'); setTab('knowledge'); }} sx={{ justifyContent: 'flex-start', alignItems: 'flex-start', textAlign: 'left', p: 1.25, color: 'text.primary', borderColor: 'divider' }}>
+                      <AutoAwesomeIcon color="primary" sx={{ mr: 1, mt: 0.1 }} />
+                      <Box><Typography variant="body2" sx={{ fontWeight: 700 }}>Dari deskripsi</Typography><Typography variant="caption" color="text.secondary">AI mengubah tulisan menjadi FAQ.</Typography></Box>
+                    </Button>
+                    <Button variant="outlined" onClick={() => { setKnowledgeSource('manual'); setTab('knowledge'); }} sx={{ justifyContent: 'flex-start', alignItems: 'flex-start', textAlign: 'left', p: 1.25, color: 'text.primary', borderColor: 'divider' }}>
+                      <AddIcon color="primary" sx={{ mr: 1, mt: 0.1 }} />
+                      <Box><Typography variant="body2" sx={{ fontWeight: 700 }}>FAQ manual</Typography><Typography variant="caption" color="text.secondary">Tulis satu jawaban yang presisi.</Typography></Box>
+                    </Button>
+                  </Box>
+                </Box>
 
-                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.75, display: 'block' }}>
-                  Anda juga bisa setup knowledge sesuai keinginan anda.
-                </Typography>
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                  <Button size="small" variant="outlined" startIcon={<KnowledgeIcon />} onClick={() => setTab('knowledge')}>
-                    Kelola Knowledge Base / FAQ
-                  </Button>
-                  <Typography variant="caption" color="text.secondary">{knowledge.length} Q&A tersimpan</Typography>
-                </Stack>
+                <Divider sx={{ mb: 1.5 }} />
 
-                {knowledge.length > 0 && (
-                  <Box sx={{ mt: 1, mb: 1.5 }}>
-                    {knowledge.slice(0, 5).map((k, i) => (
-                      <Box key={k.id} sx={{ display: 'flex', gap: 0.75, py: 0.4, borderBottom: i < Math.min(knowledge.length, 5) - 1 ? '1px solid' : 0, borderColor: 'divider' }}>
-                        <Typography variant="caption" sx={{ fontWeight: 700, color: 'primary.main', flexShrink: 0, minWidth: 24 }}>Q{k.id}:</Typography>
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.4 }}>{k.question}</Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.3, fontSize: '0.65rem' }}>A: {k.answer}</Typography>
-                        </Box>
-                      </Box>
-                    ))}
-                    {knowledge.length > 5 && (
-                      <Button size="small" variant="text" onClick={() => setTab('knowledge')} sx={{ mt: 0.5, textTransform: 'none', fontSize: '0.7rem' }}>
-                        Lihat semua ({knowledge.length}) →
+                <Box sx={{ mb: 1.5 }}>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
+                    <Box sx={{ width: 24, height: 24, display: 'grid', placeItems: 'center', bgcolor: 'primary.main', color: 'primary.contrastText', borderRadius: 1, fontSize: '0.75rem', fontWeight: 800 }}>3</Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Persona AI</Typography>
+                        <Chip size="small" variant="outlined" color={prompt.trim() ? 'success' : 'warning'} label={prompt.trim() ? 'Sudah diatur' : 'Belum diatur'} />
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">Atur peran, batasan, dan alur layanan. Gaya bicara diatur terpisah pada langkah 1.</Typography>
+                    </Box>
+                  </Stack>
+                  <TextField
+                    multiline
+                    minRows={4}
+                    fullWidth
+                    size="small"
+                    label="Instruksi persona"
+                    value={prompt}
+                    onChange={e => setPrompt(e.target.value)}
+                    placeholder="Contoh: Kamu adalah CS toko kami. Bantu pelanggan memilih produk dan jangan mengarang informasi di luar knowledge."
+                    sx={{ mt: 0.75 }}
+                  />
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 0.75, alignItems: { xs: 'stretch', sm: 'center' } }}>
+                    <Button size="small" variant="text" onClick={() => { setExampleMode('prompt'); setExampleModalOpen(true); }}>Lihat contoh persona</Button>
+                    {trainedCount > 0 && (
+                      <Button size="small" variant="outlined" disabled={regenPersonaMut.isPending || isTraining}
+                        onClick={regeneratePersona}
+                        startIcon={regenPersonaMut.isPending ? <CircularProgress size={14} /> : <LanguageIcon />}>
+                        {prompt.trim() ? 'Perbarui dari website' : 'Buat dari website'}
                       </Button>
                     )}
-                  </Box>
-                )}
+                  </Stack>
+                </Box>
 
-                <Divider sx={{ mb: 1.5 }} />
-
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
-                  <Typography variant="subtitle2">System Prompt — Persona <Typography component="span" variant="caption" color="text.secondary">(opsional)</Typography></Typography>
-                  <Button size="small" variant="text" onClick={() => { setExampleMode('prompt'); setExampleModalOpen(true); }} sx={{ minWidth: 'max-content', fontSize: '0.7rem', textTransform: 'none' }}>Lihat Contoh</Button>
-                </Stack>
-                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.75, display: 'block' }}>
-                  {prompt.trim() ? 'Persona bot sudah diatur. Bisa diedit kapan saja.' : 'Terisi otomatis dari Setup Cepat, atau tulis manual di sini.'}
-                </Typography>
-                <TextField multiline rows={3} fullWidth size="small" value={prompt}
-                  onChange={e => setPrompt(e.target.value)}
-                  placeholder=''
-                  sx={{ mb: 1.5 }} />
-
-                <Divider sx={{ mb: 1.5 }} />
-
-                <Grid container spacing={2}>
+                <Accordion disableGutters elevation={0} defaultExpanded={greetEnabled || bhEnabled} sx={{ border: '1px solid', borderColor: 'divider', '&:before': { display: 'none' } }}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Otomasi percakapan</Typography>
+                      <Typography variant="caption" color="text.secondary">Sapaan otomatis dan respons di luar jam kerja.</Typography>
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ pt: 0 }}>
+                    <Grid container spacing={2}>
                   <Grid size={{ xs: 12, md: 6 }}>
                     <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Sapaan Otomatis</Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ mb: 0.75, display: 'block' }}>
@@ -1189,14 +1340,18 @@ export default function Dashboard() {
                       onChange={e => setAwayMsg(e.target.value)} disabled={!bhEnabled}
                       placeholder="Mohon maaf, kami sedang di luar jam operasional. Pesan kakak akan kami balas pada jam kerja ya 🙏" />
                   </Grid>
-                </Grid>
+                    </Grid>
+                  </AccordionDetails>
+                </Accordion>
 
-                <Divider sx={{ mt: 1.5, mb: 1.5 }} />
-
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>AI Closing → Google Sheets</Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block' }}>
-                  AI otomatis mengekstrak data closing dari chat customer dan menambahkannya ke Google Sheet.
-                </Typography>
+                <Accordion disableGutters elevation={0} defaultExpanded={sheetSync} sx={{ mt: 1, border: '1px solid', borderColor: 'divider', '&:before': { display: 'none' } }}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Google Sheets</Typography>
+                      <Typography variant="caption" color="text.secondary">Kirim data closing dari percakapan AI ke spreadsheet.</Typography>
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ pt: 0 }}>
 
                 <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 1.5 }}>
                   <Switch checked={sheetSync} onChange={e => setSheetSync(e.target.checked)} />
@@ -1252,8 +1407,32 @@ export default function Dashboard() {
                     Share spreadsheet ke: chatloop-sheets@whatsmeow.iam.gserviceaccount.com
                   </Typography>
                 </Stack>
+                  </AccordionDetails>
+                </Accordion>
 
-                <Button variant="contained" onClick={saveAgent} disabled={saveAgentMut.isPending} sx={{ mt: 2 }}>{saved ? 'Tersimpan ✓' : saveAgentMut.isPending ? 'Menyimpan…' : 'Simpan'}</Button>
+                <Box sx={{ mt: 2, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', minHeight: 36 }}>
+                    <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minHeight: 24 }}>
+                      {settingsBaseline !== null && !hasUnsavedSettings && <CheckCircleIcon color="success" fontSize="small" />}
+                      <Typography variant="caption" color={hasUnsavedSettings ? 'warning.main' : 'text.secondary'} sx={{ fontWeight: 600 }}>
+                        {settingsBaseline === null
+                          ? 'Memuat pengaturan...'
+                          : hasUnsavedSettings
+                            ? 'Ada perubahan yang belum disimpan'
+                            : 'Semua perubahan tersimpan'}
+                      </Typography>
+                    </Stack>
+                    <Button
+                      variant={hasUnsavedSettings ? 'contained' : 'outlined'}
+                      onClick={saveAgent}
+                      disabled={settingsBaseline === null || !hasUnsavedSettings || saveAgentMut.isPending}
+                      startIcon={saveAgentMut.isPending ? <CircularProgress size={15} color="inherit" /> : undefined}
+                      sx={{ minWidth: 170 }}
+                    >
+                      Simpan perubahan
+                    </Button>
+                  </Stack>
+                </Box>
               </CardContent>
             </Card>
 
@@ -1307,7 +1486,7 @@ export default function Dashboard() {
         {tab === 'template' && <TemplatePanel agentId={agentId} />}
         {tab === 'follow-up' && <FollowUpPanel agentId={agentId} />}
         {tab === 'kontak' && (
-          <ContactsPanel agentId={agentId} agentStatus={status}
+          <ContactsPanel agentId={agentId}
             onBroadcast={(recipients) => { setSeed({ kind: 'broadcast', value: recipients, n: Date.now() }); setTab('broadcast'); }}
             onOpenChat={(number) => { setSeed({ kind: 'inbox', value: number, n: Date.now() }); setTab('inbox'); }} />
         )}
@@ -1474,9 +1653,9 @@ export default function Dashboard() {
         </DialogActions>
       </Dialog>
 
-      {/* Modal Contoh System Prompt */}
+      {/* Modal contoh persona/profil bisnis */}
       <Dialog open={exampleModalOpen} onClose={() => setExampleModalOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>{exampleMode === 'prompt' ? 'Contoh System Prompt' : 'Contoh Profil Bisnis'}</DialogTitle>
+        <DialogTitle>{exampleMode === 'prompt' ? 'Contoh Persona AI' : 'Contoh Profil Bisnis'}</DialogTitle>
         <DialogContent>
           {exampleMode === 'profile' && (
             <>
@@ -1496,7 +1675,7 @@ Jam Operasional: 08:00-21:00`}
 
           {exampleMode === 'prompt' && (
             <>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5, mt: 1 }}>System Prompt</Typography>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5, mt: 1 }}>Persona AI</Typography>
               <Box component="pre" sx={{ bgcolor: 'grey.50', p: 1.5, borderRadius: 1, fontSize: '0.75rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', border: '1px solid', borderColor: 'divider', maxHeight: 400, overflowY: 'auto' }}>
 {`Kamu adalah Admin AromaLuxe, customer service WhatsApp untuk toko parfum bernama AromaLuxe Parfum.
 
@@ -1518,14 +1697,6 @@ PROFIL BISNIS:
 - Jam operasional: 08:00-21:00
 - Pengiriman: JNE, J&T, SiCepat, Shopee Express, dan kurir instan untuk area tertentu.
 - Estimasi pengiriman: 1-5 hari kerja tergantung lokasi.
-
-GAYA BAHASA:
-Gunakan bahasa Indonesia yang ramah, sopan, natural, dan tidak kaku.
-Gunakan panggilan "Kak" kepada pelanggan.
-Jawaban harus singkat, jelas, dan mudah dipahami.
-Jangan terlalu panjang kecuali pelanggan meminta penjelasan detail.
-Boleh menggunakan emoji secukupnya, maksimal 1-2 emoji per pesan.
-Jangan terdengar seperti robot.
 
 ATURAN PENTING:
 1. Jangan mengarang informasi yang belum tersedia di knowledge.
@@ -1564,18 +1735,23 @@ Bantu pelanggan sampai jelas, tertarik, dan siap order. Jika pelanggan sudah men
       {/* Setup Wizard */}
       <Dialog open={wizardOpen} onClose={() => setWizardOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <AutoAwesomeIcon sx={{ color: '#25D366' }} /> Setup Cepat — Isi Profil Bisnis
+          <AutoAwesomeIcon color="success" /> Setup Cepat
         </DialogTitle>
         <DialogContent>
-          <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block' }}>
-            AI akan otomatis generate System Prompt dari profil ini.
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Isi profil bisnis di bawah. Sistem akan membuat persona AI dan FAQ awal secara otomatis.
           </Typography>
+          {knowledge.length > 0 && (
+            <Alert severity="warning" sx={{ mb: 1.5 }}>
+              Setup Cepat akan mengganti {knowledge.length} FAQ yang saat ini tersimpan. Persona lama juga akan diperbarui.
+            </Alert>
+          )}
           <Grid container spacing={1}>
-            <Grid size={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth size="small" label="Nama Bisnis *" value={wizardBiz.biz_name}
                 onChange={e => setWizardBiz({...wizardBiz, biz_name: e.target.value})} required />
             </Grid>
-            <Grid size={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth size="small">
                 <InputLabel>Jenis Bisnis</InputLabel>
                 <Select value={wizardBiz.biz_type} label="Jenis Bisnis"
@@ -1591,52 +1767,43 @@ Bantu pelanggan sampai jelas, tertarik, dan siap order. Jika pelanggan sudah men
                 onChange={e => setWizardBiz({...wizardBiz, products: e.target.value})}
                 placeholder="mis: Baju muslim, gamis, hijab..." multiline rows={3} />
             </Grid>
-            <Grid size={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth size="small" label="Range Harga" value={wizardBiz.price_range}
                 onChange={e => setWizardBiz({...wizardBiz, price_range: e.target.value})}
                 placeholder="Rp 50rb - 300rb" />
             </Grid>
-            <Grid size={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth size="small" label="Nama CS" value={wizardBiz.cs_name}
                 onChange={e => setWizardBiz({...wizardBiz, cs_name: e.target.value})}
                 placeholder="mis: Admin Maya" />
             </Grid>
-            <Grid size={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth size="small" label="Cara Order" value={wizardBiz.order_flow}
                 onChange={e => setWizardBiz({...wizardBiz, order_flow: e.target.value})}
                 placeholder="Transfer dulu, kirim 2-3 hari" />
             </Grid>
-            <Grid size={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth size="small" label="Pengiriman" value={wizardBiz.shipping}
                 onChange={e => setWizardBiz({...wizardBiz, shipping: e.target.value})}
                 placeholder="JNE, J&T, seluruh Indo" />
             </Grid>
-            <Grid size={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth size="small" label="Jam Operasional" value={wizardBiz.hours}
                 onChange={e => setWizardBiz({...wizardBiz, hours: e.target.value})}
                 placeholder="08:00 - 21:00" />
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions sx={{ justifyContent: 'space-between' }}>
-          <Button size="small" variant="text" onClick={() => { setExampleMode('profile'); setExampleModalOpen(true); }} sx={{ textTransform: 'none' }}>Lihat Contoh</Button>
-          <Box>
+        <DialogActions sx={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+          <Button size="small" variant="text" onClick={() => { setExampleMode('profile'); setExampleModalOpen(true); }}>Lihat contoh profil</Button>
+          <Stack direction="row" spacing={1}>
             <Button onClick={() => setWizardOpen(false)} disabled={wizardLoading}>Batal</Button>
             <Button variant="contained" color="success" disabled={wizardLoading || !wizardBiz.biz_name}
-            onClick={async () => {
-              setWizardLoading(true);
-              try {
-                const res = await api.post(`/agents/${agentId}/setup-wizard`, wizardBiz);
-                swalToast(`✅ ${res.data.message} (${res.data.knowledge} FAQ dibuat)`, 'success');
-                setWizardOpen(false);
-                window.location.reload();
-              } catch (e: any) { swalToast(e?.response?.data?.error || 'Gagal', 'error'); }
-              setWizardLoading(false);
-            }}
+            onClick={runSetupWizard}
             startIcon={wizardLoading ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}>
-            {wizardLoading ? 'Generating…' : 'Generate AI Setup'}
+            {wizardLoading ? 'Menyiapkan...' : 'Buat Persona & FAQ'}
           </Button>
-          </Box>
+          </Stack>
         </DialogActions>
       </Dialog>
 

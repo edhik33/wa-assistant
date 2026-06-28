@@ -265,3 +265,153 @@ func BulkTagSavedContacts(c *gin.Context) {
 
 	c.JSON(200, gin.H{"message": "Tag ditambahkan", "updated": updated, "total": len(contacts)})
 }
+
+// ImportSavedContacts memasukkan banyak kontak sekaligus dari berbagai sumber
+// (input manual, nomor terkoneksi, atau unggahan CSV). Body:
+//
+//	{ contacts: [{number, name}], tag?: string }
+//
+// Nomor yang sudah ada dilewati (tidak menimpa nama/tag lama). Jika `tag` diisi,
+// tag itu dipasang ke semua kontak baru yang berhasil dibuat.
+func ImportSavedContacts(c *gin.Context) {
+	id, ok := resolveAgent(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Contacts []struct {
+			Number string `json:"number"`
+			Name   string `json:"name"`
+		} `json:"contacts"`
+		Tag string `json:"tag"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "Format data tidak valid"})
+		return
+	}
+	if len(req.Contacts) == 0 {
+		c.JSON(400, gin.H{"error": "Tidak ada kontak untuk diimpor"})
+		return
+	}
+
+	// Nomor yang sudah tersimpan, supaya tidak dobel.
+	var existing []models.Contact
+	database.DB.Where("agent_id = ?", id).Find(&existing)
+	have := make(map[string]bool, len(existing))
+	for _, ct := range existing {
+		have[ct.Number] = true
+	}
+
+	tag := normalizeTags(req.Tag)
+	fresh := make([]models.Contact, 0, len(req.Contacts))
+	imported, skipped := 0, 0
+	for _, r := range req.Contacts {
+		num := services.NormalizePhone(r.Number)
+		if num == "" {
+			skipped++
+			continue
+		}
+		if have[num] {
+			skipped++
+			continue
+		}
+		have[num] = true // cegah duplikat di dalam batch yang sama
+		fresh = append(fresh, models.Contact{
+			AgentID: id, Number: num, Name: strings.TrimSpace(r.Name), Tags: tag,
+		})
+		imported++
+	}
+
+	if len(fresh) > 0 {
+		if err := database.DB.CreateInBatches(fresh, 200).Error; err != nil {
+			c.JSON(500, gin.H{"error": "Gagal menyimpan kontak"})
+			return
+		}
+	}
+	c.JSON(200, gin.H{"message": "Impor selesai", "imported": imported, "skipped": skipped})
+}
+
+// BulkDeleteSavedContacts menghapus banyak kontak sekaligus. Body:
+//
+//	{ ids: number[] }              -> hapus kontak terpilih
+//	{ all: true, q?, tag? }        -> hapus SEMUA kontak yang cocok filter (atau semua)
+//
+// Mode `all` mengikuti filter pencarian/tag yang sedang aktif di UI, jadi user bisa
+// "hapus semua hasil pencarian ini" tanpa harus mencentang satu per satu.
+func BulkDeleteSavedContacts(c *gin.Context) {
+	id, ok := resolveAgent(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		IDs []uint `json:"ids"`
+		All bool   `json:"all"`
+		Q   string `json:"q"`
+		Tag string `json:"tag"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "Format data tidak valid"})
+		return
+	}
+
+	if !req.All {
+		if len(req.IDs) == 0 {
+			c.JSON(400, gin.H{"error": "Pilih minimal satu kontak"})
+			return
+		}
+		res := database.DB.Where("agent_id = ? AND id IN ?", id, req.IDs).Delete(&models.Contact{})
+		if res.Error != nil {
+			c.JSON(500, gin.H{"error": "Gagal menghapus kontak"})
+			return
+		}
+		c.JSON(200, gin.H{"message": "Kontak dihapus", "deleted": res.RowsAffected})
+		return
+	}
+
+	// Mode "hapus semua sesuai filter". Tanpa filter = kosongkan buku kontak.
+	q := strings.ToLower(strings.TrimSpace(req.Q))
+	tag := strings.ToLower(strings.TrimSpace(req.Tag))
+	if q == "" && tag == "" {
+		res := database.DB.Where("agent_id = ?", id).Delete(&models.Contact{})
+		if res.Error != nil {
+			c.JSON(500, gin.H{"error": "Gagal menghapus kontak"})
+			return
+		}
+		c.JSON(200, gin.H{"message": "Semua kontak dihapus", "deleted": res.RowsAffected})
+		return
+	}
+
+	// Ada filter: cari id yang cocok dulu (tag disimpan sebagai string koma, jadi
+	// difilter di Go agar cocok per-tag persis, bukan substring).
+	var contacts []models.Contact
+	database.DB.Where("agent_id = ?", id).Find(&contacts)
+	ids := make([]uint, 0)
+	for _, ct := range contacts {
+		if q != "" && !strings.Contains(strings.ToLower(ct.Name), q) && !strings.Contains(ct.Number, q) {
+			continue
+		}
+		if tag != "" {
+			has := false
+			for _, t := range tagList(ct.Tags) {
+				if strings.ToLower(t) == tag {
+					has = true
+					break
+				}
+			}
+			if !has {
+				continue
+			}
+		}
+		ids = append(ids, ct.ID)
+	}
+	if len(ids) == 0 {
+		c.JSON(200, gin.H{"message": "Tidak ada kontak yang cocok", "deleted": 0})
+		return
+	}
+	res := database.DB.Where("agent_id = ? AND id IN ?", id, ids).Delete(&models.Contact{})
+	if res.Error != nil {
+		c.JSON(500, gin.H{"error": "Gagal menghapus kontak"})
+		return
+	}
+	c.JSON(200, gin.H{"message": "Kontak dihapus", "deleted": res.RowsAffected})
+}
