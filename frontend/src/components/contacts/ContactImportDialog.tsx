@@ -59,6 +59,7 @@ export default function ContactImportDialog({ agentId, open, onClose }: {
   const [csvName, setCsvName] = useState('');
   const [connectedRows, setConnectedRows] = useState<Row[]>([]);
   const [tag, setTag] = useState('');
+  const [tagEdited, setTagEdited] = useState(false); // true kalau user mengetik tag sendiri
 
   const [connSource, setConnSource] = useState<ConnectedSource>('chat');
   const [groups, setGroups] = useState<WAGroup[]>([]);
@@ -85,11 +86,16 @@ export default function ContactImportDialog({ agentId, open, onClose }: {
 
   const reset = () => {
     setSource('manual'); setManualText(''); setCsvRows([]); setCsvName('');
-    setConnectedRows([]); setTag(''); setConnSource('chat');
+    setConnectedRows([]); setTag(''); setTagEdited(false); setConnSource('chat');
     setGroups([]); setGroupJid(''); setLabels([]); setLabelId('');
   };
 
   const close = () => { reset(); onClose(); };
+
+  // autoTag mengisi tag bawaan dari sumber terkoneksi, tapi tidak menimpa tag
+  // yang sudah diketik user. Tujuannya: kontak hasil impor dari nomor terkoneksi
+  // langsung terlabeli (mis. "grup Reseller", "pernah chat") biar mudah dibedakan.
+  const autoTag = (t: string) => { if (!tagEdited) setTag(t); };
 
   const onCsvFile = async (file?: File) => {
     if (!file) return;
@@ -106,6 +112,11 @@ export default function ContactImportDialog({ agentId, open, onClose }: {
     setConnSource(next);
     setConnectedRows([]);
     setGroupJid(''); setLabelId('');
+    // Sumber langsung (chat/buku alamat) sudah punya label pasti; grup/label
+    // labelnya menyusul setelah grup/label dipilih.
+    if (next === 'chat') autoTag('pernah chat');
+    else if (next === 'address') autoTag('buku alamat');
+    else autoTag('');
     try {
       if (next === 'chat') setConnectedRows(dedupe(await chatContacts.mutateAsync()));
       else if (next === 'address') setConnectedRows(dedupe(await waContacts.mutateAsync()));
@@ -118,14 +129,18 @@ export default function ContactImportDialog({ agentId, open, onClose }: {
 
   const loadGroup = async (jid: string) => {
     setGroupJid(jid);
-    if (!jid) { setConnectedRows([]); return; }
+    if (!jid) { setConnectedRows([]); autoTag(''); return; }
+    const name = groups.find(g => g.jid === jid)?.name || 'grup';
+    autoTag(`grup ${name}`);
     try { setConnectedRows(dedupe(await groupMembers.mutateAsync(jid))); }
     catch { swalToast('Anggota grup belum bisa dimuat', 'error'); }
   };
 
   const loadLabel = async (lid: string) => {
     setLabelId(lid);
-    if (!lid) { setConnectedRows([]); return; }
+    if (!lid) { setConnectedRows([]); autoTag(''); return; }
+    const name = labels.find(l => l.label_id === lid)?.name || 'label';
+    autoTag(`label ${name}`);
     try { setConnectedRows(dedupe(await labelContacts.mutateAsync(lid))); }
     catch { swalToast('Kontak berlabel belum bisa dimuat', 'error'); }
   };
@@ -152,7 +167,11 @@ export default function ContactImportDialog({ agentId, open, onClose }: {
             onChange={(_e, v) => {
               if (!v) return;
               setSource(v);
-              if (v === 'connected' && connectedRows.length === 0) pickConnSource(connSource);
+              if (v === 'connected') {
+                if (connectedRows.length === 0) pickConnSource(connSource);
+              } else {
+                autoTag(''); // manual/CSV: kosongkan label bawaan (kecuali user sudah isi sendiri)
+              }
             }}
           >
             <ToggleButton value="manual">Tempel manual</ToggleButton>
@@ -240,9 +259,12 @@ export default function ContactImportDialog({ agentId, open, onClose }: {
           )}
 
           <TextField
-            label="Tag (opsional)" size="small" value={tag} onChange={e => setTag(e.target.value)}
+            label="Tag (opsional)" size="small" value={tag}
+            onChange={e => { setTag(e.target.value); setTagEdited(true); }}
             placeholder="impor juni, dari grup reseller"
-            helperText="Tag ini dipasang ke semua kontak baru hasil impor ini."
+            helperText={source === 'connected'
+              ? 'Diisi otomatis sesuai sumber nomor terkoneksi (mis. "grup ...") biar kontak hasil impor mudah dikenali. Boleh diubah.'
+              : 'Tag ini dipasang ke semua kontak baru hasil impor ini.'}
           />
 
           {rows.length > 0 ? (
