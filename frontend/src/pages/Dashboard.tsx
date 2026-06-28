@@ -618,11 +618,11 @@ export default function Dashboard() {
           </FormControl>
 
           <Tooltip title={atNumberLimit ? `Batas paket tercapai (${usedNumbers}/${maxNumbers} nomor). Upgrade paket untuk menambah CS.` : ''}>
-            <span style={{ flexShrink: 0 }}>
-              <Button startIcon={<AddIcon />} onClick={createAgent} disabled={createAgentMut.isPending || atNumberLimit}>
+            <Box sx={{ width: { xs: 'auto', md: '100%' }, flexShrink: 0 }}>
+              <Button fullWidth variant="outlined" startIcon={<AddIcon />} onClick={createAgent} disabled={createAgentMut.isPending || atNumberLimit}>
                 Tambah
               </Button>
-            </span>
+            </Box>
           </Tooltip>
           <IconButton aria-label="Logout" onClick={logout} color="error" sx={{ display: { xs: 'inline-flex', md: 'none' }, ml: 'auto' }}>
             <LogoutIcon fontSize="small" />
