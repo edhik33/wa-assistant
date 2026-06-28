@@ -556,6 +556,8 @@ export default function Dashboard() {
   const maxNumbers = usage?.max_numbers ?? 0;
   const usedNumbers = usage?.numbers_used ?? agents.length;
   const atNumberLimit = maxNumbers > 0 && usedNumbers >= maxNumbers;
+  // Jumlah CS yang WhatsApp-nya benar-benar tersambung (bukan sekadar jumlah dibuat).
+  const connectedCS = agents.filter(a => statusMap[a.id] === 'connected').length;
   const setupIssues = [
     (knowledge.length > 0 || prompt.trim() !== '') ? '' : 'Sebelum mengaktifkan Balasan AI, lakukan setup terlebih dahulu di Settings.',
   ].filter(Boolean);
@@ -788,9 +790,9 @@ export default function Dashboard() {
                     <Grid container spacing={1} sx={{ mb: 1.5 }}>
                       {[
                         { label: 'Status', value: sl, icon: <QrCodeIcon fontSize="small" />, color: dotColor(status) },
-                        { label: 'Jumlah CS', value: agents.length, icon: <SupportAgentIcon fontSize="small" />, color: 'primary.main' },
+                        { label: 'CS terkoneksi', value: `${connectedCS}/${agents.length}`, icon: <SupportAgentIcon fontSize="small" />, color: connectedCS > 0 ? 'success.main' : 'text.secondary' },
                         { label: 'Kuota AI', value: `${usageRepliesUsed}/${usageRepliesMax || '-'}`, icon: <InsightsIcon fontSize="small" />, color: usageReplyPct > 85 ? 'warning.main' : 'success.main' },
-                        { label: 'Nomor', value: `${usage?.numbers_used ?? 0}/${usage?.max_numbers ?? '-'}`, icon: <ContactsIcon fontSize="small" />, color: 'primary.main' },
+                        { label: 'Kuota Nomor', value: `${usage?.numbers_used ?? 0}/${usage?.max_numbers ?? '-'}`, icon: <ContactsIcon fontSize="small" />, color: 'primary.main' },
                       ].map(item => (
                         <Grid key={item.label} size={{ xs: 6, sm: 3 }}>
                           <Paper variant="outlined" sx={{ p: 1, textAlign: 'center', borderRadius: 1 }}>
