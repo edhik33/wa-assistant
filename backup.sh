@@ -30,3 +30,22 @@ ls -1t "$BACKUP_DIR"/db-*.sql.gz 2>/dev/null | tail -n +$((KEEP+1)) | xargs -r r
 ls -1t "$BACKUP_DIR"/wa-session-*.tar.gz 2>/dev/null | tail -n +$((KEEP+1)) | xargs -r rm -f
 
 echo "Backup OK: $STAMP -> $BACKUP_DIR"
+
+# --- Off-site ke Google Drive (rclone) ---
+# Lindungi dari "VPS mati total": salin backup ke luar server.
+# Aman dilewati kalau remote rclone belum dikonfigurasi (token belum dipasang),
+# dan kegagalan upload TIDAK menggagalkan backup lokal.
+export RCLONE_CONFIG="${RCLONE_CONFIG:-/home/mastery/.config/rclone/rclone.conf}"
+RCLONE_REMOTE=${RCLONE_REMOTE:-gdrive}
+OFFSITE_PATH=${OFFSITE_PATH:-wai-backups}
+OFFSITE_KEEP_DAYS=${OFFSITE_KEEP_DAYS:-30}
+if command -v rclone >/dev/null 2>&1 && rclone listremotes 2>/dev/null | grep -q "^${RCLONE_REMOTE}:"; then
+  if rclone copy "$BACKUP_DIR" "${RCLONE_REMOTE}:${OFFSITE_PATH}" --transfers 2 --checkers 4; then
+    rclone delete "${RCLONE_REMOTE}:${OFFSITE_PATH}" --min-age "${OFFSITE_KEEP_DAYS}d" 2>/dev/null || true
+    echo "Off-site OK: -> ${RCLONE_REMOTE}:${OFFSITE_PATH} (simpan ${OFFSITE_KEEP_DAYS} hari terakhir)"
+  else
+    echo "Off-site GAGAL upload (backup lokal tetap aman)"
+  fi
+else
+  echo "Off-site dilewati: remote rclone '${RCLONE_REMOTE}' belum dikonfigurasi"
+fi
