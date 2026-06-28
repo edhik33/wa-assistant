@@ -28,7 +28,7 @@ export default function GroupGuardPanel({ agentId }: { agentId: number }) {
   return (
     <Box>
       <PageHeader
-        title="Penjaga Grup"
+        title="Anti-Spam Grup"
         subtitle="Atur perlindungan anti-spam dan tinjau tindakan untuk grup WhatsApp yang dikelola nomor ini."
       />
 
@@ -85,7 +85,7 @@ function GroupList({ agentId }: { agentId: number }) {
     <Box>
       <SummaryGrid items={[
         { label: 'Total grup', value: totals.total },
-        { label: 'Penjaga aktif', value: totals.active, tone: totals.active ? 'success.main' : 'text.secondary' },
+        { label: 'Anti-spam aktif', value: totals.active, tone: totals.active ? 'success.main' : 'text.secondary' },
         { label: 'Nomor ini admin', value: totals.admin, tone: totals.admin ? 'primary.main' : 'text.secondary' },
         { label: 'Perlu akses admin', value: totals.needsAdmin, tone: totals.needsAdmin ? 'warning.main' : 'text.secondary' },
       ]} />

@@ -58,7 +58,7 @@ export default function GroupModerationFeed({ agentId }: { agentId: number }) {
       <EmptyState
         icon={<HistoryIcon sx={{ fontSize: 48 }} />}
         title="Belum ada aktivitas moderasi"
-        description="Aktivitas deteksi spam dan tindakan Penjaga Grup akan tercatat di sini setelah WhatsApp tersambung."
+        description="Aktivitas deteksi spam dan tindakan Anti-Spam Grup akan tercatat di sini setelah WhatsApp tersambung."
         actionLabel="Coba Lagi"
         onAction={() => refetch()}
       />
@@ -122,7 +122,7 @@ export default function GroupModerationFeed({ agentId }: { agentId: number }) {
         <EmptyState
           icon={filter === 'pending' ? <CheckIcon sx={{ fontSize: 44 }} /> : <HistoryIcon sx={{ fontSize: 44 }} />}
           title={filter === 'pending' ? 'Tidak ada yang perlu ditinjau' : 'Belum ada aktivitas'}
-          description={filter === 'pending' ? 'Semua deteksi sudah ditangani. Aktivitas baru akan muncul otomatis.' : 'Deteksi spam dan tindakan penjaga akan tercatat di sini.'}
+          description={filter === 'pending' ? 'Semua deteksi sudah ditangani. Aktivitas baru akan muncul otomatis.' : 'Deteksi spam dan tindakan anti-spam akan tercatat di sini.'}
         />
       )}
 

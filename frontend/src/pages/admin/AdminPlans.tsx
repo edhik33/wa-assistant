@@ -106,7 +106,7 @@ export default function AdminPlans() {
               <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>Fitur termasuk paket</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 0 }}>
                 <FormControlLabel control={<Switch checked={!!form.allow_followup} onChange={bool('allow_followup')} />} label="Follow-up otomatis" />
-                <FormControlLabel control={<Switch checked={!!form.allow_group_guard} onChange={bool('allow_group_guard')} />} label="Penjaga Grup" />
+                <FormControlLabel control={<Switch checked={!!form.allow_group_guard} onChange={bool('allow_group_guard')} />} label="Anti-Spam Grup" />
                 <FormControlLabel control={<Switch checked={!!form.allow_schedule} onChange={bool('allow_schedule')} />} label="Pesan terjadwal" />
                 <FormControlLabel control={<Switch checked={!!form.allow_sheets} onChange={bool('allow_sheets')} />} label="Google Sheets + auto-catat" />
               </Box>

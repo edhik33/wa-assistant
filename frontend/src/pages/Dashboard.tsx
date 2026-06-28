@@ -120,10 +120,10 @@ const NAV_GROUPS = [
   { section: 'AI & Otomasi', items: [
     { id: 'auto-reply', label: 'Auto-Reply', icon: <RuleIcon fontSize="small" /> },
     { id: 'template', label: 'Template', icon: <TemplateIcon fontSize="small" /> },
-    { id: 'coba-chat', label: 'Coba Chat AI', icon: <ChatIcon fontSize="small" /> },
+    { id: 'coba-chat', label: 'Simulasi AI', icon: <ChatIcon fontSize="small" /> },
   ] },
   { section: 'Grup', items: [
-    { id: 'grup', label: 'Penjaga Grup', icon: <ShieldIcon fontSize="small" /> },
+    { id: 'grup', label: 'Anti-Spam Grup', icon: <ShieldIcon fontSize="small" /> },
   ] },
   { section: 'Kampanye', items: [
     { id: 'broadcast', label: 'Broadcast', icon: <CampaignIcon fontSize="small" /> },

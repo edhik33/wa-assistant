@@ -264,7 +264,7 @@ export function useGroups(agentId: number) {
   return useMutation({ mutationFn: async () => (await api.get(`/agents/${agentId}/groups`)).data.data as WAGroup[] });
 }
 
-// useManagedGroups = query daftar grup (auto-load) untuk halaman Penjaga Grup.
+// useManagedGroups = query daftar grup (auto-load) untuk halaman Anti-Spam Grup.
 export function useManagedGroups(agentId: number, enabled = true) {
   return useQuery({
     queryKey: ['managed-groups', agentId],

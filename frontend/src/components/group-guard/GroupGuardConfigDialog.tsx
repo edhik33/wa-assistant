@@ -119,7 +119,7 @@ function ConfigEditor({ agentId, group, initialForm, fullScreen, onClose }: {
 
   const onSave = async () => {
     if (form.enabled && !hasDetectionRule) {
-      swalToast('Pilih minimal satu jenis deteksi sebelum mengaktifkan penjaga', 'error');
+      swalToast('Pilih minimal satu jenis deteksi sebelum mengaktifkan anti-spam', 'error');
       return;
     }
     if (form.flood_count > 0 && form.flood_window_sec < 1) {
@@ -128,7 +128,7 @@ function ConfigEditor({ agentId, group, initialForm, fullScreen, onClose }: {
     }
     try {
       await save.mutateAsync(form);
-      swalToast(form.enabled ? 'Penjaga grup diaktifkan' : 'Aturan grup disimpan');
+      swalToast(form.enabled ? 'Anti-Spam Grup diaktifkan' : 'Aturan grup disimpan');
       onClose();
     } catch {
       swalToast('Aturan belum bisa disimpan', 'error');
@@ -155,18 +155,18 @@ function ConfigEditor({ agentId, group, initialForm, fullScreen, onClose }: {
                 <ShieldIcon fontSize="small" />
               </Avatar>
               <Box sx={{ flex: 1 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{form.enabled ? 'Penjaga aktif' : 'Penjaga belum aktif'}</Typography>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{form.enabled ? 'Anti-spam aktif' : 'Anti-spam belum aktif'}</Typography>
                 <Typography variant="caption" color="text.secondary">
                   {form.enabled ? 'Pesan baru akan diperiksa memakai aturan di bawah.' : 'Aturan dapat disiapkan sekarang dan diaktifkan saat siap.'}
                 </Typography>
               </Box>
-              <Switch checked={form.enabled} onChange={event => set({ enabled: event.target.checked })} slotProps={{ input: { 'aria-label': 'Aktifkan penjaga' } }} />
+              <Switch checked={form.enabled} onChange={event => set({ enabled: event.target.checked })} slotProps={{ input: { 'aria-label': 'Aktifkan anti-spam' } }} />
             </Stack>
           </Paper>
 
           {!group.bot_is_admin && (
             <Alert severity="warning" icon={<AdminIcon fontSize="small" />}>
-              Nomor ini belum menjadi admin. Deteksi tetap berjalan setelah penjaga aktif, tetapi hapus pesan dan keluarkan anggota belum dapat dijalankan.
+              Nomor ini belum menjadi admin. Deteksi tetap berjalan setelah anti-spam aktif, tetapi hapus pesan dan keluarkan anggota belum dapat dijalankan.
             </Alert>
           )}
 
@@ -230,7 +230,7 @@ function ConfigEditor({ agentId, group, initialForm, fullScreen, onClose }: {
             </Box>
             {form.enabled && !hasDetectionRule && (
               <Alert severity="warning" sx={{ mt: 1 }}>
-                Pilih minimal satu jenis deteksi agar penjaga dapat bekerja.
+                Pilih minimal satu jenis deteksi agar anti-spam dapat bekerja.
               </Alert>
             )}
           </RuleSection>
