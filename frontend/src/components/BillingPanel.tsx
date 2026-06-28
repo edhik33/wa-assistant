@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
 import CreditCardIcon from '@mui/icons-material/CreditCardOutlined';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import { usePublicPlans, useUsage, useBillingChannels, useInvoices, useCheckout } from '../hooks';
 import type { Plan } from '../types';
 import { rupiah } from '../types';
@@ -81,15 +82,20 @@ export default function BillingPanel() {
         </Paper>
       )}
 
-      {channelsError && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          Pembayaran online belum aktif. Hubungi admin untuk upgrade manual sementara.
-        </Alert>
-      )}
-
-      {(!plans || plans.length === 0) && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Mohon maaf, belum ada paket langganan yang tersedia saat ini. Silakan cek kembali nanti atau hubungi admin.
+      {(channelsError || !plans || plans.length === 0) && (
+        <Alert
+          severity="info"
+          sx={{ mb: 2, alignItems: 'center' }}
+          action={
+            <Button color="inherit" size="small" variant="outlined" component="a"
+              href="https://wa.me/6285727324034?text=Halo%20admin%20ChatLoop%2C%20saya%20mau%20upgrade%20atau%20aktivasi%20paket%20langganan."
+              target="_blank" rel="noopener noreferrer"
+              startIcon={<WhatsAppIcon />} sx={{ whiteSpace: 'nowrap', fontWeight: 700 }}>
+              Chat Admin
+            </Button>
+          }
+        >
+          Untuk upgrade atau aktivasi paket, silakan hubungi admin lewat WhatsApp.
         </Alert>
       )}
 
