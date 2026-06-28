@@ -342,7 +342,6 @@ export default function Landing() {
             <Grid size={{ xs: 6, md: 4 }}>
               <Typography sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>Kontak</Typography>
               <Typography variant="body2">Email: halo@chatloop.id</Typography>
-              <Typography variant="body2">WhatsApp: +62 851-2345-6789</Typography>
             </Grid>
           </Grid>
           <Divider sx={{ my: 3, borderColor: 'grey.700' }} />
