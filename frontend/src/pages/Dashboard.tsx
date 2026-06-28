@@ -29,7 +29,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import { QRCodeSVG } from 'qrcode.react';
 import logo from '../assets/logo-chatloop-1.png';
 import api from '../services/api';
-import { swalConfirm, swalPrompt, swalAlert, swalToast } from '../services/swal';
+import { swalConfirm, swalAlert, swalToast } from '../services/swal';
 import SettingsIcon from '@mui/icons-material/Settings';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import SmartToyIcon from '@mui/icons-material/SmartToyOutlined';
@@ -200,6 +200,9 @@ export default function Dashboard() {
   const user = JSON.parse(localStorage.getItem('user') || '{}') as { name?: string; username?: string; email?: string; role?: string; phone?: string };
   const [profileAnchor, setProfileAnchor] = useState<HTMLElement | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [newAgentName, setNewAgentName] = useState('');
+  const [addError, setAddError] = useState('');
   const [profileName, setProfileName] = useState(user.name || '');
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -472,18 +475,20 @@ export default function Dashboard() {
     }
   };
 
-  const createAgent = async () => {
-    const name = await swalPrompt('Nama CS baru', 'mis. Toko HP');
-    if (!name) return;
+  const openAddAgent = () => { setNewAgentName(''); setAddError(''); setAddOpen(true); };
+
+  const submitNewAgent = async () => {
+    const name = newAgentName.trim();
+    if (!name) { setAddError('Nama Customer Service wajib diisi'); return; }
     try {
       const r = await createAgentMut.mutateAsync({ name, tone: 'ramah' });
       setAgentId(r.data.id);
-      setTab('dashboard');
+      setAddOpen(false);
     } catch (err: any) {
       if (err?.response?.status === 403) {
-        swalToast('Kuota CS penuh, upgrade paket kamu dulu ya', 'warning'); return null;
+        setAddError('Kuota CS penuh, upgrade paket kamu dulu ya');
       } else {
-        await swalAlert(err?.response?.data?.error || 'Gagal menambah CS.', 'error');
+        setAddError(err?.response?.data?.error || 'Gagal menambah CS.');
       }
     }
   };
@@ -636,7 +641,7 @@ export default function Dashboard() {
 
           <Tooltip title={atNumberLimit ? `Batas paket tercapai (${usedNumbers}/${maxNumbers} nomor). Upgrade paket untuk menambah CS.` : ''}>
             <Box sx={{ width: { xs: 'auto', md: '100%' }, flexShrink: 0 }}>
-              <Button fullWidth variant="outlined" startIcon={<AddIcon />} onClick={createAgent} disabled={createAgentMut.isPending || atNumberLimit}>
+              <Button fullWidth variant="outlined" startIcon={<AddIcon />} onClick={openAddAgent} disabled={createAgentMut.isPending || atNumberLimit}>
                 Tambah
               </Button>
             </Box>
@@ -1696,11 +1701,31 @@ export default function Dashboard() {
           <Button onClick={() => setManageOpen(false)}>Tutup</Button>
           <Tooltip title={atNumberLimit ? `Batas paket tercapai (${usedNumbers}/${maxNumbers} nomor). Upgrade paket untuk menambah CS.` : ''}>
             <span>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={createAgent} disabled={createAgentMut.isPending || atNumberLimit}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={openAddAgent} disabled={createAgentMut.isPending || atNumberLimit}>
                 Tambah CS
               </Button>
             </span>
           </Tooltip>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Tambah Customer Service</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus fullWidth size="small" sx={{ mt: 1 }}
+            label="Nama Customer Service Baru"
+            placeholder="mis. Toko HP, Admin Olshop"
+            value={newAgentName}
+            onChange={e => { setNewAgentName(e.target.value); if (addError) setAddError(''); }}
+            onKeyDown={e => { if (e.key === 'Enter') submitNewAgent(); }}
+            error={!!addError}
+            helperText={addError || 'Nama ini muncul di daftar CS untuk membedakan tiap nomor.'}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddOpen(false)}>Batal</Button>
+          <Button variant="contained" onClick={submitNewAgent} disabled={createAgentMut.isPending}>Simpan</Button>
         </DialogActions>
       </Dialog>
 
