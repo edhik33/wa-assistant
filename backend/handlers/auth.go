@@ -399,14 +399,31 @@ func Register(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "Password minimal 8 karakter"})
 		return
 	}
-	var exists int64
-	if err := database.DB.Model(&models.User{}).Where("username = ? OR email = ?", username, req.Email).Count(&exists).Error; err != nil {
+	// Nomor HP wajib & valid (sudah dinormalkan ke 62...). Dipakai juga untuk cegah trial ganda.
+	if len(req.Phone) < 9 || len(req.Phone) > 15 {
+		c.JSON(400, gin.H{"error": "Nomor HP wajib diisi dan harus valid"})
+		return
+	}
+	// Tolak bila email ATAU nomor HP sudah terdaftar — satu email & satu nomor hanya untuk satu akun
+	// (anti trial ganda: ganti email tapi nomor sama, atau sebaliknya, tetap ditolak).
+	var emailExists int64
+	if err := database.DB.Model(&models.User{}).Where("username = ? OR email = ?", username, req.Email).Count(&emailExists).Error; err != nil {
 		log.Printf("Register duplicate check DB error: %v", err)
 		c.JSON(500, gin.H{"error": "Gagal membuat akun"})
 		return
 	}
-	if exists > 0 {
+	if emailExists > 0 {
 		c.JSON(409, gin.H{"error": "Email sudah terdaftar"})
+		return
+	}
+	var phoneExists int64
+	if err := database.DB.Model(&models.User{}).Where("phone = ?", req.Phone).Count(&phoneExists).Error; err != nil {
+		log.Printf("Register phone check DB error: %v", err)
+		c.JSON(500, gin.H{"error": "Gagal membuat akun"})
+		return
+	}
+	if phoneExists > 0 {
+		c.JSON(409, gin.H{"error": "Nomor HP sudah terdaftar. Satu nomor hanya untuk satu akun."})
 		return
 	}
 
