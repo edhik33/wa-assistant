@@ -365,6 +365,15 @@ func Login(c *gin.Context) {
 	}
 
 	clearLoginPairThrottle(ip, req.Username)
+	// Wajib verifikasi email sebelum masuk (super-admin dikecualikan).
+	if !user.IsSuperAdmin && !user.EmailVerified {
+		c.JSON(403, gin.H{
+			"error":                 "Email kamu belum diverifikasi. Cek inbox atau folder spam untuk link aktivasi.",
+			"verification_required": true,
+			"email":                 user.Email,
+		})
+		return
+	}
 	c.JSON(200, gin.H{"token": issueToken(user), "user": userResponse(user)})
 }
 
@@ -485,16 +494,14 @@ func Register(c *gin.Context) {
 	}
 
 	// Kirim email verifikasi (async — jangan block response)
-	go func() {
-		verifyURL := config.Env("APP_URL", "http://103.181.143.107:8080") + "/api/verify-email?token=" + user.EmailVerifyToken
-		err := services.SendEmail(user.Email, "Verifikasi Email ChatLoop",
-			`<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px"><h2 style="color:#16a34a">Verifikasi Email</h2><p>Terima kasih sudah mendaftar di ChatLoop! Klik tombol di bawah untuk mengaktifkan akun kamu:</p><a href="`+verifyURL+`" style="display:inline-block;padding:12px 24px;background:#16a34a;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Verifikasi Email</a><p style="color:#6b7280;font-size:14px;margin-top:16px">Kalau kamu tidak mendaftar, abaikan email ini.</p></div>`)
-		if err != nil {
-			log.Printf("Gagal kirim email verifikasi ke %s: %v", user.Email, err)
-		}
-	}()
+	sendVerifyEmail(user)
 
-	c.JSON(201, gin.H{"token": issueToken(user), "user": userResponse(user)})
+	// JANGAN auto-login: user wajib verifikasi email dulu sebelum bisa masuk.
+	c.JSON(201, gin.H{
+		"verification_required": true,
+		"email":                 user.Email,
+		"message":               "Akun dibuat. Cek email kamu untuk verifikasi sebelum login.",
+	})
 }
 
 func Me(c *gin.Context) {

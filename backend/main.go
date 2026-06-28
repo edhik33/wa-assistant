@@ -70,6 +70,7 @@ func main() {
 		api.POST("/login", handlers.Login)
 		api.POST("/register", handlers.Register)
 		api.GET("/verify-email", handlers.VerifyEmail)
+		api.POST("/resend-verification", handlers.ResendVerification)
 		api.POST("/forgot-password", handlers.ForgotPassword)
 		api.POST("/reset-password", handlers.ResetPassword)
 		api.GET("/plans", handlers.PublicPlans)

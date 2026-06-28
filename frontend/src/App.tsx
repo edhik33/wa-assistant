@@ -6,6 +6,7 @@ import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
+import CheckEmail from './pages/CheckEmail';
 import Dashboard from './pages/Dashboard';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminOverview from './pages/admin/AdminOverview';
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/lupa-password" element={<ForgotPassword />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
+          <Route path="/cek-email" element={<CheckEmail />} />
 
           {/* Panel operator platform (super admin) */}
           <Route path="/admin" element={<PrivateRoute><AdminLayout /></PrivateRoute>}>

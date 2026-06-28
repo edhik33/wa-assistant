@@ -72,15 +72,14 @@ export default function Register() {
     setLoading(true);
     try {
       const eventID = createMetaEventID('registration');
-      const res = await api.post('/register', {
+      await api.post('/register', {
         ...form,
         turnstile: turnstileToken,
         ...getMetaBrowserContext(eventID),
       });
       await trackMetaEvent('CompleteRegistration', { content_name: 'ChatLoop Registration', status: 'trial' }, eventID);
-      localStorage.setItem('token', res.data.token);
-      localStorage.setItem('user', JSON.stringify(res.data.user));
-      navigate('/app');
+      // Wajib verifikasi email dulu — arahkan ke halaman "cek email", bukan auto-login.
+      navigate('/cek-email', { state: { email: form.email.trim() } });
     } catch (e) {
       setError(errorMessage(e, 'Gagal mendaftar'));
       setLoading(false);

@@ -120,3 +120,38 @@ func generateVerifyToken() string {
 	rand.Read(b)
 	return hex.EncodeToString(b)
 }
+
+// sendVerifyEmail mengirim email verifikasi (async). Token harus sudah terisi di user.
+func sendVerifyEmail(user models.User) {
+	if user.EmailVerifyToken == "" || user.Email == "" {
+		return
+	}
+	verifyURL := config.Env("APP_URL", "https://chatloop.id") + "/api/verify-email?token=" + user.EmailVerifyToken
+	go func() {
+		if err := services.SendEmail(user.Email, "Verifikasi Email ChatLoop",
+			`<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px"><h2 style="color:#16a34a">Verifikasi Email</h2><p>Terima kasih sudah mendaftar di ChatLoop! Klik tombol di bawah untuk mengaktifkan akun kamu:</p><a href="`+verifyURL+`" style="display:inline-block;padding:12px 24px;background:#16a34a;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Verifikasi Email</a><p style="color:#6b7280;font-size:14px;margin-top:16px">Kalau kamu tidak mendaftar, abaikan email ini.</p></div>`); err != nil {
+			log.Printf("Gagal kirim email verifikasi ke %s: %v", user.Email, err)
+		}
+	}()
+}
+
+// ResendVerification mengirim ulang email verifikasi.
+// POST /api/resend-verification
+func ResendVerification(c *gin.Context) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Email) == "" {
+		c.JSON(400, gin.H{"error": "Email wajib diisi"})
+		return
+	}
+	var user models.User
+	if err := database.DB.Where("email = ?", strings.TrimSpace(req.Email)).First(&user).Error; err == nil && !user.EmailVerified {
+		user.EmailVerifyToken = generateVerifyToken()
+		if err := database.DB.Save(&user).Error; err == nil {
+			sendVerifyEmail(user)
+		}
+	}
+	// Pesan generik supaya tidak membocorkan status pendaftaran email.
+	c.JSON(200, gin.H{"message": "Kalau email terdaftar dan belum terverifikasi, link verifikasi sudah dikirim ulang."})
+}

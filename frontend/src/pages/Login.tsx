@@ -18,6 +18,7 @@ export default function Login() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [needVerify, setNeedVerify] = useState(false);
   const [turnstileToken, setTurnstile] = useState('');
     const navigate = useNavigate();
 
@@ -51,6 +52,7 @@ export default function Login() {
     setErrors(e);
     if (Object.keys(e).length > 0) return;
     setError('');
+    setNeedVerify(false);
     setLoading(true);
     try {
       const res = await api.post('/login', { username: cleanUsername, password, turnstile: turnstileToken });
@@ -63,6 +65,9 @@ export default function Login() {
         const retryAfter = Number(response.headers?.['retry-after'] || 60);
         setCooldown(Number.isFinite(retryAfter) ? Math.min(Math.max(retryAfter, 30), 300) : 60);
         setError('Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.');
+      } else if (response?.status === 403) {
+        setError('Email kamu belum diverifikasi. Cek inbox atau folder spam untuk link aktivasi.');
+        setNeedVerify(true);
       } else if (!response || (response.status ?? 0) >= 500) {
         setError('Server belum siap. Coba lagi sebentar lagi.');
       } else {
@@ -81,6 +86,13 @@ export default function Login() {
         </Box>
         <CardContent sx={{ pt: 1, px: { xs: 3, sm: 4 }, pb: { xs: 3, sm: 4 }, '&:last-child': { pb: { xs: 3, sm: 4 } } }}>
             {error && <Alert severity={cooldown > 0 ? 'warning' : 'error'} sx={{ mb: 2 }}>{error}</Alert>}
+          {needVerify && (
+            <Typography variant="body2" sx={{ mb: 2, textAlign: 'center' }}>
+              <Link component="button" type="button" underline="hover" onClick={() => navigate('/cek-email', { state: { email: username.trim() } })}>
+                Kirim ulang link verifikasi
+              </Link>
+            </Typography>
+          )}
           <TextField fullWidth label="Username" value={username} disabled={loading || cooldown > 0}
             autoComplete="username"
             onChange={e => { setUsername(e.target.value); if (errors.username) setErrors(p => ({...p, username: ''})); }}
