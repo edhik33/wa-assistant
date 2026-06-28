@@ -4,7 +4,7 @@ import {
   Stack, IconButton, Paper, Grid, Select, MenuItem, FormControl, InputLabel, Divider,
   Switch, FormControlLabel, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions,
   Badge, Popover, Avatar, Alert, LinearProgress, ToggleButton, ToggleButtonGroup,
-  Accordion, AccordionSummary, AccordionDetails, FormHelperText,
+  Accordion, AccordionSummary, AccordionDetails, FormHelperText, Tooltip,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AddIcon from '@mui/icons-material/Add';
@@ -537,8 +537,12 @@ export default function Dashboard() {
   const usageRepliesMax = usage?.ai_replies_max || 0;
   const usageRepliesUsed = usage?.ai_replies_used || 0;
   const usageReplyPct = usageRepliesMax ? Math.min(100, Math.round((usageRepliesUsed / usageRepliesMax) * 100)) : 0;
+  // Batas jumlah nomor/CS dari paket — dipakai untuk menonaktifkan tombol Tambah saat penuh.
+  const maxNumbers = usage?.max_numbers ?? 0;
+  const usedNumbers = usage?.numbers_used ?? agents.length;
+  const atNumberLimit = maxNumbers > 0 && usedNumbers >= maxNumbers;
   const setupIssues = [
-    (knowledge.length > 0 || prompt.trim() !== '') ? '' : 'Sebelum mengaktifkan Balasan AI, lakukan setup terlebih dahulu — pakai Setup Cepat (otomatis isi FAQ + persona) atau isi Knowledge & persona manual di Settings.',
+    (knowledge.length > 0 || prompt.trim() !== '') ? '' : 'Sebelum mengaktifkan Balasan AI, lakukan setup terlebih dahulu di Settings.',
   ].filter(Boolean);
   const dashboardStats = {
     utama: [
@@ -601,8 +605,8 @@ export default function Dashboard() {
           </Box>
 
           <FormControl size="small" sx={{ width: { xs: 158, md: '100%' }, flexShrink: 0 }}>
-            <InputLabel>CS / Nomor</InputLabel>
-            <Select value={agents.length ? agentId : ''} label="CS / Nomor"
+            <InputLabel>Customer Service</InputLabel>
+            <Select value={agents.length ? agentId : ''} label="Customer Service"
               onChange={e => setAgentId(Number(e.target.value))}>
               {agents.map(a => (
                 <MenuItem key={a.id} value={a.id}>
@@ -613,9 +617,13 @@ export default function Dashboard() {
             </Select>
           </FormControl>
 
-          <Button startIcon={<AddIcon />} onClick={createAgent} disabled={createAgentMut.isPending} sx={{ flexShrink: 0 }}>
-            Tambah
-          </Button>
+          <Tooltip title={atNumberLimit ? `Batas paket tercapai (${usedNumbers}/${maxNumbers} nomor). Upgrade paket untuk menambah CS.` : ''}>
+            <span style={{ flexShrink: 0 }}>
+              <Button startIcon={<AddIcon />} onClick={createAgent} disabled={createAgentMut.isPending || atNumberLimit}>
+                Tambah
+              </Button>
+            </span>
+          </Tooltip>
           <IconButton aria-label="Logout" onClick={logout} color="error" sx={{ display: { xs: 'inline-flex', md: 'none' }, ml: 'auto' }}>
             <LogoutIcon fontSize="small" />
           </IconButton>
@@ -791,10 +799,7 @@ export default function Dashboard() {
                       <Alert severity="warning" icon={false} sx={{ mt: 1.5 }}>
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between' }}>
                           <Typography variant="body2">{setupIssues[0]}</Typography>
-                          <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                            <Button size="small" variant="contained" onClick={() => setWizardOpen(true)}>Setup Cepat</Button>
-                            <Button size="small" variant="outlined" onClick={() => setTab('settings')}>Buka Settings</Button>
-                          </Stack>
+                          <Button size="small" variant="contained" onClick={() => setTab('settings')} sx={{ flexShrink: 0 }}>Buka Settings</Button>
                         </Stack>
                       </Alert>
                     )}
