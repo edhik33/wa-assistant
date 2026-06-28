@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
+import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
@@ -34,7 +35,7 @@ function HomeRoute() {
     try { isAdmin = !!JSON.parse(localStorage.getItem('user') || '{}')?.is_super_admin; } catch {}
     return <Navigate to={isAdmin ? '/admin' : '/app'} replace />;
   }
-  return <Navigate to="/login" replace />;
+  return <Landing />;
 }
 
 export default function App() {
