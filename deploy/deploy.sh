@@ -106,7 +106,7 @@ sudo systemctl restart "$SERVICE" || die "restart $SERVICE gagal"
 step "Health check ($HEALTH_URL)"
 healthy=0; i=0
 while [ "$i" -lt "$HEALTH_RETRIES" ]; do
-  if curl -fsS -o /dev/null --max-time 5 "$HEALTH_URL"; then healthy=1; break; fi
+  if curl -fsS -o /dev/null --max-time 5 "$HEALTH_URL" 2>/dev/null; then healthy=1; break; fi
   i=$((i+1)); sleep 1
 done
 if [ "$healthy" != "1" ]; then

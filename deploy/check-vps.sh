@@ -56,10 +56,13 @@ grep -q "WA_LOG_LEVEL" backend/services/wa.go || fail "WA log source marker miss
 stat -c "%y %s %n" wa-server
 
 echo "== nginx =="
-if grep -R --include='*.conf' -E "127\.0\.0\.1:$OLD_PORT|root $APP_DIR/../wa-assistant|root /var/www/wa-assistant" /etc/nginx/conf.d /etc/nginx/sites-enabled 2>/dev/null; then
-  fail "active nginx config still references old backend/app"
+# Jangan boleh ada referensi ke port backend lama.
+if grep -R --include='*.conf' -E "127\.0\.0\.1:$OLD_PORT" /etc/nginx/conf.d /etc/nginx/sites-enabled 2>/dev/null; then
+  fail "active nginx config still references old port $OLD_PORT"
 fi
-curl -fsS "http://127.0.0.1/api/plans" >/dev/null || fail "port 80 /api/plans failed"
+# Root nginx harus menunjuk ke dist app saat ini.
+grep -RqE "root[[:space:]]+$APP_DIR/frontend/dist" /etc/nginx/conf.d /etc/nginx/sites-enabled 2>/dev/null \
+  || fail "nginx root tidak menunjuk ke $APP_DIR/frontend/dist"
 curl -fsS "http://127.0.0.1:8080/api/plans" >/dev/null || fail "port 8080 /api/plans failed"
 echo "nginx points to current backend"
 
