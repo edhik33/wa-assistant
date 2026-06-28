@@ -20,6 +20,7 @@ import WhatsAppEditor from './WhatsAppEditor';
 import TemplatePicker from './TemplatePicker';
 import PageHeader from './PageHeader';
 import BroadcastSafetyReview from './BroadcastSafetyReview';
+import DelayFields from './broadcast/DelayFields';
 import { defaultBroadcastSafetyForm } from '../services/broadcastSafety';
 import type { NumberCheck, CheckResult, BroadcastAssessment, BroadcastSafetyForm } from '../types';
 
@@ -328,37 +329,12 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                   subtitle="Atur ritme pengiriman agar lebih aman."
                 />
 
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Jeda antar pesan</Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  Tunggu beberapa detik (acak) sebelum mengirim ke nomor berikutnya.
-                </Typography>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                  <TextField type="number" size="small" label="Minimal (detik)" value={minDelay}
-                    onChange={e => { setMinDelay(Number(e.target.value)); if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
-                    error={!!(errors.delay || delayProblem)}
-                    sx={{ width: { xs: '100%', sm: 160 } }} />
-                  <TextField type="number" size="small" label="Maksimal (detik)" value={maxDelay}
-                    onChange={e => { setMaxDelay(Number(e.target.value)); if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
-                    error={!!(errors.delay || delayProblem)}
-                    helperText={errors.delay || delayProblem || ' '}
-                    sx={{ width: { xs: '100%', sm: 160 } }} />
-                </Stack>
-
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, mt: 1.5 }}>Jeda istirahat</Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  Berhenti sejenak setelah mengirim sejumlah pesan, lalu lanjut otomatis. Isi 0 untuk mematikan.
-                </Typography>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                  <TextField type="number" size="small" label="Berhenti setiap (pesan)" value={restEvery}
-                    onChange={e => setRestEvery(Math.max(0, Number(e.target.value)))}
-                    helperText={restEvery <= 0 ? 'Mati' : ' '}
-                    sx={{ width: { xs: '100%', sm: 190 } }} />
-                  <TextField type="number" size="small" label="Lama berhenti (detik)" value={restDuration}
-                    onChange={e => setRestDuration(Math.max(0, Number(e.target.value)))}
-                    disabled={restEvery <= 0}
-                    helperText=" "
-                    sx={{ width: { xs: '100%', sm: 190 } }} />
-                </Stack>
+                <DelayFields
+                  minDelay={minDelay} maxDelay={maxDelay} restEvery={restEvery} restDuration={restDuration}
+                  setMinDelay={setMinDelay} setMaxDelay={setMaxDelay} setRestEvery={setRestEvery} setRestDuration={setRestDuration}
+                  error={errors.delay || delayProblem || undefined}
+                  onEditDelay={() => { if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
+                />
               </Box>
             </Stack>
           </CardContent>

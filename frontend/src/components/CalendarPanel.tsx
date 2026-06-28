@@ -21,6 +21,7 @@ import WhatsAppEditor from './WhatsAppEditor';
 import TemplatePicker from './TemplatePicker';
 import PageHeader from './PageHeader';
 import BroadcastSafetyReview from './BroadcastSafetyReview';
+import DelayFields from './broadcast/DelayFields';
 import { defaultBroadcastSafetyForm } from '../services/broadcastSafety';
 import { swalConfirm, swalToast } from '../services/swal';
 import type { BroadcastAssessment, BroadcastSafetyForm, ScheduledMessage } from '../types';
@@ -111,6 +112,8 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
   const [file, setFile] = useState<File | null>(null);
   const [minDelay, setMinDelay] = useState(10);
   const [maxDelay, setMaxDelay] = useState(30);
+  const [restEvery, setRestEvery] = useState(25);
+  const [restDuration, setRestDuration] = useState(90);
   const [err, setErr] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [safety, setSafety] = useState<BroadcastSafetyForm>(() => defaultBroadcastSafetyForm());
@@ -254,6 +257,8 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
     fd.append('run_at', runAt.toISOString());
     fd.append('min_delay', String(minDelay));
     fd.append('max_delay', String(maxDelay));
+    fd.append('rest_every', String(restEvery));
+    fd.append('rest_duration', String(restDuration));
     Object.entries(safety).forEach(([key, value]) => fd.append(key, String(value)));
     if (file) fd.append('file', file);
     try {
@@ -477,17 +482,12 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
             title="Jeda Kirim"
             subtitle="Mengatur ritme kirim, bukan jaminan nomor bebas pembatasan."
           />
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-            <TextField type="number" size="small" label="Jeda min (detik)" value={minDelay}
-              onChange={e => { setMinDelay(Number(e.target.value)); if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
-              error={!!(errors.delay || delayProblem)}
-              sx={{ width: { xs: '100%', sm: 150 } }} />
-            <TextField type="number" size="small" label="Jeda maks (detik)" value={maxDelay}
-              onChange={e => { setMaxDelay(Number(e.target.value)); if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
-              error={!!(errors.delay || delayProblem)}
-              helperText={errors.delay || delayProblem || ' '}
-              sx={{ width: { xs: '100%', sm: 150 } }} />
-          </Stack>
+          <DelayFields
+            minDelay={minDelay} maxDelay={maxDelay} restEvery={restEvery} restDuration={restDuration}
+            setMinDelay={setMinDelay} setMaxDelay={setMaxDelay} setRestEvery={setRestEvery} setRestDuration={setRestDuration}
+            error={errors.delay || delayProblem || undefined}
+            onEditDelay={() => { if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
+          />
 
           <Divider sx={{ my: 1.5 }} />
 

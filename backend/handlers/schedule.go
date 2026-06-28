@@ -74,12 +74,10 @@ func CreateSchedule(c *gin.Context) {
 	}
 	minD, _ := strconv.Atoi(c.PostForm("min_delay"))
 	maxD, _ := strconv.Atoi(c.PostForm("max_delay"))
-	if minD < 5 {
-		minD = 10
-	}
-	if maxD < minD {
-		maxD = minD + 20
-	}
+	minD, maxD = normalizeBroadcastDelay(minD, maxD)
+	restEvery, _ := strconv.Atoi(c.PostForm("rest_every"))
+	restDuration, _ := strconv.Atoi(c.PostForm("rest_duration"))
+	restEvery, restDuration = normalizeBroadcastRest(restEvery, restDuration)
 
 	consent := parseConsentAttestation(
 		c.PostForm("consent_category"), c.PostForm("consent_source"),
@@ -126,7 +124,7 @@ func CreateSchedule(c *gin.Context) {
 	s := models.ScheduledMessage{
 		TenantID: tid, AgentID: id, RunAt: runAt, Message: message,
 		Recipients: string(recJSON), RecipientCount: len(eligible),
-		MinDelay: minD, MaxDelay: maxD, Status: "scheduled",
+		MinDelay: minD, MaxDelay: maxD, RestEvery: restEvery, RestDuration: restDuration, Status: "scheduled",
 		ConsentCategory: consent.Category, ConsentSource: consent.Source,
 		RiskLevel: assessment.Level, RiskReasons: assessmentReasonsJSON(assessment),
 		RiskAcknowledged: acknowledged || assessment.Level == "high",
@@ -255,6 +253,7 @@ func fireScheduled(s models.ScheduledMessage) {
 		ConsentCategory: s.ConsentCategory, ConsentSource: s.ConsentSource,
 		RiskLevel: s.RiskLevel, RiskReasons: s.RiskReasons, RiskAcknowledged: s.RiskAcknowledged,
 		OverrideReason: s.OverrideReason, OverrideBy: s.OverrideBy, OverrideAt: s.OverrideAt,
+		MinDelay: s.MinDelay, MaxDelay: s.MaxDelay, RestEvery: s.RestEvery, RestDuration: s.RestDuration,
 	}
 	var recipients []models.BroadcastRecipient
 	for _, r := range recs {
