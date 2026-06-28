@@ -813,7 +813,6 @@ export default function Dashboard() {
             <PageHeader
               title={<>Dashboard {currentAgent && <Typography component="span" color="text.secondary" sx={{ fontWeight: 400 }}>· {currentAgent.name}</Typography>}</>}
               subtitle=""
-              action={<Button size="small" variant="outlined" startIcon={<SettingsIcon />} onClick={() => setTab('settings')}>Atur CS</Button>}
             />
 
             <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
