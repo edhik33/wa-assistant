@@ -86,7 +86,7 @@ export default function TestChatPanel({ agentId }: { agentId: number }) {
   return (
     <Box>
       <PageHeader title="Simulasi AI"
-        subtitle="Uji jawaban AI di sini tanpa perlu konek WhatsApp. AI mengingat percakapan; bila kamu pesan, deteksi order akan dipratinjau di sini." />
+        subtitle="Uji jawaban AI tanpa perlu konek WhatsApp." />
       <Card>
         <CardContent>
           <Box sx={{ minHeight: 300, maxHeight: 430, overflowY: 'auto', mb: 1.5, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
