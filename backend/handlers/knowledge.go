@@ -42,6 +42,14 @@ func GenerateKnowledge(c *gin.Context) {
 		req.Count = 20
 	}
 
+	// Alat AI generatif ini memakai token sungguhan — kenakan ke kuota AI bulanan
+	// tenant agar tidak jadi kebocoran biaya di luar hitungan paket.
+	tid := currentTenantID(c)
+	if aiQuotaExceeded(tid) {
+		c.JSON(429, gin.H{"error": "Kuota AI bulan ini sudah habis. Upgrade paket untuk lanjut."})
+		return
+	}
+
 	bizCtx := bizPrompts[req.BizType]
 	if bizCtx == "" {
 		bizCtx = "pelanggan yang ingin tahu informasi penting tentang produk/layanan"
@@ -72,6 +80,7 @@ Teks sumber:
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
+	incrementAIUsage(tid)
 
 	content := strings.TrimSpace(resp.Choices[0].Message.Content)
 	// Clean markdown code block if any

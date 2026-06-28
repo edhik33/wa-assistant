@@ -319,6 +319,12 @@ func RegeneratePersona(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// Generate persona pakai AI — kenakan ke kuota AI bulanan tenant.
+	tid := currentTenantID(c)
+	if aiQuotaExceeded(tid) {
+		c.JSON(429, gin.H{"error": "Kuota AI bulan ini sudah habis. Upgrade paket untuk lanjut."})
+		return
+	}
 	var job models.CrawlJob
 	if database.DB.Where("agent_id = ?", aid).Order("id desc").First(&job).Error != nil {
 		c.JSON(400, gin.H{"error": "Belum ada data website. Latih dari website dulu."})
@@ -329,6 +335,7 @@ func RegeneratePersona(c *gin.Context) {
 		c.JSON(502, gin.H{"error": "Gagal membuat persona dari konten web. Coba lagi."})
 		return
 	}
+	incrementAIUsage(tid)
 	database.DB.Model(&models.Agent{}).Where("id = ?", aid).Update("system_prompt", persona)
 	c.JSON(200, gin.H{"system_prompt": persona})
 }
