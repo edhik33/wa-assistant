@@ -9,6 +9,7 @@ import {
 import LogoutIcon from '@mui/icons-material/Logout';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
 import QrCodeIcon from '@mui/icons-material/QrCode';
 import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -198,6 +199,7 @@ export default function Dashboard() {
   const [wizardLoading, setWizardLoading] = useState(false);
   const user = JSON.parse(localStorage.getItem('user') || '{}') as { name?: string; username?: string; email?: string; role?: string; phone?: string };
   const [profileAnchor, setProfileAnchor] = useState<HTMLElement | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
   const [profileName, setProfileName] = useState(user.name || '');
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -493,6 +495,14 @@ export default function Dashboard() {
     setAgentId(0);
   };
 
+  // deleteAgentById = hapus CS tertentu dari daftar "Kelola CS" (bukan cuma yang aktif).
+  const deleteAgentById = async (id: number, name?: string) => {
+    if (agents.length <= 1) { await swalAlert('Minimal harus ada 1 CS.', 'warning'); return; }
+    if (!await swalConfirm(`Hapus CS "${name || `CS ${id}`}"?`, 'Semua knowledge-nya juga akan terhapus.')) return;
+    await deleteAgentMut.mutateAsync(id);
+    if (id === agentId) setAgentId(0); // pilihan auto-pindah ke CS lain via efek yang ada
+  };
+
   const addKnowledge = async () => {
     const e: Record<string, string> = {};
     if (!newQ.trim()) e.newQ = 'Pertanyaan wajib diisi';
@@ -604,18 +614,25 @@ export default function Dashboard() {
             </Box>
           </Box>
 
-          <FormControl size="small" sx={{ width: { xs: 158, md: '100%' }, flexShrink: 0 }}>
-            <InputLabel>Customer Service</InputLabel>
-            <Select value={agents.length ? agentId : ''} label="Customer Service"
-              onChange={e => setAgentId(Number(e.target.value))}>
-              {agents.map(a => (
-                <MenuItem key={a.id} value={a.id}>
-                  <Box component="span" sx={{ display: 'inline-block', width: 9, height: 9, borderRadius: '50%', bgcolor: dotColor(statusMap[a.id]), mr: 1 }} />
-                  {a.name || `CS ${a.id}`}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Stack direction="row" spacing={0.5} sx={{ width: { xs: 'auto', md: '100%' }, alignItems: 'center', flexShrink: 0 }}>
+            <FormControl size="small" sx={{ width: { xs: 158, md: 'auto' }, flex: { md: 1 } }}>
+              <InputLabel>Customer Service</InputLabel>
+              <Select value={agents.length ? agentId : ''} label="Customer Service"
+                onChange={e => setAgentId(Number(e.target.value))}>
+                {agents.map(a => (
+                  <MenuItem key={a.id} value={a.id}>
+                    <Box component="span" sx={{ display: 'inline-block', width: 9, height: 9, borderRadius: '50%', bgcolor: dotColor(statusMap[a.id]), mr: 1 }} />
+                    {a.name || `CS ${a.id}`}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Tooltip title="Kelola CS">
+              <IconButton size="small" onClick={() => setManageOpen(true)} sx={{ flexShrink: 0 }}>
+                <ManageAccountsOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
 
           <Tooltip title={atNumberLimit ? `Batas paket tercapai (${usedNumbers}/${maxNumbers} nomor). Upgrade paket untuk menambah CS.` : ''}>
             <Box sx={{ width: { xs: 'auto', md: '100%' }, flexShrink: 0 }}>
@@ -1643,6 +1660,49 @@ export default function Dashboard() {
           )}
         </Stack>
       </Popover>
+
+      <Dialog open={manageOpen} onClose={() => setManageOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Kelola Customer Service</DialogTitle>
+        <DialogContent>
+          <Typography variant="caption" color="text.secondary">
+            {usedNumbers}/{maxNumbers || '∞'} nomor terpakai pada paketmu.
+          </Typography>
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            {agents.map(a => (
+              <Paper key={a.id} variant="outlined" sx={{ p: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: dotColor(statusMap[a.id]), flexShrink: 0 }} />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {a.name || `CS ${a.id}`}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {statusMap[a.id] === 'connected' ? 'Tersambung' : 'Belum tersambung'}
+                  </Typography>
+                </Box>
+                {a.id === agentId && <Chip label="aktif" size="small" color="primary" variant="outlined" sx={{ height: 20, fontSize: '0.68rem' }} />}
+                <Tooltip title={agents.length <= 1 ? 'Minimal harus ada 1 CS' : 'Hapus CS'}>
+                  <span>
+                    <IconButton size="small" color="error" disabled={agents.length <= 1 || deleteAgentMut.isPending}
+                      onClick={() => deleteAgentById(a.id, a.name)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Paper>
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setManageOpen(false)}>Tutup</Button>
+          <Tooltip title={atNumberLimit ? `Batas paket tercapai (${usedNumbers}/${maxNumbers} nomor). Upgrade paket untuk menambah CS.` : ''}>
+            <span>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={createAgent} disabled={createAgentMut.isPending || atNumberLimit}>
+                Tambah CS
+              </Button>
+            </span>
+          </Tooltip>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={profileModalOpen} onClose={() => setProfileModalOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Profil</DialogTitle>
