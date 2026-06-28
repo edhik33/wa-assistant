@@ -186,6 +186,12 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 			tone = agent.Tone
 		}
 	}
+	// Langganan tidak aktif (trial habis / expired / suspended): jangan balas apa pun —
+	// cegah layanan & pemakaian kuota AI untuk tenant non-aktif (defense-in-depth, walau
+	// sesi WA normalnya sudah di-suspend).
+	if !tenantWAActive(agent.TenantID) {
+		return
+	}
 	// Long-term memory: inject ringkasan percakapan lama KONTAK INI saja (per-sender,
 	// bukan global agar konteks customer lain tidak bocor ke percakapan ini).
 	var mem models.ConversationMemory

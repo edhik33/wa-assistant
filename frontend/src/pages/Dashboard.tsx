@@ -870,7 +870,7 @@ export default function Dashboard() {
                           </Typography>
                         )}
                       </Box>
-                      <Switch checked={aiEnabled} onChange={e => toggleAI(e.target.checked)} color="success" disabled={!agentId || saveAgentMut.isPending} />
+                      <Switch checked={aiEnabled} onChange={e => toggleAI(e.target.checked)} color="success" disabled={!agentId || saveAgentMut.isPending || subExpired} />
                     </Stack>
 
                     {setupIssues.length > 0 && (
@@ -1281,7 +1281,7 @@ export default function Dashboard() {
                           : 'AI mati — chat masuk Inbox untuk dibalas manual. Sapaan & balasan kata kunci tetap jalan.'}
                       </Typography>
                     </Box>
-                    <Switch checked={aiEnabled} onChange={e => toggleAI(e.target.checked)} color="success" disabled={saveAgentMut.isPending} />
+                    <Switch checked={aiEnabled} onChange={e => toggleAI(e.target.checked)} color="success" disabled={saveAgentMut.isPending || subExpired} />
                   </Stack>
                 </Box>
                 <Divider sx={{ mb: 1.5 }} />
