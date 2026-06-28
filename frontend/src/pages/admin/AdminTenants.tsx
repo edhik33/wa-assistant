@@ -1,10 +1,15 @@
+import { useState } from 'react';
 import {
   Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableHead, TableRow,
-  Chip, Select, MenuItem, CircularProgress,
+  Chip, Select, MenuItem, CircularProgress, Button,
+  Dialog, DialogTitle, DialogContent, DialogActions, Stack, Alert,
 } from '@mui/material';
-import { useAdminTenants, useAdminPlans, useUpdateTenant } from '../../hooks';
+import CheckCircleIcon from '@mui/icons-material/CheckCircleOutlined';
+import { useAdminTenants, useAdminPlans, useUpdateTenant, useActivateTenant } from '../../hooks';
 import type { TenantRow } from '../../types';
+import { rupiah } from '../../types';
 import PageHeader from '../../components/PageHeader';
+import { swalToast } from '../../services/swal';
 
 const STATUS_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
   active: 'success', trial: 'warning', suspended: 'error', expired: 'default',
@@ -14,6 +19,26 @@ export default function AdminTenants() {
   const { data: tenants, isLoading } = useAdminTenants();
   const { data: plans } = useAdminPlans();
   const updateTenant = useUpdateTenant();
+  const activateTenant = useActivateTenant();
+
+  const [actTenant, setActTenant] = useState<TenantRow | null>(null);
+  const [actPlanId, setActPlanId] = useState<number | ''>('');
+
+  const openActivate = (t: TenantRow) => {
+    setActTenant(t);
+    setActPlanId(t.plan_id ?? (plans?.[0]?.id ?? ''));
+  };
+  const doActivate = async () => {
+    if (!actTenant || !actPlanId) return;
+    try {
+      await activateTenant.mutateAsync({ id: actTenant.id, plan_id: Number(actPlanId) });
+      swalToast('Langganan diaktifkan');
+      setActTenant(null);
+    } catch {
+      swalToast('Gagal mengaktifkan langganan', 'error');
+    }
+  };
+  const actPlan = plans?.find(p => p.id === Number(actPlanId));
 
   if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
 
@@ -30,6 +55,7 @@ export default function AdminTenants() {
                 <TableCell align="center">Balasan AI (bln ini)</TableCell>
                 <TableCell>Plan</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell align="right">Aksi</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -58,12 +84,51 @@ export default function AdminTenants() {
                       <MenuItem value="expired">expired</MenuItem>
                     </Select>
                   </TableCell>
+                  <TableCell align="right">
+                    <Button size="small" variant="outlined" startIcon={<CheckCircleIcon />}
+                      onClick={() => openActivate(t)}>
+                      Aktifkan manual
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={!!actTenant} onClose={() => setActTenant(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Aktifkan manual</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="info" icon={false}>
+              Untuk pembayaran transfer manual (di luar Tripay). Langganan <b>{actTenant?.name}</b> akan
+              aktif sesuai periode paket, tercatat sebagai pemasukan, dan otomatis kedaluwarsa saat habis.
+            </Alert>
+            <Select size="small" value={actPlanId} displayEmpty
+              onChange={e => setActPlanId(Number(e.target.value))}>
+              <MenuItem value="" disabled><em>— pilih paket —</em></MenuItem>
+              {plans?.map(p => (
+                <MenuItem key={p.id} value={p.id}>
+                  {p.name} — {rupiah(p.price)}/{p.billing_period === 'yearly' ? 'thn' : 'bln'}
+                </MenuItem>
+              ))}
+            </Select>
+            {actPlan && (
+              <Typography variant="caption" color="text.secondary">
+                Masa aktif: {actPlan.billing_period === 'yearly' ? '1 tahun' : '1 bulan'}
+                {' '}(diperpanjang dari sisa masa aktif bila masih berjalan).
+              </Typography>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setActTenant(null)}>Batal</Button>
+          <Button variant="contained" onClick={doActivate} disabled={!actPlanId || activateTenant.isPending}>
+            {activateTenant.isPending ? 'Memproses...' : 'Aktifkan'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

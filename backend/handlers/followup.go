@@ -26,7 +26,7 @@ func followUpResponse(fu models.FollowUp) gin.H {
 	database.DB.Model(&models.FollowUpEnrollment{}).Where("follow_up_id = ? AND status = ?", fu.ID, "stopped").Count(&stopped)
 	return gin.H{
 		"id": fu.ID, "name": fu.Name, "enabled": fu.Enabled, "stop_on_reply": fu.StopOnReply,
-		"steps": steps,
+		"steps":  steps,
 		"counts": gin.H{"active": active, "completed": completed, "stopped": stopped},
 	}
 }
@@ -65,6 +65,10 @@ func CreateFollowUp(c *gin.Context) {
 		return
 	}
 	tid := currentTenantID(c)
+	if !tenantPlanAllows(tid, featFollowUp) {
+		c.JSON(403, gin.H{"error": planFeatureMessage})
+		return
+	}
 	var req struct {
 		Name        string            `json:"name"`
 		StopOnReply *bool             `json:"stop_on_reply"`
@@ -87,7 +91,10 @@ func CreateFollowUp(c *gin.Context) {
 		stop = *req.StopOnReply
 	}
 	fu := models.FollowUp{TenantID: tid, AgentID: id, Name: req.Name, Enabled: true, StopOnReply: stop}
-	if err := database.DB.Create(&fu).Error; err != nil { c.JSON(500, gin.H{"error": "Gagal membuat follow-up"}); return }
+	if err := database.DB.Create(&fu).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Gagal membuat follow-up"})
+		return
+	}
 	saveSteps(fu.ID, req.Steps)
 	c.JSON(201, gin.H{"data": followUpResponse(fu)})
 }
@@ -152,6 +159,10 @@ func EnrollFollowUp(c *gin.Context) {
 		return
 	}
 	tid := currentTenantID(c)
+	if !tenantPlanAllows(tid, featFollowUp) {
+		c.JSON(403, gin.H{"error": planFeatureMessage})
+		return
+	}
 	var fu models.FollowUp
 	if database.DB.Where("agent_id = ?", id).First(&fu, c.Param("fid")).Error != nil {
 		c.JSON(404, gin.H{"error": "Urutan tidak ditemukan"})
@@ -238,6 +249,9 @@ func processDueFollowUps() {
 		}
 		if !tenantWAActive(e.TenantID) {
 			continue
+		}
+		if !tenantPlanAllows(e.TenantID, featFollowUp) {
+			continue // paket diturunkan: hentikan pemrosesan drip
 		}
 
 		var steps []models.FollowUpStep

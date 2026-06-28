@@ -35,13 +35,19 @@ type Plan struct {
 	// Batasan "training" knowledge per agent (nomor). CATATAN: beda dari MaxAIRepliesMonthly —
 	// di sini 0 = belum diset (kode fallback ke default aman), BUKAN tanpa batas, karena crawl
 	// tanpa batas berisiko ke memori & biaya embedding.
-	MaxKnowledgeChars int       `gorm:"not null;default:0" json:"max_knowledge_chars"` // total karakter knowledge per agent
-	MaxCrawlPages     int       `gorm:"not null;default:0" json:"max_crawl_pages"`     // batas halaman per crawl
-	IsActive          bool      `gorm:"not null;default:true;index" json:"is_active"`
-	IsPopular         bool      `gorm:"not null;default:false" json:"is_popular"`
-	SortOrder         int       `gorm:"not null;default:0;index" json:"sort_order"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	MaxKnowledgeChars int `gorm:"not null;default:0" json:"max_knowledge_chars"` // total karakter knowledge per agent
+	MaxCrawlPages     int `gorm:"not null;default:0" json:"max_crawl_pages"`     // batas halaman per crawl
+	// Saklar fitur per paket. Default true supaya paket lama tidak kehilangan fitur;
+	// admin bisa mematikan untuk membedakan tier (mis. Sheets hanya untuk Pro).
+	AllowFollowUp   bool      `gorm:"not null;default:true" json:"allow_followup"`    // follow-up / drip otomatis
+	AllowGroupGuard bool      `gorm:"not null;default:true" json:"allow_group_guard"` // penjaga grup
+	AllowSchedule   bool      `gorm:"not null;default:true" json:"allow_schedule"`    // pesan terjadwal
+	AllowSheets     bool      `gorm:"not null;default:true" json:"allow_sheets"`      // integrasi Google Sheets + auto-catat closing
+	IsActive        bool      `gorm:"not null;default:true;index" json:"is_active"`
+	IsPopular       bool      `gorm:"not null;default:false" json:"is_popular"`
+	SortOrder       int       `gorm:"not null;default:0;index" json:"sort_order"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // Subscription = langganan berjalan milik sebuah tenant (1:1 dengan tenant).

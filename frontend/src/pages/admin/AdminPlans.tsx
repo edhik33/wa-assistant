@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Box, Button, Card, CardContent, Table, TableBody, TableCell, TableHead, TableRow,
+  Box, Typography, Button, Card, CardContent, Table, TableBody, TableCell, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, FormControlLabel, Switch, Chip,
   IconButton, Stack, CircularProgress,
 } from '@mui/material';
@@ -15,7 +15,9 @@ import PageHeader from '../../components/PageHeader';
 
 const EMPTY: Partial<Plan> = {
   code: '', name: '', description: '', price: 0, billing_period: 'monthly',
-  max_numbers: 1, max_ai_replies_monthly: 1000, is_active: true, is_popular: false, sort_order: 0,
+  max_numbers: 1, max_ai_replies_monthly: 1000, max_knowledge_chars: 0, max_crawl_pages: 0,
+  allow_followup: true, allow_group_guard: true, allow_schedule: true, allow_sheets: true,
+  is_active: true, is_popular: false, sort_order: 0,
 };
 
 export default function AdminPlans() {
@@ -29,6 +31,7 @@ export default function AdminPlans() {
   const openEdit = (p: Plan) => { setForm(p); setOpen(true); };
   const num = (k: keyof Plan) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: Number(e.target.value) });
   const str = (k: keyof Plan) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
+  const bool = (k: keyof Plan) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.checked });
 
   const save = async () => { await savePlan.mutateAsync(form); setOpen(false); };
   const remove = async (p: Plan) => {
@@ -93,6 +96,19 @@ export default function AdminPlans() {
               <TextField label="Max Nomor" type="number" value={form.max_numbers ?? 1} onChange={num('max_numbers')} size="small" fullWidth />
               <TextField label="Balasan AI/bln (0=∞)" type="number" value={form.max_ai_replies_monthly ?? 0} onChange={num('max_ai_replies_monthly')} size="small" fullWidth />
             </Stack>
+            <Stack direction="row" spacing={2}>
+              <TextField label="Knowledge/nomor (char, 0=default)" type="number" value={form.max_knowledge_chars ?? 0} onChange={num('max_knowledge_chars')} size="small" fullWidth />
+              <TextField label="Crawl halaman (0=default)" type="number" value={form.max_crawl_pages ?? 0} onChange={num('max_crawl_pages')} size="small" fullWidth />
+            </Stack>
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>Fitur termasuk paket</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 0 }}>
+                <FormControlLabel control={<Switch checked={!!form.allow_followup} onChange={bool('allow_followup')} />} label="Follow-up otomatis" />
+                <FormControlLabel control={<Switch checked={!!form.allow_group_guard} onChange={bool('allow_group_guard')} />} label="Penjaga Grup" />
+                <FormControlLabel control={<Switch checked={!!form.allow_schedule} onChange={bool('allow_schedule')} />} label="Pesan terjadwal" />
+                <FormControlLabel control={<Switch checked={!!form.allow_sheets} onChange={bool('allow_sheets')} />} label="Google Sheets + auto-catat" />
+              </Box>
+            </Box>
             <TextField label="Urutan tampil" type="number" value={form.sort_order ?? 0} onChange={num('sort_order')} size="small" />
             <Stack direction="row" spacing={2}>
               <FormControlLabel control={<Switch checked={!!form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} />} label="Aktif" />

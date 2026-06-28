@@ -29,6 +29,10 @@ func CreateSchedule(c *gin.Context) {
 		return
 	}
 	tid := currentTenantID(c)
+	if !tenantPlanAllows(tid, featSchedule) {
+		c.JSON(403, gin.H{"error": planFeatureMessage})
+		return
+	}
 
 	message := c.PostForm("message")
 	if strings.TrimSpace(message) == "" {

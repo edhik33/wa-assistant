@@ -92,6 +92,16 @@ export function useUpdateTenant() {
   });
 }
 
+// useActivateTenant = aktivasi/perpanjang langganan manual oleh admin (transfer di luar Tripay).
+export function useActivateTenant() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, plan_id }: { id: number; plan_id: number }) =>
+      (await api.post(`/admin/tenants/${id}/activate`, { plan_id })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'tenants'] }),
+  });
+}
+
 export function useSavePlan() {
   const qc = useQueryClient();
   return useMutation({

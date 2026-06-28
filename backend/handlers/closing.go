@@ -30,6 +30,9 @@ func maybeExtractAndExportClosing(agentID uint, sender string) {
 	if !agent.SheetSyncEnabled || agent.SpreadsheetURL == "" {
 		return
 	}
+	if !tenantPlanAllows(agent.TenantID, featSheets) {
+		return // integrasi Sheets tidak termasuk paket tenant ini
+	}
 
 	var form models.ClosingForm
 	if database.DB.Where("agent_id = ? AND enabled = ?", agentID, true).First(&form).Error != nil {
@@ -403,6 +406,10 @@ func TestSheetConnection(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "Agent tidak ditemukan"})
 		return
 	}
+	if !tenantPlanAllows(agent.TenantID, featSheets) {
+		c.JSON(403, gin.H{"error": planFeatureMessage})
+		return
+	}
 	if agent.SpreadsheetURL == "" {
 		c.JSON(400, gin.H{"error": "URL spreadsheet belum diisi"})
 		return
@@ -440,6 +447,10 @@ func ListSheetNames(c *gin.Context) {
 	var agent models.Agent
 	if database.DB.First(&agent, id).Error != nil {
 		c.JSON(404, gin.H{"error": "Agent tidak ditemukan"})
+		return
+	}
+	if !tenantPlanAllows(agent.TenantID, featSheets) {
+		c.JSON(403, gin.H{"error": planFeatureMessage})
 		return
 	}
 	if agent.SpreadsheetURL == "" {

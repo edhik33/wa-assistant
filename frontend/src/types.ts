@@ -9,6 +9,12 @@ export interface Plan {
   billing_period: string;
   max_numbers: number;
   max_ai_replies_monthly: number;
+  max_knowledge_chars: number;
+  max_crawl_pages: number;
+  allow_followup: boolean;
+  allow_group_guard: boolean;
+  allow_schedule: boolean;
+  allow_sheets: boolean;
   is_active: boolean;
   is_popular: boolean;
   sort_order: number;

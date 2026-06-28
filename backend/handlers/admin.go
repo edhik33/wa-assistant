@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"fmt"
+	"time"
+
 	"wa-assistant/backend/database"
 	"wa-assistant/backend/models"
 	"wa-assistant/backend/services"
@@ -140,11 +143,65 @@ func AdminUpdatePlan(c *gin.Context) {
 	p.BillingPeriod = req.BillingPeriod
 	p.MaxNumbers = req.MaxNumbers
 	p.MaxAIRepliesMonthly = req.MaxAIRepliesMonthly
+	p.MaxKnowledgeChars = req.MaxKnowledgeChars
+	p.MaxCrawlPages = req.MaxCrawlPages
+	p.AllowFollowUp = req.AllowFollowUp
+	p.AllowGroupGuard = req.AllowGroupGuard
+	p.AllowSchedule = req.AllowSchedule
+	p.AllowSheets = req.AllowSheets
 	p.IsActive = req.IsActive
 	p.IsPopular = req.IsPopular
 	p.SortOrder = req.SortOrder
 	database.DB.Save(&p)
 	c.JSON(200, gin.H{"data": p})
+}
+
+// AdminActivateTenant = aktivasi/perpanjang langganan manual (pembayaran transfer
+// di luar Tripay). Mencatat invoice "paid" untuk pembukuan, lalu memanggil logika
+// langganan yang sama dengan callback Tripay sehingga masa berlaku (EndsAt) terisi
+// dan auto-expire oleh sweep berjalan seperti biasa. Periode mengikuti plan
+// (bulanan/tahunan).
+func AdminActivateTenant(c *gin.Context) {
+	var t models.Tenant
+	if database.DB.First(&t, c.Param("id")).Error != nil {
+		c.JSON(404, gin.H{"error": "Tenant tidak ditemukan"})
+		return
+	}
+	var req struct {
+		PlanID uint `json:"plan_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.PlanID == 0 {
+		c.JSON(400, gin.H{"error": "Plan wajib dipilih"})
+		return
+	}
+	var plan models.Plan
+	if database.DB.First(&plan, req.PlanID).Error != nil {
+		c.JSON(404, gin.H{"error": "Plan tidak ditemukan"})
+		return
+	}
+
+	// Catat invoice manual sebagai "paid" supaya masuk statistik pendapatan.
+	now := time.Now()
+	inv := models.Invoice{
+		TenantID: t.ID, PlanID: plan.ID,
+		MerchantRef:   fmt.Sprintf("MAN-%d-%d", t.ID, now.UnixNano()),
+		Amount:        plan.Price,
+		Status:        "paid",
+		PaymentMethod: "manual_transfer",
+		PaidAt:        &now,
+	}
+	if err := database.DB.Create(&inv).Error; err != nil {
+		c.JSON(500, gin.H{"error": "Gagal mencatat pembayaran manual"})
+		return
+	}
+
+	if err := activateSubscription(t.ID, plan.ID); err != nil {
+		c.JSON(500, gin.H{"error": "Gagal mengaktifkan langganan"})
+		return
+	}
+
+	database.DB.Preload("Plan").First(&t, t.ID)
+	c.JSON(200, gin.H{"data": t})
 }
 
 func AdminDeletePlan(c *gin.Context) {

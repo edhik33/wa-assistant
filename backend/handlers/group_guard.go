@@ -103,6 +103,9 @@ func handleGroupMessage(agentID uint, m services.GroupMessageMeta) {
 		First(&cfg).Error; err != nil {
 		return // grup tidak dimonitor
 	}
+	if !agentPlanAllows(agentID, featGroupGuard) {
+		return // paket tidak termasuk penjaga grup
+	}
 	if numInList(cfg.AllowNumbers, m.SenderPN) {
 		return
 	}
@@ -265,6 +268,10 @@ func SaveGroupConfig(c *gin.Context) {
 	var b groupConfigBody
 	if err := c.ShouldBindJSON(&b); err != nil || strings.TrimSpace(b.GroupJID) == "" {
 		c.JSON(400, gin.H{"error": "Data setelan grup tidak valid"})
+		return
+	}
+	if b.Enabled && !tenantPlanAllows(currentTenantID(c), featGroupGuard) {
+		c.JSON(403, gin.H{"error": planFeatureMessage})
 		return
 	}
 	var cfg models.GroupGuardConfig
