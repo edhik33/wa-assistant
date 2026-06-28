@@ -335,6 +335,8 @@ export default function Landing() {
                 <Link href="#kenapa" color="inherit" underline="hover">Kenapa ChatLoop</Link>
                 <Link href="#fitur" color="inherit" underline="hover">Fitur</Link>
                 <Link href="#harga" color="inherit" underline="hover">Harga</Link>
+                <Link href="/privacy" color="inherit" underline="hover">Kebijakan Privasi</Link>
+                <Link href="/terms" color="inherit" underline="hover">Syarat dan Ketentuan</Link>
               </Stack>
             </Grid>
             <Grid size={{ xs: 6, md: 4 }}>
