@@ -93,8 +93,8 @@ export default function Login() {
               </Link>
             </Typography>
           )}
-          <TextField fullWidth label="Username" value={username} disabled={loading || cooldown > 0}
-            autoComplete="username"
+          <TextField fullWidth label="Email" value={username} disabled={loading || cooldown > 0}
+            autoComplete="email"
             onChange={e => { setUsername(e.target.value); if (errors.username) setErrors(p => ({...p, username: ''})); }}
             error={!!errors.username} helperText={errors.username}
             sx={{ mb: 1.5 }} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
