@@ -189,7 +189,7 @@ export default function Landing() {
             {BENEFITS.map((f) => (
               <Grid size={{ xs: 12, sm: 6, md: 4 }} key={f.title}>
                 <Stack spacing={1.5} sx={{ height: '100%' }}>
-                  <Avatar sx={{ bgcolor: 'primary.light', color: 'primary.dark', width: 52, height: 52 }}>{f.icon}</Avatar>
+                  <Avatar sx={{ bgcolor: 'primary.main', color: '#fff', width: 52, height: 52 }}>{f.icon}</Avatar>
                   <Typography variant="h6" sx={{ fontWeight: 800 }}>{f.title}</Typography>
                   <Typography color="text.secondary" sx={{ lineHeight: 1.55 }}>{f.body}</Typography>
                 </Stack>
@@ -213,7 +213,7 @@ export default function Landing() {
               <Card sx={{ height: '100%', bgcolor: '#fff' }}>
                 <CardContent>
                   <Stack direction="row" spacing={1.5} sx={{ alignItems: 'flex-start' }}>
-                    <Avatar variant="rounded" sx={{ bgcolor: 'primary.light', color: 'primary.dark', width: 40, height: 40 }}>{f.icon}</Avatar>
+                    <Avatar variant="rounded" sx={{ bgcolor: 'primary.main', color: '#fff', width: 40, height: 40 }}>{f.icon}</Avatar>
                     <Box>
                       <Typography sx={{ fontWeight: 800, fontSize: 15 }}>{f.title}</Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.5 }}>{f.body}</Typography>
