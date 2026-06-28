@@ -6,7 +6,7 @@
 set -euo pipefail
 
 SSH_HOST=${SSH_HOST:-mastery@103.181.143.107}
-APP_DIR=${APP_DIR:-/var/www/Wai}
+APP_DIR=${APP_DIR:-/var/www/wa-assistant}
 SERVICE=${SERVICE:-wai}
 OLD_SERVICE=${OLD_SERVICE:-wa-assistant}
 APP_PORT=${APP_PORT:-3031}
