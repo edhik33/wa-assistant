@@ -9,6 +9,7 @@ import {
 import LogoutIcon from '@mui/icons-material/Logout';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import TelegramIcon from '@mui/icons-material/Telegram';
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
@@ -715,20 +716,25 @@ export default function Dashboard() {
         <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
         {/* Gabung grup komunitas (link diatur super-admin) */}
         {community && (community.whatsapp || community.telegram) && (
-          <Stack spacing={0.5} sx={{ display: { xs: 'none', md: 'flex' }, mx: 0.5, mb: 0.5 }}>
-            {community.whatsapp && (
-              <Button size="small" variant="outlined" startIcon={<WhatsAppIcon />} component="a" href={community.whatsapp} target="_blank" rel="noopener noreferrer"
-                sx={{ justifyContent: 'flex-start', color: '#1F8A50', borderColor: 'divider' }}>
-                Grup WhatsApp
-              </Button>
-            )}
-            {community.telegram && (
-              <Button size="small" variant="outlined" startIcon={<TelegramIcon />} component="a" href={community.telegram} target="_blank" rel="noopener noreferrer"
-                sx={{ justifyContent: 'flex-start', color: '#229ED9', borderColor: 'divider' }}>
-                Grup Telegram
-              </Button>
-            )}
-          </Stack>
+          <Paper variant="outlined" sx={{ display: { xs: 'none', md: 'block' }, mx: 0.5, mb: 0.5, p: 1.25, textAlign: 'center', bgcolor: '#EFF8F1', borderColor: 'primary.light' }}>
+            <GroupsOutlinedIcon sx={{ color: 'primary.main', fontSize: 24 }} />
+            <Typography variant="caption" sx={{ fontWeight: 800, display: 'block', lineHeight: 1.3 }}>Gabung Komunitas</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.65rem', mb: 1 }}>Tips, update, dan tanya jawab</Typography>
+            <Stack spacing={0.75}>
+              {community.whatsapp && (
+                <Button fullWidth size="small" variant="contained" startIcon={<WhatsAppIcon />} component="a" href={community.whatsapp} target="_blank" rel="noopener noreferrer"
+                  sx={{ bgcolor: '#25D366', color: '#fff', fontWeight: 700, '&:hover': { bgcolor: '#1da851' } }}>
+                  Grup WhatsApp
+                </Button>
+              )}
+              {community.telegram && (
+                <Button fullWidth size="small" variant="contained" startIcon={<TelegramIcon />} component="a" href={community.telegram} target="_blank" rel="noopener noreferrer"
+                  sx={{ bgcolor: '#229ED9', color: '#fff', fontWeight: 700, '&:hover': { bgcolor: '#1b85b8' } }}>
+                  Telegram
+                </Button>
+              )}
+            </Stack>
+          </Paper>
         )}
         {/* Indikator Langganan */}
         {usage && (
