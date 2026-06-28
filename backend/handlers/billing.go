@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"strconv"
 	"time"
 
 	"wa-assistant/backend/config"
@@ -33,11 +35,13 @@ func Checkout(c *gin.Context) {
 	var req struct {
 		PlanID uint   `json:"plan_id"`
 		Method string `json:"method"`
+		metaBrowserContext
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanID == 0 || req.Method == "" {
 		c.JSON(400, gin.H{"error": "Plan & metode pembayaran wajib dipilih"})
 		return
 	}
+	req.metaBrowserContext = normalizeMetaBrowserContext(req.metaBrowserContext)
 	var plan models.Plan
 	if database.DB.First(&plan, req.PlanID).Error != nil {
 		c.JSON(404, gin.H{"error": "Plan tidak ditemukan"})
@@ -58,6 +62,9 @@ func Checkout(c *gin.Context) {
 	invoice := models.Invoice{
 		TenantID: tid, PlanID: plan.ID, MerchantRef: merchantRef,
 		Amount: plan.Price, Status: "pending", PaymentMethod: req.Method,
+		MetaEventID: req.EventID, MetaFBP: req.FBP, MetaFBC: req.FBC,
+		MetaSourceURL: req.EventSourceURL, MetaClientIP: c.ClientIP(),
+		MetaUserAgent: c.Request.UserAgent(),
 	}
 	if err := database.DB.Create(&invoice).Error; err != nil {
 		c.JSON(500, gin.H{"error": "Gagal membuat invoice"})
@@ -88,6 +95,18 @@ func Checkout(c *gin.Context) {
 	}).Error; err != nil {
 		c.JSON(500, gin.H{"error": "Transaksi Tripay dibuat, tetapi invoice gagal disimpan. Hubungi admin dengan merchant_ref: " + merchantRef})
 		return
+	}
+
+	if req.EventID != "" {
+		enqueueMetaEvent(services.MetaEventInput{
+			TenantID: tid, EventID: req.EventID, EventName: "InitiateCheckout",
+			SourceURL: req.EventSourceURL,
+			UserData:  metaUserData(c, owner.Email, owner.Phone, fmt.Sprint(owner.ID), req.metaBrowserContext),
+			CustomData: map[string]any{
+				"value": plan.Price, "currency": "IDR", "content_name": plan.Name,
+				"content_ids": []string{strconv.Itoa(int(plan.ID))}, "content_type": "product",
+			},
+		})
 	}
 
 	c.JSON(200, gin.H{"data": gin.H{
@@ -121,6 +140,7 @@ func TripayCallback(c *gin.Context) {
 		return
 	}
 
+	var paidInvoice models.Invoice
 	err = database.DB.Transaction(func(tx *gorm.DB) error {
 		var invoice models.Invoice
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("merchant_ref = ?", payload.MerchantRef).First(&invoice).Error; err != nil {
@@ -134,7 +154,13 @@ func TripayCallback(c *gin.Context) {
 		}
 
 		// Idempotent: callback bisa dikirim lebih dari sekali. Status final tidak diproses ulang.
-		if invoice.Status == "paid" || invoice.Status == "expired" || invoice.Status == "failed" {
+		if invoice.Status == "paid" {
+			if payload.Status == "PAID" {
+				paidInvoice = invoice
+			}
+			return nil
+		}
+		if invoice.Status == "expired" || invoice.Status == "failed" {
 			return nil
 		}
 
@@ -146,12 +172,18 @@ func TripayCallback(c *gin.Context) {
 			if err := tx.Save(&invoice).Error; err != nil {
 				return err
 			}
-			return activateSubscriptionTx(tx, invoice.TenantID, invoice.PlanID)
+			if err := activateSubscriptionTx(tx, invoice.TenantID, invoice.PlanID); err != nil {
+				return err
+			}
+			paidInvoice = invoice
+			return nil
 		case "EXPIRED":
 			invoice.Status = "expired"
+			clearInvoiceMetaAttribution(&invoice)
 			return tx.Save(&invoice).Error
 		case "FAILED":
 			invoice.Status = "failed"
+			clearInvoiceMetaAttribution(&invoice)
 			return tx.Save(&invoice).Error
 		case "UNPAID", "":
 			return nil
@@ -167,7 +199,47 @@ func TripayCallback(c *gin.Context) {
 		c.JSON(400, gin.H{"success": false, "message": err.Error()})
 		return
 	}
+	if paidInvoice.ID != 0 {
+		var owner models.User
+		var plan models.Plan
+		ownerErr := database.DB.Where("tenant_id = ? AND role = ?", paidInvoice.TenantID, "owner").First(&owner).Error
+		planErr := database.DB.First(&plan, paidInvoice.PlanID).Error
+		if ownerErr == nil && planErr == nil {
+			queued := enqueueMetaEvent(services.MetaEventInput{
+				TenantID: paidInvoice.TenantID,
+				EventID:  "purchase_" + paidInvoice.MerchantRef, EventName: "Purchase",
+				SourceURL: paidInvoice.MetaSourceURL,
+				UserData: services.MetaUserDataInput{
+					Email: owner.Email, Phone: owner.Phone, ExternalID: fmt.Sprint(owner.ID),
+					ClientIP: paidInvoice.MetaClientIP, UserAgent: paidInvoice.MetaUserAgent,
+					FBP: paidInvoice.MetaFBP, FBC: paidInvoice.MetaFBC,
+				},
+				CustomData: map[string]any{
+					"value": paidInvoice.Amount, "currency": "IDR", "content_name": plan.Name,
+					"content_ids": []string{strconv.Itoa(int(plan.ID))}, "content_type": "product",
+					"order_id": paidInvoice.MerchantRef,
+				},
+			})
+			if queued {
+				database.DB.Model(&paidInvoice).Updates(map[string]any{
+					"meta_event_id": "", "meta_fbp": "", "meta_fbc": "",
+					"meta_source_url": "", "meta_client_ip": "", "meta_user_agent": "",
+				})
+			}
+		} else {
+			log.Printf("[meta-capi] Purchase %s dilewati karena owner/plan tidak ditemukan: owner=%v plan=%v", paidInvoice.MerchantRef, ownerErr, planErr)
+		}
+	}
 	c.JSON(200, gin.H{"success": true})
+}
+
+func clearInvoiceMetaAttribution(invoice *models.Invoice) {
+	invoice.MetaEventID = ""
+	invoice.MetaFBP = ""
+	invoice.MetaFBC = ""
+	invoice.MetaSourceURL = ""
+	invoice.MetaClientIP = ""
+	invoice.MetaUserAgent = ""
 }
 
 // activateSubscription mengaktifkan / memperpanjang langganan tenant setelah pembayaran lunas.

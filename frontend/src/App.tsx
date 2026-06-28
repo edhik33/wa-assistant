@@ -12,6 +12,7 @@ import AdminOverview from './pages/admin/AdminOverview';
 import AdminPlans from './pages/admin/AdminPlans';
 import AdminTenants from './pages/admin/AdminTenants';
 import theme from './theme';
+import MetaPixelTracker from './components/MetaPixelTracker';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('token');
@@ -34,7 +35,7 @@ function HomeRoute() {
   const token = localStorage.getItem('token');
   if (token) {
     let isAdmin = false;
-    try { isAdmin = !!JSON.parse(localStorage.getItem('user') || '{}')?.is_super_admin; } catch {}
+    try { isAdmin = !!JSON.parse(localStorage.getItem('user') || '{}')?.is_super_admin; } catch { /* token tanpa user tersimpan */ }
     return <Navigate to={isAdmin ? '/admin' : '/app'} replace />;
   }
   return <Landing />;
@@ -45,6 +46,7 @@ export default function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BrowserRouter>
+        <MetaPixelTracker />
         <Routes>
           <Route path="/" element={<HomeRoute />} />
           <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -376,11 +377,13 @@ func Register(c *gin.Context) {
 		Email        string `json:"email"`
 		Password     string `json:"password"`
 		Turnstile    string `json:"turnstile"`
+		metaBrowserContext
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": "Invalid request"})
 		return
 	}
+	req.metaBrowserContext = normalizeMetaBrowserContext(req.metaBrowserContext)
 	if !verifyTurnstile(req.Turnstile) {
 		c.JSON(400, gin.H{"error": "Verifikasi keamanan gagal, coba lagi"})
 		return
@@ -450,6 +453,18 @@ func Register(c *gin.Context) {
 		log.Printf("Register transaction error: %v", err)
 		c.JSON(500, gin.H{"error": "Gagal membuat akun"})
 		return
+	}
+
+	if req.EventID != "" {
+		enqueueMetaEvent(services.MetaEventInput{
+			TenantID: *user.TenantID, EventID: req.EventID, EventName: "CompleteRegistration",
+			SourceURL: req.EventSourceURL,
+			UserData:  metaUserData(c, user.Email, user.Phone, fmt.Sprint(user.ID), req.metaBrowserContext),
+			CustomData: map[string]any{
+				"content_name": "ChatLoop Registration",
+				"status":       "trial",
+			},
+		})
 	}
 
 	// Kirim email verifikasi (async — jangan block response)

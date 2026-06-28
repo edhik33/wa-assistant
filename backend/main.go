@@ -52,6 +52,8 @@ func main() {
 	handlers.StartMediaCleanup(config.EnvInt("MEDIA_RETENTION_DAYS", 30))
 	// Retry pesan WhatsApp yang gagal terkirim agar dashboard tidak berhenti di status palsu.
 	handlers.StartFailedSendRetry(appCtx)
+	// Kirim event konversi Meta dari outbox dengan retry tanpa memperlambat request user.
+	services.StartMetaCAPIWorker(appCtx)
 
 	// Cek langganan tiap jam: expire yang habis & suspend sesi WA tenant non-aktif.
 	handlers.StartSubscriptionSweepCtx(appCtx, time.Hour)
@@ -72,6 +74,7 @@ func main() {
 		api.POST("/reset-password", handlers.ResetPassword)
 		api.GET("/plans", handlers.PublicPlans)
 		api.GET("/community", handlers.PublicCommunityLinks) // link grup komunitas (publik)
+		api.GET("/meta/pixel-config", handlers.PublicMetaPixelConfig)
 		api.POST("/billing/tripay/callback", handlers.TripayCallback) // webhook Tripay (signature diverifikasi)
 		api.GET("/agents/:id/media/:cid", handlers.ServeMedia)        // file media (auth via ?token=)
 		api.GET("/me", handlers.AuthMiddleware(), handlers.Me)
@@ -88,6 +91,9 @@ func main() {
 			admin.PUT("/ai-model", handlers.AdminSetAIModel)
 			admin.GET("/community", handlers.AdminGetCommunityLinks)
 			admin.PUT("/community", handlers.AdminSetCommunityLinks)
+			admin.GET("/meta-tracking", handlers.AdminGetMetaTracking)
+			admin.PUT("/meta-tracking", handlers.AdminSetMetaTracking)
+			admin.POST("/meta-tracking/test", handlers.AdminTestMetaTracking)
 			admin.GET("/plans", handlers.AdminPlans)
 			admin.POST("/plans", handlers.AdminCreatePlan)
 			admin.PUT("/plans/:id", handlers.AdminUpdatePlan)

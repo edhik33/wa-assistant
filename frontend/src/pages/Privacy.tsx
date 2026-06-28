@@ -18,6 +18,7 @@ const SECTIONS: { h: string; p: string[] }[] = [
       'Data percakapan WhatsApp: pesan masuk dan kontak yang diproses agar AI dapat membalas dan menjalankan fitur seperti broadcast, follow up, dan deteksi order.',
       'Data pembayaran: informasi transaksi saat kamu berlangganan paket berbayar.',
       'Data teknis: alamat IP, jenis perangkat, dan catatan aktivitas untuk keamanan dan perbaikan layanan.',
+      'Data atribusi iklan: halaman yang dikunjungi, kejadian seperti pendaftaran atau pembayaran, serta identifier cookie Meta jika pengukuran iklan sedang diaktifkan.',
     ],
   },
   {
@@ -27,12 +28,14 @@ const SECTIONS: { h: string; p: string[] }[] = [
       'Mengelola akun, langganan, dan pembayaran kamu.',
       'Meningkatkan kualitas layanan, keamanan, dan dukungan pelanggan.',
       'Mengirim pemberitahuan penting terkait akun, tagihan, atau perubahan layanan.',
+      'Mengukur hasil kampanye dan memperbaiki relevansi iklan tanpa menjual data pribadi kamu.',
     ],
   },
   {
     h: '4. Pihak ketiga',
     p: [
       'Untuk menjalankan layanan, kami menggunakan penyedia pihak ketiga, antara lain penyedia model AI untuk memproses dan menyusun jawaban, penyedia pengiriman email, gerbang pembayaran, serta layanan infrastruktur dan keamanan jaringan.',
+      'Jika pengukuran iklan diaktifkan, kami memakai Meta Pixel dan Conversions API. Email, nomor telepon, dan ID akun di-hash sebelum dikirim melalui Conversions API; data atribusi seperti IP, perangkat, _fbp, dan _fbc dapat ikut diproses oleh Meta.',
       'Pihak ketiga hanya menerima data seperlunya untuk menjalankan fungsinya dan tidak kami izinkan memakai datamu untuk tujuan lain.',
     ],
   },
@@ -60,7 +63,7 @@ const SECTIONS: { h: string; p: string[] }[] = [
   {
     h: '8. Cookie',
     p: [
-      'Kami menggunakan cookie dan penyimpanan lokal seperlunya agar kamu tetap masuk dan layanan berjalan dengan baik. Kami tidak menjual data kamu kepada pihak lain.',
+      'Kami menggunakan cookie dan penyimpanan lokal agar kamu tetap masuk, layanan berjalan dengan baik, dan hasil iklan dapat diukur saat Meta Pixel diaktifkan. Cookie atribusi dapat mencakup _fbp dan _fbc. Kami tidak menjual data kamu kepada pihak lain.',
     ],
   },
   {

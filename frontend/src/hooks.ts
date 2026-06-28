@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from './services/api';
-import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, Invoice, PaymentChannel, Analytics, AIMetrics, Contact, ChatMsg, CheckResult, Broadcast, BroadcastRecipient, BroadcastAssessment, BroadcastPreflightBody, BroadcastSafetyForm, BroadcastConsentSummary, WAGroup, GroupGuardConfig, GroupModerationLog, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff, CrawlJob, CrawlPage, KnowledgeUsage } from './types';
+import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, MetaTrackingAdminConfig, Invoice, PaymentChannel, Analytics, AIMetrics, Contact, ChatMsg, CheckResult, Broadcast, BroadcastRecipient, BroadcastAssessment, BroadcastPreflightBody, BroadcastSafetyForm, BroadcastConsentSummary, WAGroup, GroupGuardConfig, GroupModerationLog, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff, CrawlJob, CrawlPage, KnowledgeUsage } from './types';
+import type { MetaBrowserContext } from './services/metaPixel';
 
 type ContactList = { number: string; name: string }[];
 
@@ -40,7 +41,7 @@ export function useInvoices() {
 
 export function useCheckout() {
   return useMutation({
-    mutationFn: async (body: { plan_id: number; method: string }) =>
+    mutationFn: async (body: { plan_id: number; method: string } & MetaBrowserContext) =>
       (await api.post('/billing/checkout', body)).data.data as { checkout_url: string },
   });
 }
@@ -66,6 +67,40 @@ export function useSetAdminAIModel() {
   return useMutation({
     mutationFn: async (preset: string) => (await api.put('/admin/ai-model', { preset })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'ai-model'] }),
+  });
+}
+
+export type MetaTrackingAdminInput = {
+  enabled: boolean;
+  pixel_id: string;
+  access_token: string;
+  graph_version: string;
+  test_event_code: string;
+  clear_access_token?: boolean;
+};
+
+export function useAdminMetaTracking() {
+  return useQuery<MetaTrackingAdminConfig>({
+    queryKey: ['admin', 'meta-tracking'],
+    queryFn: async () => (await api.get('/admin/meta-tracking')).data,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useSetAdminMetaTracking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: MetaTrackingAdminInput) =>
+      (await api.put('/admin/meta-tracking', body)).data as MetaTrackingAdminConfig,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'meta-tracking'] }),
+  });
+}
+
+export function useTestAdminMetaTracking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await api.post('/admin/meta-tracking/test')).data as { message: string },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'meta-tracking'] }),
   });
 }
 

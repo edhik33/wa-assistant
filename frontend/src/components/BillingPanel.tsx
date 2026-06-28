@@ -10,6 +10,7 @@ import { usePublicPlans, useUsage, useBillingChannels, useInvoices, useCheckout 
 import type { Plan } from '../types';
 import { rupiah } from '../types';
 import PageHeader from './PageHeader';
+import { createMetaEventID, getMetaBrowserContext, trackMetaEvent } from '../services/metaPixel';
 
 const STATUS_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
   active: 'success', trial: 'warning', suspended: 'error', expired: 'default', paid: 'success', pending: 'warning',
@@ -38,7 +39,19 @@ export default function BillingPanel() {
     if (!selected || !method) return;
     setError('');
     try {
-      const res = await checkout.mutateAsync({ plan_id: selected.id, method });
+      const eventID = createMetaEventID('checkout');
+      const res = await checkout.mutateAsync({
+        plan_id: selected.id,
+        method,
+        ...getMetaBrowserContext(eventID),
+      });
+      await trackMetaEvent('InitiateCheckout', {
+        value: selected.price,
+        currency: 'IDR',
+        content_name: selected.name,
+        content_ids: [String(selected.id)],
+        content_type: 'product',
+      }, eventID);
       window.location.href = res.checkout_url; // arahkan ke halaman bayar Tripay
     } catch (e) {
       setError(errorMessage(e, 'Gagal membuat pembayaran'));

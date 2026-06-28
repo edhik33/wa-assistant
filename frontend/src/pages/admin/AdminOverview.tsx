@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Box, Card, CardContent, Typography, Grid, CircularProgress,
   Select, MenuItem, FormControl, InputLabel, Alert, Stack, Chip,
-  TextField, Button,
+  TextField, Button, Switch, FormControlLabel, Divider,
 } from '@mui/material';
-import { useAdminStats, useAdminAIModel, useSetAdminAIModel, useAdminCommunityLinks, useSetAdminCommunityLinks } from '../../hooks';
+import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
+import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined';
+import { useAdminStats, useAdminAIModel, useSetAdminAIModel, useAdminCommunityLinks, useSetAdminCommunityLinks, useAdminMetaTracking, useSetAdminMetaTracking, useTestAdminMetaTracking } from '../../hooks';
+import type { MetaTrackingAdminConfig } from '../../types';
 import { rupiah } from '../../types';
 import { swalToast } from '../../services/swal';
 import PageHeader from '../../components/PageHeader';
@@ -67,16 +70,10 @@ function AIModelCard() {
   );
 }
 
-function CommunityCard() {
-  const { data, isLoading } = useAdminCommunityLinks();
+function CommunityForm({ initial }: { initial: { whatsapp: string; telegram: string } }) {
   const save = useSetAdminCommunityLinks();
-  const [whatsapp, setWhatsapp] = useState('');
-  const [telegram, setTelegram] = useState('');
-
-  // Sinkronkan form sekali data dari server tiba.
-  useEffect(() => {
-    if (data) { setWhatsapp(data.whatsapp || ''); setTelegram(data.telegram || ''); }
-  }, [data]);
+  const [whatsapp, setWhatsapp] = useState(initial.whatsapp || '');
+  const [telegram, setTelegram] = useState(initial.telegram || '');
 
   const submit = async () => {
     try {
@@ -86,8 +83,6 @@ function CommunityCard() {
       swalToast('Gagal menyimpan link', 'error');
     }
   };
-
-  if (isLoading) return null;
 
   return (
     <Card>
@@ -112,6 +107,142 @@ function CommunityCard() {
   );
 }
 
+function CommunityCard() {
+  const { data, isLoading } = useAdminCommunityLinks();
+  if (isLoading || !data) return null;
+  return <CommunityForm key={`${data.whatsapp}-${data.telegram}`} initial={data} />;
+}
+
+function requestError(error: unknown, fallback: string) {
+  if (typeof error === 'object' && error && 'response' in error) {
+    const response = (error as { response?: { data?: { error?: string } } }).response;
+    return response?.data?.error || fallback;
+  }
+  return fallback;
+}
+
+function MetaTrackingForm({ initial }: { initial: MetaTrackingAdminConfig }) {
+  const save = useSetAdminMetaTracking();
+  const test = useTestAdminMetaTracking();
+  const [enabled, setEnabled] = useState(initial.enabled);
+  const [pixelID, setPixelID] = useState(initial.pixel_id);
+  const [accessToken, setAccessToken] = useState('');
+  const [graphVersion, setGraphVersion] = useState(initial.graph_version || 'v25.0');
+  const [testEventCode, setTestEventCode] = useState(initial.test_event_code);
+
+  const submit = async () => {
+    try {
+      await save.mutateAsync({
+        enabled,
+        pixel_id: pixelID.trim(),
+        access_token: accessToken.trim(),
+        graph_version: graphVersion.trim(),
+        test_event_code: testEventCode.trim(),
+      });
+      setAccessToken('');
+      swalToast('Tracking Meta disimpan', 'success');
+    } catch (error) {
+      swalToast(requestError(error, 'Gagal menyimpan tracking Meta'), 'error');
+    }
+  };
+
+  const sendTest = async () => {
+    try {
+      await test.mutateAsync();
+      swalToast('Event tes diterima Meta', 'success');
+    } catch (error) {
+      swalToast(requestError(error, 'Event tes belum berhasil'), 'error');
+    }
+  };
+
+  const { stats } = initial;
+  const tokenReady = initial.token_configured || accessToken.trim() !== '';
+  const dirty = enabled !== initial.enabled || pixelID !== initial.pixel_id || accessToken !== '' ||
+    graphVersion !== initial.graph_version || testEventCode !== initial.test_event_code;
+
+  return (
+    <Card>
+      <CardContent>
+        <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 1, mb: 0.5 }}>
+          <Box>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Meta Pixel & Conversions API</Typography>
+            <Typography variant="caption" color="text.secondary">
+              Ukur pendaftaran, checkout, dan pembayaran ChatLoop dari iklan Meta.
+            </Typography>
+          </Box>
+          <FormControlLabel
+            control={<Switch checked={enabled} onChange={event => setEnabled(event.target.checked)} />}
+            label={enabled ? 'Aktif' : 'Nonaktif'}
+            sx={{ m: 0 }}
+          />
+        </Stack>
+
+        <Divider sx={{ my: 2 }} />
+
+        <Grid container spacing={1.5} sx={{ maxWidth: 860 }}>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField fullWidth size="small" label="Pixel ID" placeholder="Contoh: 123456789012345"
+              value={pixelID} onChange={event => setPixelID(event.target.value.replace(/\D/g, ''))} />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField fullWidth size="small" type="password" label="Access Token CAPI"
+              placeholder={initial.token_configured ? 'Sudah tersimpan - isi untuk mengganti' : 'Masukkan token dari Events Manager'}
+              value={accessToken} onChange={event => setAccessToken(event.target.value)}
+              helperText={initial.token_configured ? 'Token tersimpan terenkripsi dan tidak ditampilkan kembali.' : 'Token hanya disimpan di server.'} />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField fullWidth size="small" label="Test Event Code" placeholder="Contoh: TEST12345"
+              value={testEventCode} onChange={event => setTestEventCode(event.target.value)}
+              helperText="Isi saat pengujian. Kosongkan sebelum menjalankan iklan produksi." />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField fullWidth size="small" label="Versi Graph API" placeholder="v25.0"
+              value={graphVersion} onChange={event => setGraphVersion(event.target.value)}
+              helperText="Ubah hanya saat Meta menghentikan versi yang dipakai." />
+          </Grid>
+        </Grid>
+
+        <Alert severity={testEventCode ? 'warning' : 'info'} sx={{ mt: 2, maxWidth: 860 }}>
+          {testEventCode
+            ? 'Mode tes aktif. Semua event CAPI masuk ke Test Events dan belum menjadi data produksi.'
+            : 'Browser dan server memakai ID event yang sama agar event tidak dihitung dua kali. Purchase hanya dikirim setelah pembayaran terverifikasi.'}
+        </Alert>
+
+        <Stack direction="row" useFlexGap spacing={1} sx={{ mt: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Button variant="contained" startIcon={<SaveOutlinedIcon />} onClick={submit} disabled={save.isPending || !dirty}>
+            {save.isPending ? 'Menyimpan...' : 'Simpan perubahan'}
+          </Button>
+          <Button variant="outlined" startIcon={<ScienceOutlinedIcon />} onClick={sendTest}
+            disabled={test.isPending || dirty || !initial.enabled || !initial.test_event_code || !tokenReady}>
+            {test.isPending ? 'Mengirim...' : 'Kirim event tes'}
+          </Button>
+          <Chip size="small" color={tokenReady ? 'success' : 'default'} variant="outlined"
+            label={tokenReady ? 'Token siap' : 'Token belum diisi'} />
+        </Stack>
+
+        <Stack direction="row" useFlexGap spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>
+          <Chip size="small" label={`${stats.pending} menunggu`} />
+          <Chip size="small" color="success" variant="outlined" label={`${stats.sent} terkirim`} />
+          <Chip size="small" color={stats.failed > 0 ? 'error' : 'default'} variant="outlined" label={`${stats.failed} gagal`} />
+        </Stack>
+        {stats.last_event && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Event terakhir: {stats.last_event.event_name} · {stats.last_event.status} · {new Date(stats.last_event.created_at).toLocaleString('id-ID')}
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function MetaTrackingCard() {
+  const { data, isLoading, isError } = useAdminMetaTracking();
+  if (isError) return <Alert severity="warning">Pengaturan Meta Pixel dan CAPI belum bisa dimuat.</Alert>;
+  if (isLoading || !data) return null;
+  const formKey = `${data.enabled}-${data.pixel_id}-${data.graph_version}-${data.test_event_code}-${data.token_configured}`;
+  return <MetaTrackingForm key={formKey} initial={data} />;
+}
+
 export default function AdminOverview() {
   const { data, isLoading } = useAdminStats();
 
@@ -127,6 +258,7 @@ export default function AdminOverview() {
         <Grid size={{ xs: 6, md: 3 }}><StatCard label={`Balasan AI (${data?.period ?? ''})`} value={data?.ai_replies_month ?? 0} /></Grid>
         <Grid size={{ xs: 12, md: 4 }}><StatCard label="Total Pendapatan (lunas)" value={rupiah(data?.revenue_total ?? 0)} color="#1565c0" /></Grid>
         <Grid size={{ xs: 12 }}><AIModelCard /></Grid>
+        <Grid size={{ xs: 12 }}><MetaTrackingCard /></Grid>
         <Grid size={{ xs: 12 }}><CommunityCard /></Grid>
       </Grid>
     </Box>

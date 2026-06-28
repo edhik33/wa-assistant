@@ -75,6 +75,12 @@ type Invoice struct {
 	Status          string     `gorm:"size:16;default:pending;index" json:"status"` // pending, paid, expired, failed
 	PaymentMethod   string     `gorm:"size:32" json:"payment_method"`
 	CheckoutURL     string     `gorm:"type:text" json:"checkout_url"`
+	MetaEventID     string     `gorm:"size:100" json:"-"`
+	MetaFBP         string     `gorm:"size:255" json:"-"`
+	MetaFBC         string     `gorm:"size:255" json:"-"`
+	MetaSourceURL   string     `gorm:"type:text" json:"-"`
+	MetaClientIP    string     `gorm:"size:64" json:"-"`
+	MetaUserAgent   string     `gorm:"type:text" json:"-"`
 	PaidAt          *time.Time `json:"paid_at"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`

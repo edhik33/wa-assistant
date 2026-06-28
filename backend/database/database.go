@@ -66,6 +66,7 @@ func Init() {
 		&models.ClosingForm{}, &models.ClosingRecord{},
 		&models.ShippingCity{},
 		&models.GroupGuardConfig{}, &models.GroupModerationLog{},
+		&models.MetaConversionEvent{},
 	)
 
 	seedPlans()

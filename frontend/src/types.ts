@@ -68,6 +68,31 @@ export interface AIModelConfig {
   presets: AIPreset[];
 }
 
+export interface MetaTrackingEventStatus {
+  id: number;
+  event_id: string;
+  event_name: string;
+  status: 'pending' | 'sending' | 'sent' | 'failed';
+  attempts: number;
+  last_error?: string;
+  sent_at?: string;
+  created_at: string;
+}
+
+export interface MetaTrackingAdminConfig {
+  enabled: boolean;
+  pixel_id: string;
+  graph_version: string;
+  test_event_code: string;
+  token_configured: boolean;
+  stats: {
+    pending: number;
+    sent: number;
+    failed: number;
+    last_event?: MetaTrackingEventStatus;
+  };
+}
+
 export interface Invoice {
   id: number;
   plan_id: number;

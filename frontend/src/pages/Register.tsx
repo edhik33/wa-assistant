@@ -3,6 +3,7 @@ import { Box, Card, CardContent, TextField, Button, Typography, Alert, Link } fr
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import logo from '../assets/logo-chatloop-login.png';
+import { createMetaEventID, getMetaBrowserContext, trackMetaEvent } from '../services/metaPixel';
 
 function errorMessage(error: unknown, fallback: string) {
   if (typeof error === 'object' && error && 'response' in error) {
@@ -15,8 +16,6 @@ function errorMessage(error: unknown, fallback: string) {
 function normalizePhone(v: string): string {
   return v.replace(/[^0-9+]/g, '').replace(/^0+/, '62').replace(/^\+/, '').slice(0, 15);
 }
-
-declare global { interface Window { turnstile: any; __TURNSTILE_SITE_KEY__?: string } }
 
 export default function Register() {
   const [form, setForm] = useState({ name: '', business_name: '', phone: '', email: '', password: '' });
@@ -72,7 +71,13 @@ export default function Register() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.post('/register', { ...form, turnstile: turnstileToken });
+      const eventID = createMetaEventID('registration');
+      const res = await api.post('/register', {
+        ...form,
+        turnstile: turnstileToken,
+        ...getMetaBrowserContext(eventID),
+      });
+      await trackMetaEvent('CompleteRegistration', { content_name: 'ChatLoop Registration', status: 'trial' }, eventID);
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
       navigate('/app');

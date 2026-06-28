@@ -4,8 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import logo from '../assets/logo-chatloop-login.png';
 
-declare global { interface Window { turnstile: any; __TURNSTILE_SITE_KEY__?: string } }
-
 function responseStatus(error: unknown) {
   if (typeof error === 'object' && error && 'response' in error) {
     return (error as { response?: { status?: number; headers?: Record<string, string> } }).response;
