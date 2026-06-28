@@ -1,7 +1,6 @@
 import { useState, Fragment } from 'react';
 import { Box, Typography, Card, CardContent, TextField, IconButton, Stack, Chip, CircularProgress, Alert } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
-import SmartToyIcon from '@mui/icons-material/SmartToyOutlined';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLongOutlined';
 import { useTestChat, type ClosingPreview } from '../hooks';
 import PageHeader from './PageHeader';
@@ -100,11 +99,7 @@ export default function TestChatPanel({ agentId }: { agentId: number }) {
                 <Box sx={{ px: 1.25, py: 0.75, borderRadius: 1.5, bgcolor: m.role === 'user' ? 'primary.main' : '#eceff1', color: m.role === 'user' ? '#fff' : 'text.primary', whiteSpace: 'pre-wrap', fontSize: '0.88rem', lineHeight: 1.45 }}>
                   {renderWithLinks(m.text)}
                 </Box>
-                {m.role === 'bot' && m.model && (
-                  <Chip icon={<SmartToyIcon sx={{ fontSize: 14 }} />} label={`Dijawab oleh ${m.model}`} size="small" variant="outlined"
-                    sx={{ mt: 0.5, height: 20, fontSize: '0.68rem' }} />
-                )}
-                {m.escalate && <Chip label="Bot ragu, dialihkan ke manusia" size="small" color="warning" sx={{ mt: 0.5, ml: m.model ? 0.5 : 0 }} />}
+                {m.escalate && <Chip label="Bot ragu, dialihkan ke manusia" size="small" color="warning" sx={{ mt: 0.5 }} />}
                 {m.role === 'bot' && m.closing && <ClosingCard c={m.closing} />}
               </Box>
             ))}
