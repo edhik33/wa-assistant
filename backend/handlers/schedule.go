@@ -156,8 +156,8 @@ func StartScheduler() {
 // StartSchedulerCtx adalah versi lifecycle-aware dari scheduler; berhenti saat ctx dibatalkan.
 func StartSchedulerCtx(ctx context.Context) {
 	go func() {
-		processDueSchedules()
-		go processDueFollowUps()
+		safeRun("processDueSchedules", processDueSchedules)
+		go safeRun("processDueFollowUps", processDueFollowUps)
 		t := time.NewTicker(1 * time.Minute)
 		defer t.Stop()
 		for {
@@ -166,9 +166,9 @@ func StartSchedulerCtx(ctx context.Context) {
 				log.Println("Scheduler berhenti")
 				return
 			case <-t.C:
-				processDueSchedules()
+				safeRun("processDueSchedules", processDueSchedules)
 				// Follow-up dijalankan terpisah agar tak menahan jadwal.
-				go processDueFollowUps()
+				go safeRun("processDueFollowUps", processDueFollowUps)
 			}
 		}
 	}()

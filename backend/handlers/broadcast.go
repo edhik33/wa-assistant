@@ -339,8 +339,29 @@ func resumeBroadcast(broadcastID, agentID uint) {
 	log.Printf("Broadcast %d belum dilanjutkan: WA agent %d tidak tersambung", broadcastID, agentID)
 }
 
+// safeRun menjalankan fn dengan pemulihan panic supaya satu kegagalan di
+// goroutine tidak menjatuhkan seluruh proses (multi-tenant).
+func safeRun(name string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("PANIC dipulihkan di %s: %v", name, r)
+		}
+	}()
+	fn()
+}
+
 // runBroadcast mengirim pesan satu per satu dengan jeda ritme yang dipilih pengguna.
 func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
+	// Pulihkan panic agar broadcast bermasalah tidak menjatuhkan seluruh proses.
+	// Status dikembalikan ke "interrupted" supaya sisa penerima bisa dilanjutkan.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Broadcast %d PANIC dipulihkan: %v — ditandai interrupted agar bisa dilanjutkan", broadcastID, r)
+			_ = database.DB.Model(&models.Broadcast{}).
+				Where("id = ? AND status = ?", broadcastID, models.BroadcastRunning).
+				Update("status", models.BroadcastInterrupted).Error
+		}
+	}()
 	claim := database.DB.Model(&models.Broadcast{}).
 		Where("id = ? AND status IN ?", broadcastID, []string{models.BroadcastPending, models.BroadcastResuming}).
 		Updates(map[string]any{"status": models.BroadcastRunning, "pause_reason": "", "pause_code": 0, "paused_at": nil})
