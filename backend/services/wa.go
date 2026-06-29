@@ -214,7 +214,7 @@ func (w *waInstance) Connect(_ string) (string, error) {
 		if err := w.client.Connect(); err != nil {
 			return "", fmt.Errorf("gagal connect: %w", err)
 		}
-		go w.watchQR(qrChan)
+		Go("watchQR", func() { w.watchQR(qrChan) })
 		w.status = "qr"
 		return "qr", nil
 	}
@@ -270,7 +270,7 @@ func (w *waInstance) handleEvent(evt interface{}) {
 		log.Printf("WA agent %d: connected", w.agentID)
 		// Backfill nama kontak dari buku alamat WA sekali per proses (di goroutine agar tak blok event).
 		if firstSync && onConnected != nil {
-			go onConnected(w.agentID)
+			Go("onConnected", func() { onConnected(w.agentID) })
 		}
 
 	case *events.Disconnected:
@@ -316,14 +316,15 @@ func (w *waInstance) handleEvent(evt interface{}) {
 				if sender.Server == types.HiddenUserServer && !v.Info.SenderAlt.IsEmpty() {
 					sender = v.Info.SenderAlt
 				}
-				go onGroupMessage(w.agentID, GroupMessageMeta{
+				meta := GroupMessageMeta{
 					GroupJID:   v.Info.Chat.String(),
 					SenderJID:  v.Info.Sender.String(),
 					SenderPN:   sender.User,
 					SenderName: v.Info.PushName,
 					Text:       groupMessageText(v),
 					MessageID:  string(v.Info.ID),
-				})
+				}
+				Go("onGroupMessage", func() { onGroupMessage(w.agentID, meta) })
 			}
 			return
 		}
@@ -341,7 +342,7 @@ func (w *waInstance) handleEvent(evt interface{}) {
 		if contact.Server == types.HiddenUserServer && !v.Info.SenderAlt.IsEmpty() {
 			contact = v.Info.SenderAlt
 		}
-		go onMessage(w.agentID, contact, in)
+		Go("onMessage", func() { onMessage(w.agentID, contact, in) })
 	}
 }
 

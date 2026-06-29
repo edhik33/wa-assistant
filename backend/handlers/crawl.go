@@ -73,7 +73,7 @@ func StartCrawl(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Gagal membuat job crawl"})
 		return
 	}
-	go services.RunCrawl(job.ID, maxPages)
+	services.Go("RunCrawl", func() { services.RunCrawl(job.ID, maxPages) })
 	c.JSON(201, gin.H{"data": job, "max_pages": maxPages})
 }
 

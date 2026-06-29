@@ -109,6 +109,7 @@ func maybeExtractAndExportClosing(agentID uint, sender string) {
 	database.DB.Create(&rec)
 
 	go func() {
+		defer services.RecoverGo("closingSheetExport")
 		row, sheetErr := services.AppendRow(sheetID, sheetName, rowVals)
 		now := time.Now()
 		updates := map[string]any{"exported_at": &now}

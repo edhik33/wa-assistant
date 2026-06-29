@@ -298,11 +298,11 @@ func clearLoginPairThrottle(ip, username string) {
 // supaya tabel tidak tumbuh tanpa batas saat diserang banyak IP/username unik (botnet).
 func StartLoginThrottleSweeper() {
 	go func() {
-		cleanupLoginThrottle()
+		safeRun("cleanupLoginThrottle", cleanupLoginThrottle)
 		t := time.NewTicker(loginWindow)
 		defer t.Stop()
 		for range t.C {
-			cleanupLoginThrottle()
+			safeRun("cleanupLoginThrottle", cleanupLoginThrottle)
 		}
 	}()
 }

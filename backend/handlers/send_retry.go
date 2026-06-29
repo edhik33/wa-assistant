@@ -61,7 +61,7 @@ func sendRetryBatchSize() int {
 // StartFailedSendRetry mencoba ulang chat AI/manual yang gagal terkirim ke WhatsApp.
 func StartFailedSendRetry(ctx context.Context) {
 	go func() {
-		retryFailedSends()
+		safeRun("retryFailedSends", retryFailedSends)
 		ticker := time.NewTicker(sendRetryInterval())
 		defer ticker.Stop()
 		for {
@@ -70,7 +70,7 @@ func StartFailedSendRetry(ctx context.Context) {
 				log.Println("Failed-send retry worker berhenti")
 				return
 			case <-ticker.C:
-				retryFailedSends()
+				safeRun("retryFailedSends", retryFailedSends)
 			}
 		}
 	}()

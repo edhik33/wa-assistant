@@ -442,13 +442,13 @@ func StartMetaCAPIWorker(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(20 * time.Second)
 		defer ticker.Stop()
-		processMetaCAPIOutbox(ctx)
+		Safe("processMetaCAPIOutbox", func() { processMetaCAPIOutbox(ctx) })
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				processMetaCAPIOutbox(ctx)
+				Safe("processMetaCAPIOutbox", func() { processMetaCAPIOutbox(ctx) })
 			}
 		}
 	}()

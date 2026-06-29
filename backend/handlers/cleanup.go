@@ -13,11 +13,12 @@ func StartMediaCleanup(retentionDays int) {
 	if retentionDays <= 0 {
 		return
 	}
+	run := func() { safeRun("cleanupMedia", func() { cleanupMedia(retentionDays) }) }
 	go func() {
-		cleanupMedia(retentionDays)
+		run()
 		t := time.NewTicker(24 * time.Hour)
 		for range t.C {
-			cleanupMedia(retentionDays)
+			run()
 		}
 	}()
 }

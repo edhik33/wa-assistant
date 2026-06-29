@@ -25,7 +25,7 @@ func main() {
 	appCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	go services.BackfillEmbeddings()
+	services.Go("BackfillEmbeddings", services.BackfillEmbeddings)
 	services.InitWA(config.Env("DB_PATH", "./wa-assistant.db"))
 	services.SetHandlers(handlers.OnWAMessage, handlers.OnDeviceLinked)
 	services.SetLabelHandlers(handlers.OnLabelEdit, handlers.OnLabelAssoc)
@@ -33,19 +33,19 @@ func main() {
 	handlers.InitGroupGuard()
 
 	// Sambungkan ulang semua agent yang sudah ter-link.
-	go handlers.StartAgents()
+	services.Go("StartAgents", handlers.StartAgents)
 	// Watchdog: pantau & sambungkan ulang sesi WA yang terputus diam-diam (tiap 90 detik).
 	services.StartReconnectWatchdogCtx(appCtx, 90*time.Second)
 
 	// Lanjutkan broadcast yang sempat terhenti saat server mati; tandai jadwal yang nyangkut.
-	go handlers.ResumeBroadcasts()
+	services.Go("ResumeBroadcasts", handlers.ResumeBroadcasts)
 	handlers.CleanupStuckSchedules()
 
 	// Init Google Sheets client untuk export closing.
 	services.InitSheets()
 
 	// Seed daftar kota RajaOngkir ke DB lokal (async, non-blocking).
-	go services.SeedShippingCities()
+	services.Go("SeedShippingCities", services.SeedShippingCities)
 
 	// Scheduler pesan terjadwal + pembersihan media lama.
 	handlers.StartSchedulerCtx(appCtx)

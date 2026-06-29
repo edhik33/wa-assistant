@@ -21,15 +21,17 @@ func StartReconnectWatchdogCtx(ctx context.Context, interval time.Duration) {
 				log.Println("WA reconnect watchdog berhenti")
 				return
 			case <-t.C:
-				globalMu.Lock()
-				list := make([]*waInstance, 0, len(instances))
-				for _, w := range instances {
-					list = append(list, w)
-				}
-				globalMu.Unlock()
-				for _, w := range list {
-					w.reconnectIfNeeded()
-				}
+				Safe("reconnectWatchdog", func() {
+					globalMu.Lock()
+					list := make([]*waInstance, 0, len(instances))
+					for _, w := range instances {
+						list = append(list, w)
+					}
+					globalMu.Unlock()
+					for _, w := range list {
+						w.reconnectIfNeeded()
+					}
+				})
 			}
 		}
 	}()

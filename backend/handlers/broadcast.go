@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -320,6 +321,7 @@ func ResumeBroadcasts() {
 
 // resumeBroadcast menunggu WA agent tersambung (maks ~90 detik) lalu melanjutkan pengiriman.
 func resumeBroadcast(broadcastID, agentID uint) {
+	defer services.RecoverGo("resumeBroadcast")
 	for i := 0; i < 18; i++ {
 		if isBroadcastCancelRequested(broadcastID) {
 			finalizeCancelledBroadcast(broadcastID)
@@ -339,15 +341,11 @@ func resumeBroadcast(broadcastID, agentID uint) {
 	log.Printf("Broadcast %d belum dilanjutkan: WA agent %d tidak tersambung", broadcastID, agentID)
 }
 
-// safeRun menjalankan fn dengan pemulihan panic supaya satu kegagalan di
-// goroutine tidak menjatuhkan seluruh proses (multi-tenant).
+// safeRun menjalankan fn secara sinkron dengan pemulihan panic supaya satu
+// kegagalan di sebuah goroutine tidak menjatuhkan seluruh proses (multi-tenant).
+// Alias lokal ke services.Safe agar call-site di package ini tetap ringkas.
 func safeRun(name string, fn func()) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("PANIC dipulihkan di %s: %v", name, r)
-		}
-	}()
-	fn()
+	services.Safe(name, fn)
 }
 
 // runBroadcast mengirim pesan satu per satu dengan jeda ritme yang dipilih pengguna.
@@ -356,7 +354,7 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 	// Status dikembalikan ke "interrupted" supaya sisa penerima bisa dilanjutkan.
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("Broadcast %d PANIC dipulihkan: %v — ditandai interrupted agar bisa dilanjutkan", broadcastID, r)
+			log.Printf("Broadcast %d PANIC dipulihkan: %v — ditandai interrupted agar bisa dilanjutkan\n%s", broadcastID, r, debug.Stack())
 			_ = database.DB.Model(&models.Broadcast{}).
 				Where("id = ? AND status = ?", broadcastID, models.BroadcastRunning).
 				Update("status", models.BroadcastInterrupted).Error

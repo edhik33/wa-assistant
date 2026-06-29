@@ -21,7 +21,7 @@ func StartSubscriptionSweepCtx(ctx context.Context, interval time.Duration) {
 		interval = time.Hour
 	}
 	go func() {
-		RunSubscriptionSweep()
+		safeRun("RunSubscriptionSweep", RunSubscriptionSweep)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -30,7 +30,7 @@ func StartSubscriptionSweepCtx(ctx context.Context, interval time.Duration) {
 				log.Println("Subscription sweep berhenti")
 				return
 			case <-ticker.C:
-				RunSubscriptionSweep()
+				safeRun("RunSubscriptionSweep", RunSubscriptionSweep)
 			}
 		}
 	}()

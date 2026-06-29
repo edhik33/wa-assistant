@@ -356,10 +356,10 @@ func processMessage(agentID uint, sender types.JID, in services.IncomingMessage)
 	incrementAIUsage(agent.TenantID) // hitung pemakaian kuota bulanan tenant
 
 	// Long-term memory: auto-summary setelah percakapan (jeda >30 menit).
-	go maybeSummarize(agent, num)
+	services.Go("maybeSummarize", func() { maybeSummarize(agent, num) })
 
 	// Export data closing ke Google Sheets (async, non-blocking).
-	go maybeExtractAndExportClosing(agentID, num)
+	services.Go("maybeExtractAndExportClosing", func() { maybeExtractAndExportClosing(agentID, num) })
 }
 
 // sendChunked mengirim balasan AI dalam 1-3 bubble (per paragraf), masing-masing dengan
@@ -739,6 +739,7 @@ func StartAgents() {
 		}
 		if a.DeviceJID != "" {
 			go func(ag models.Agent) {
+				defer services.RecoverGo("agentReconnect")
 				status, err := services.WA(ag.ID).Connect(ag.DeviceJID)
 				if err != nil {
 					log.Printf("Agent %d gagal connect: %v", ag.ID, err)
