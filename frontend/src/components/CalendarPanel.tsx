@@ -15,16 +15,14 @@ import EventAvailableIcon from '@mui/icons-material/EventAvailableOutlined';
 import AccessTimeIcon from '@mui/icons-material/AccessTimeOutlined';
 import PeopleAltIcon from '@mui/icons-material/PeopleAltOutlined';
 import InfoIcon from '@mui/icons-material/InfoOutlined';
-import { useSchedules, useCreateSchedule, useCancelSchedule, useBroadcastDetail, useBroadcastPreflight, useResumeBroadcast } from '../hooks';
+import { useSchedules, useCreateSchedule, useCancelSchedule, useBroadcastDetail, useResumeBroadcast } from '../hooks';
 import RecipientField from './RecipientField';
 import WhatsAppEditor from './WhatsAppEditor';
 import TemplatePicker from './TemplatePicker';
 import PageHeader from './PageHeader';
-import BroadcastSafetyReview from './BroadcastSafetyReview';
 import DelayFields from './broadcast/DelayFields';
-import { defaultBroadcastSafetyForm } from '../services/broadcastSafety';
 import { swalConfirm, swalToast } from '../services/swal';
-import type { BroadcastAssessment, BroadcastSafetyForm, ScheduledMessage } from '../types';
+import type { ScheduledMessage } from '../types';
 
 const DOW = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
@@ -103,7 +101,6 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
 
   const { data: schedules } = useSchedules(agentId);
   const createSchedule = useCreateSchedule(agentId);
-  const preflight = useBroadcastPreflight(agentId);
   const cancelSchedule = useCancelSchedule(agentId);
   const { data: detail } = useBroadcastDetail(agentId, detailId);
   const resumeBroadcast = useResumeBroadcast(agentId);
@@ -129,9 +126,6 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
   const [restDuration, setRestDuration] = useState(90);
   const [err, setErr] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [safety, setSafety] = useState<BroadcastSafetyForm>(() => defaultBroadcastSafetyForm());
-  const [assessment, setAssessment] = useState<BroadcastAssessment | null>(null);
-  const [assessmentStale, setAssessmentStale] = useState(false);
 
   const byDate: Record<string, ScheduledMessage[]> = {};
   (schedules || []).forEach(s => {
@@ -180,21 +174,6 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
     setErrors({});
     setMinDelay(10);
     setMaxDelay(30);
-    setSafety(defaultBroadcastSafetyForm());
-    setAssessment(null);
-    setAssessmentStale(false);
-  };
-
-  const updateSafety = (patch: Partial<BroadcastSafetyForm>, affectsAssessment = true) => {
-    setSafety(current => ({
-      ...current,
-      ...(affectsAssessment ? { risk_acknowledged: false, override_phrase: '', override_reason: '' } : {}),
-      ...patch,
-    }));
-    if (affectsAssessment) {
-      setAssessmentStale(true);
-      setErr('');
-    }
   };
 
   const openCreate = (key = selDate) => {
@@ -233,37 +212,6 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
       return;
     }
 
-    let currentAssessment: BroadcastAssessment;
-    try {
-      currentAssessment = await preflight.mutateAsync({
-        message,
-        recipients: recList,
-        run_at: runAt.toISOString(),
-        ...safety,
-      });
-      setAssessment(currentAssessment);
-      setAssessmentStale(false);
-    } catch (error) {
-      setErr(errorMessage(error, 'Pemeriksaan izin belum berhasil'));
-      return;
-    }
-
-    if (!currentAssessment.can_proceed) {
-      setErr('Jadwal belum bisa disimpan. Perbaiki catatan izin atau penerima yang ditandai di bawah.');
-      return;
-    }
-    if (currentAssessment.level === 'medium' && !safety.risk_acknowledged) {
-      setErr('Baca peringatan dan centang persetujuan sebelum menyimpan jadwal.');
-      return;
-    }
-    if (currentAssessment.level === 'high' && (
-      safety.override_phrase !== (currentAssessment.override_phrase || 'SAYA PAHAM RISIKONYA')
-      || !safety.override_reason.trim()
-    )) {
-      setErr('Lengkapi kalimat konfirmasi dan alasan untuk melanjutkan jadwal berisiko tinggi.');
-      return;
-    }
-
     const fd = new FormData();
     fd.append('message', message);
     fd.append('recipients', JSON.stringify(recList));
@@ -272,15 +220,13 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
     fd.append('max_delay', String(maxDelay));
     fd.append('rest_every', String(restEvery));
     fd.append('rest_duration', String(restDuration));
-    Object.entries(safety).forEach(([key, value]) => fd.append(key, String(value)));
     if (file) fd.append('file', file);
     try {
       const result = await createSchedule.mutateAsync(fd);
       setFormOpen(false);
       resetForm();
       const accepted = result.data?.recipient_count ?? recList.length;
-      const excluded = Math.max(0, recList.length - accepted);
-      swalToast(`Jadwal tersimpan untuk ${accepted} penerima${excluded ? `; ${excluded} tidak disertakan` : ''}`);
+      swalToast(`Jadwal tersimpan untuk ${accepted} penerima.`);
     } catch (e) {
       setErr(errorMessage(e, 'Gagal menjadwalkan'));
     }
@@ -444,7 +390,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
           {err && <Alert severity="error" sx={{ mb: 1.5 }}>{err}</Alert>}
           <Alert severity="info" icon={false} sx={{ mb: 1.5 }}>
             <Typography variant="body2">
-              Jadwal untuk <b>{shortDate(selDate)}</b>. Izin penerima dan risiko akan diperiksa sebelum jadwal disimpan.
+              Jadwal untuk <b>{shortDate(selDate)}</b>. Pesan dikirim otomatis ke daftar penerima pada waktu yang dipilih. Kontak yang membalas STOP otomatis dilewati.
             </Typography>
           </Alert>
 
@@ -465,7 +411,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
             <Box sx={{ mb: 0.75 }}>
               <TemplatePicker agentId={agentId} onPick={b => { setMessage(m => m ? m + '\n' + b : b); if (errors.message) setErrors(p => ({ ...p, message: '' })); }} />
             </Box>
-            <WhatsAppEditor value={message} onChange={v => { setMessage(v); setAssessmentStale(true); if (errors.message) setErrors(p => ({...p, message: ''})); }}
+            <WhatsAppEditor value={message} onChange={v => { setMessage(v); if (errors.message) setErrors(p => ({...p, message: ''})); }}
               placeholder="Halo {nama}, ..." rows={3} error={!!errors.message} helperText={errors.message} />
           </Box>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 0.75 }}>
@@ -486,7 +432,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
             title="Penerima"
             subtitle={`${formRecipientCount} baris penerima siap diproses.`}
           />
-          <RecipientField agentId={agentId} value={recipients} onChange={v => { setRecipients(v); setAssessmentStale(true); if (errors.recipients) setErrors(p => ({...p, recipients: ''})); }} error={errors.recipients} />
+          <RecipientField agentId={agentId} value={recipients} onChange={v => { setRecipients(v); if (errors.recipients) setErrors(p => ({...p, recipients: ''})); }} error={errors.recipients} />
 
           <Divider sx={{ my: 1.5 }} />
 
@@ -502,20 +448,12 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
             onEditDelay={() => { if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
           />
 
-          <Divider sx={{ my: 1.5 }} />
-
-          <BroadcastSafetyReview
-            value={safety}
-            assessment={assessment}
-            stale={assessmentStale}
-            onChange={updateSafety}
-          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setFormOpen(false)}>Batal</Button>
-          <Button variant="contained" onClick={save} disabled={createSchedule.isPending || preflight.isPending}
-            startIcon={createSchedule.isPending || preflight.isPending ? <CircularProgress size={16} /> : null}>
-            {createSchedule.isPending ? 'Menyimpan...' : preflight.isPending ? 'Memeriksa...' : 'Periksa & Simpan'}
+          <Button variant="contained" onClick={save} disabled={createSchedule.isPending}
+            startIcon={createSchedule.isPending ? <CircularProgress size={16} /> : null}>
+            {createSchedule.isPending ? 'Menyimpan...' : 'Simpan jadwal'}
           </Button>
         </DialogActions>
       </Dialog>

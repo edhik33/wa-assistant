@@ -14,7 +14,6 @@ import (
 	"wa-assistant/backend/services"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 type scheduleRecipient struct {
@@ -79,56 +78,19 @@ func CreateSchedule(c *gin.Context) {
 	restDuration, _ := strconv.Atoi(c.PostForm("rest_duration"))
 	restEvery, restDuration = normalizeBroadcastRest(restEvery, restDuration)
 
-	consent := parseConsentAttestation(
-		c.PostForm("consent_category"), c.PostForm("consent_source"),
-		c.PostForm("consent_granted_at"), c.PostForm("consent_note"),
-		c.PostForm("consent_confirmed") == "true",
-	)
-	guardRecipients := make([]broadcastGuardRecipient, 0, len(clean))
-	for _, recipient := range clean {
-		guardRecipients = append(guardRecipients, broadcastGuardRecipient{Number: recipient.Number, Name: recipient.Name})
-	}
-	assessment := assessBroadcast(id, message, guardRecipients, consent, &runAt)
-	if assessment.Level == "high" && !canOverrideBroadcastRisk(c) {
-		c.JSON(403, gin.H{"error": "Hanya owner yang dapat menyimpan jadwal dengan risiko tinggi", "assessment": assessment})
-		return
-	}
-	acknowledged := c.PostForm("risk_acknowledged") == "true"
-	overridePhrase := c.PostForm("override_phrase")
-	overrideReason := strings.TrimSpace(c.PostForm("override_reason"))
-	if confirmationError := validateRiskConfirmation(assessment, acknowledged, overridePhrase, overrideReason); confirmationError != "" {
-		c.JSON(422, gin.H{"error": confirmationError, "assessment": assessment})
-		return
-	}
-
-	eligible := make([]scheduleRecipient, 0, assessment.EligibleRecipients)
-	for _, recipient := range clean {
-		if assessment.eligibleNumbers[recipient.Number] {
-			eligible = append(eligible, recipient)
-		}
-	}
-	recJSON, err := json.Marshal(eligible)
+	// Jadwal murni: simpan apa adanya tanpa gating consent/risiko. Pengaman tetap
+	// berjalan saat jadwal dieksekusi (fireScheduled -> runBroadcast): opt-out
+	// (STOP) dilewati, kuota & jeda dihormati.
+	recJSON, err := json.Marshal(clean)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Gagal menyiapkan penerima"})
 		return
 	}
 
-	var overrideBy *uint
-	var overrideAt *time.Time
-	if assessment.Level == "high" {
-		uid := c.GetUint("user_id")
-		now := time.Now()
-		overrideBy = &uid
-		overrideAt = &now
-	}
 	s := models.ScheduledMessage{
 		TenantID: tid, AgentID: id, RunAt: runAt, Message: message,
-		Recipients: string(recJSON), RecipientCount: len(eligible),
+		Recipients: string(recJSON), RecipientCount: len(clean),
 		MinDelay: minD, MaxDelay: maxD, RestEvery: restEvery, RestDuration: restDuration, Status: "scheduled",
-		ConsentCategory: consent.Category, ConsentSource: consent.Source,
-		RiskLevel: assessment.Level, RiskReasons: assessmentReasonsJSON(assessment),
-		RiskAcknowledged: acknowledged || assessment.Level == "high",
-		OverrideReason:   overrideReason, OverrideBy: overrideBy, OverrideAt: overrideAt,
 	}
 	if fh, ferr := c.FormFile("file"); ferr == nil {
 		f, e := fh.Open()
@@ -155,17 +117,12 @@ func CreateSchedule(c *gin.Context) {
 		}
 		s.MediaPath = storeMedia(id, data, s.Mimetype, fh.Filename)
 	}
-	if err := database.DB.Transaction(func(tx *gorm.DB) error {
-		if err := recordAttestedConsents(tx, id, c.GetUint("user_id"), guardRecipients, consent, assessment.eligibleNumbers); err != nil {
-			return err
-		}
-		return tx.Create(&s).Error
-	}); err != nil {
+	if err := database.DB.Create(&s).Error; err != nil {
 		log.Printf("Gagal membuat jadwal agent %d: %v", id, err)
 		c.JSON(500, gin.H{"error": "Gagal membuat jadwal"})
 		return
 	}
-	c.JSON(200, gin.H{"data": s, "assessment": assessment})
+	c.JSON(200, gin.H{"data": s})
 }
 
 // ListSchedules = daftar jadwal agent.

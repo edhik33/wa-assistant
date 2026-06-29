@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from './services/api';
-import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, MetaTrackingAdminConfig, Invoice, PaymentChannel, Analytics, AIMetrics, Contact, ChatMsg, Broadcast, BroadcastRecipient, BroadcastAssessment, BroadcastPreflightBody, BroadcastSafetyForm, BroadcastConsentSummary, WAGroup, GroupGuardConfig, GroupModerationLog, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff, CrawlJob, CrawlPage, KnowledgeUsage } from './types';
+import type { Plan, TenantRow, Usage, AdminStats, AIModelConfig, MetaTrackingAdminConfig, Invoice, PaymentChannel, Analytics, AIMetrics, Contact, ChatMsg, Broadcast, BroadcastRecipient, BroadcastSafetyForm, BroadcastConsentSummary, WAGroup, GroupGuardConfig, GroupModerationLog, LabelInfo, ScheduledMessage, AutoReply, Template, SavedContact, SavedContactsResp, FollowUp, Agent, KnowledgeItem, Handoff, CrawlJob, CrawlPage, KnowledgeUsage } from './types';
 import type { MetaBrowserContext } from './services/metaPixel';
 
 type ContactList = { number: string; name: string }[];
@@ -280,13 +280,6 @@ export function useResumeBot(agentId: number) {
 }
 
 // ---- Broadcast ----
-
-export function useBroadcastPreflight(agentId: number) {
-  return useMutation({
-    mutationFn: async (body: BroadcastPreflightBody) =>
-      (await api.post(`/agents/${agentId}/broadcast/preflight`, body)).data as BroadcastAssessment,
-  });
-}
 
 export function useBroadcastConsentSummary(agentId: number) {
   return useQuery<BroadcastConsentSummary>({

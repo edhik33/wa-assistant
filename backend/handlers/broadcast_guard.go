@@ -335,43 +335,6 @@ func intText(n int) string {
 	return strconv.Itoa(n)
 }
 
-func BroadcastPreflight(c *gin.Context) {
-	agentID, ok := resolveAgent(c)
-	if !ok {
-		return
-	}
-	var req broadcastPreflightRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "Format pemeriksaan broadcast tidak valid"})
-		return
-	}
-	if len(req.Recipients) > 1000 {
-		c.JSON(400, gin.H{"error": "Maksimal 1000 penerima per pemeriksaan"})
-		return
-	}
-	consent := parseConsentAttestation(req.ConsentCategory, req.ConsentSource, req.ConsentGrantedAt, req.ConsentNote, req.ConsentConfirmed)
-	var scheduledFor *time.Time
-	if req.RunAt != "" {
-		if parsed, err := time.Parse(time.RFC3339, req.RunAt); err == nil {
-			scheduledFor = &parsed
-		}
-	}
-	assessment := assessBroadcast(agentID, req.Message, req.Recipients, consent, scheduledFor)
-	if assessment.Level == "high" && !canOverrideBroadcastRisk(c) {
-		assessment.Level = "blocked"
-		assessment.CanOverride = false
-		assessment.CanProceed = false
-		assessment.RequiresAcknowledgement = false
-		assessment.RequiresOverride = false
-		assessment.Title = "Perlu persetujuan owner"
-		assessment.Findings = append(assessment.Findings, broadcastGuardFinding{
-			Code: "owner_approval_required", Severity: "blocked",
-			Message: "Hanya owner yang dapat melanjutkan broadcast dengan risiko tinggi.",
-		})
-	}
-	c.JSON(200, assessment)
-}
-
 func canOverrideBroadcastRisk(c *gin.Context) bool {
 	return c.GetString("role") == "owner" || isSuperAdmin(c)
 }

@@ -189,7 +189,6 @@ func main() {
 			auth.DELETE("/agents/:id/follow-ups/:fid", handlers.DeleteFollowUp)
 			auth.POST("/agents/:id/follow-ups/:fid/enroll", handlers.EnrollFollowUp)
 			auth.GET("/agents/:id/broadcast/consent-summary", handlers.BroadcastConsentSummary)
-			auth.POST("/agents/:id/broadcast/preflight", handlers.BroadcastPreflight)
 			auth.POST("/agents/:id/broadcast", handlers.CreateBroadcast)
 			auth.GET("/agents/:id/broadcasts", handlers.ListBroadcasts)
 			auth.GET("/agents/:id/broadcasts/:bid", handlers.BroadcastDetail)
