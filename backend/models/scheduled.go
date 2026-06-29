@@ -21,7 +21,7 @@ type ScheduledMessage struct {
 	MaxDelay         int        `json:"max_delay"`
 	RestEvery        int        `json:"rest_every"`                                    // jeda istirahat tiap N pesan (0 = mati)
 	RestDuration     int        `json:"rest_duration"`                                 // lama istirahat (detik)
-	Status           string     `gorm:"size:16;default:scheduled;index" json:"status"` // scheduled, done, cancelled, interrupted
+	Status           string     `gorm:"size:16;default:scheduled;index" json:"status"` // scheduled, running, resuming, wa_restricted, done, cancelled, interrupted
 	ConsentCategory  string     `gorm:"size:32;index" json:"consent_category"`
 	ConsentSource    string     `gorm:"size:48" json:"consent_source"`
 	RiskLevel        string     `gorm:"size:16;index" json:"risk_level"`

@@ -8,6 +8,8 @@ const (
 	BroadcastRunning         = "running"
 	BroadcastDone            = "done"
 	BroadcastInterrupted     = "interrupted"
+	BroadcastWARestricted    = "wa_restricted"
+	BroadcastResuming        = "resuming"
 	BroadcastFailed          = "failed"
 	BroadcastCancelRequested = "cancel_requested"
 	BroadcastCancelled       = "cancelled"
@@ -19,7 +21,10 @@ type Broadcast struct {
 	TenantID         uint       `gorm:"index;not null" json:"tenant_id"`
 	AgentID          uint       `gorm:"index;not null" json:"agent_id"`
 	Message          string     `gorm:"type:text" json:"message"`
-	Status           string     `gorm:"size:16;default:pending;index" json:"status"` // pending, running, done, interrupted, failed, cancel_requested, cancelled
+	Status           string     `gorm:"size:16;default:pending;index" json:"status"` // pending, running, resuming, wa_restricted, done, interrupted, failed, cancel_requested, cancelled
+	PauseReason      string     `gorm:"size:48" json:"pause_reason,omitempty"`
+	PauseCode        int        `json:"pause_code,omitempty"`
+	PausedAt         *time.Time `json:"paused_at,omitempty"`
 	ConsentCategory  string     `gorm:"size:32;index" json:"consent_category"`
 	ConsentSource    string     `gorm:"size:48" json:"consent_source"`
 	RiskLevel        string     `gorm:"size:16;index" json:"risk_level"` // low, medium, high

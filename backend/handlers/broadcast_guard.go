@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -143,7 +142,7 @@ func assessBroadcast(agentID uint, message string, recipients []broadcastGuardRe
 		Level:           "low",
 		Title:           "Risiko lebih rendah",
 		TotalRecipients: len(recipients),
-		DailyLimit:      effectiveDailyCap(agentID),
+		DailyLimit:      0,
 		Findings:        make([]broadcastGuardFinding, 0),
 		eligibleNumbers: map[string]bool{},
 		excludedReasons: map[string]string{},
@@ -151,14 +150,6 @@ func assessBroadcast(agentID uint, message string, recipients []broadcastGuardRe
 	if scheduledFor == nil || sameLocalDay(*scheduledFor, time.Now()) {
 		assessment.SentToday = dailySentCount(agentID)
 	}
-	if fullCap := configuredDailyCap(); assessment.DailyLimit < fullCap {
-		assessment.Findings = append(assessment.Findings, broadcastGuardFinding{
-			Code: "warmup_active", Severity: "info",
-			Message:        "Pembatasan volume internal sedang aktif. Batas internal hari ini " + intText(assessment.DailyLimit) + " dari target " + intText(fullCap) + ".",
-			Recommendation: "Naikkan volume secara bertahap dan pantau respons penerima sebelum menambah jumlah kiriman.",
-		})
-	}
-
 	if !services.ValidBroadcastConsentCategory(consent.Category) {
 		assessment.Findings = append(assessment.Findings, broadcastGuardFinding{
 			Code: "invalid_category", Severity: "blocked",
@@ -253,14 +244,7 @@ func assessBroadcast(agentID uint, message string, recipients []broadcastGuardRe
 		})
 	}
 
-	remaining := assessment.DailyLimit - int(assessment.SentToday)
-	if remaining < 0 {
-		remaining = 0
-	}
 	assessment.SendableToday = assessment.EligibleRecipients
-	if assessment.SendableToday > remaining {
-		assessment.SendableToday = remaining
-	}
 
 	if assessment.EligibleRecipients == 0 {
 		assessment.Level = "blocked"
@@ -269,49 +253,17 @@ func assessBroadcast(agentID uint, message string, recipients []broadcastGuardRe
 			Code: "no_eligible_recipients", Severity: "blocked",
 			Message: "Tidak ada penerima yang memenuhi syarat pengiriman.",
 		})
-	} else if remaining == 0 {
-		assessment.Level = "blocked"
-		assessment.Title = "Batas internal hari ini tercapai"
-		assessment.Findings = append(assessment.Findings, broadcastGuardFinding{
-			Code: "daily_limit_reached", Severity: "blocked",
-			Message:        "Batas internal pengiriman hari ini sudah tercapai.",
-			Recommendation: "Jadwalkan kampanye untuk hari berikutnya.",
-		})
 	} else {
-		// Ambang risiko menyesuaikan jenis pesan: promo (marketing) adalah pemicu pembatasan
-		// terbesar, jadi diperketat; pesan transaksional (update pesanan/pengingat/info) dilonggarkan.
-		mediumRatio, highRatio, highMin := consentRiskThresholds(consent.Category)
+		// Kontak baru tetap boleh dikirimi setelah pengguna membaca peringatan. Riwayat
+		// interaksi dipakai sebagai informasi risiko, bukan pembatas volume harian.
+		warningRatio := consentWarningRatio(consent.Category)
 		noInteractionRatio := float64(assessment.NoInteraction) / float64(assessment.EligibleRecipients)
-		if noInteractionRatio > highRatio && assessment.EligibleRecipients > highMin {
-			assessment.Level = "high"
-			assessment.Findings = append(assessment.Findings, broadcastGuardFinding{
-				Code: "mostly_no_interaction", Severity: "danger",
-				Message:        intText(assessment.NoInteraction) + " penerima belum pernah mengirim pesan ke nomor ini.",
-				Recommendation: "Mulai dari penerima yang pernah berinteraksi atau pecah menjadi kampanye lebih kecil.",
-			})
-		} else if noInteractionRatio > mediumRatio {
+		if noInteractionRatio > warningRatio {
 			assessment.Level = "medium"
 			assessment.Findings = append(assessment.Findings, broadcastGuardFinding{
 				Code: "many_no_interaction", Severity: "warning",
 				Message:        intText(assessment.NoInteraction) + " penerima belum pernah mengirim pesan ke nomor ini.",
-				Recommendation: "Pastikan konteks pesan sesuai dengan izin yang diberikan.",
-			})
-		}
-
-		if assessment.EligibleRecipients > remaining {
-			assessment.Level = "high"
-			assessment.Findings = append(assessment.Findings, broadcastGuardFinding{
-				Code: "over_daily_limit", Severity: "danger",
-				Message:        "Hanya " + intText(remaining) + " penerima yang dapat diproses dalam batas internal hari ini.",
-				Recommendation: "Kurangi penerima atau jadwalkan sisanya untuk hari berikutnya.",
-			})
-		} else if assessment.EligibleRecipients > int(math.Ceil(float64(remaining)*0.5)) {
-			if assessment.Level == "low" {
-				assessment.Level = "medium"
-			}
-			assessment.Findings = append(assessment.Findings, broadcastGuardFinding{
-				Code: "large_daily_share", Severity: "warning",
-				Message: "Kampanye memakai lebih dari separuh sisa batas internal hari ini.",
+				Recommendation: "Pastikan penerima memang memberi izin dan pahami risiko pembatasan WhatsApp.",
 			})
 		}
 
@@ -337,14 +289,13 @@ func assessBroadcast(agentID uint, message string, recipients []broadcastGuardRe
 	return assessment
 }
 
-// consentRiskThresholds mengembalikan ambang rasio "belum pernah berinteraksi" untuk naik ke
-// medium/high, plus jumlah penerima minimal agar dianggap high — disesuaikan per jenis pesan.
-// Promo (marketing) jauh lebih berisiko di mata WhatsApp, jadi ambangnya lebih rendah.
-func consentRiskThresholds(category string) (mediumRatio, highRatio float64, highMin int) {
+// consentWarningRatio menentukan kapan kontak tanpa riwayat perlu diperingatkan.
+// Peringatan ini tidak membatasi atau mengurangi jumlah penerima.
+func consentWarningRatio(category string) float64 {
 	if category == "marketing" {
-		return 0.25, 0.5, 50 // promo: ketat, berlaku di volume lebih kecil
+		return 0.25
 	}
-	return 0.4, 0.7, 100 // transaksional & lainnya: lebih longgar (perilaku lama)
+	return 0.4
 }
 
 func messageRiskFindings(message string, recipientCount int) []broadcastGuardFinding {

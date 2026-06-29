@@ -231,7 +231,10 @@ export interface BroadcastPreflightBody extends BroadcastSafetyForm {
 export interface Broadcast {
   id: number;
   message: string;
-  status: string; // pending, running, done, failed, interrupted
+  status: string; // pending, running, resuming, wa_restricted, done, failed, interrupted
+  pause_reason?: string;
+  pause_code?: number;
+  paused_at?: string;
   total: number;
   sent: number;
   failed: number;

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"wa-assistant/backend/config"
 	"wa-assistant/backend/database"
 	"wa-assistant/backend/models"
 	"wa-assistant/backend/services"
@@ -23,10 +22,23 @@ import (
 // berapa pun yang dikirim pengguna.
 const minBroadcastDelay = 8
 
-// broadcastWarmupSchedule = batas harian bertahap untuk nomor yang belum lama dipakai broadcast.
-// Indeks ke-0 = hari aktif broadcast pertama, dst. Setelah daftar habis, pakai batas penuh
-// (BROADCAST_DAILY_CAP). Tujuannya meniru pemanasan manual nomor baru agar tidak langsung blast.
-var broadcastWarmupSchedule = []int{20, 40, 80, 120, 160}
+type broadcastSendErrorAction string
+
+const (
+	broadcastErrorFailed       broadcastSendErrorAction = "failed"
+	broadcastErrorInterrupted  broadcastSendErrorAction = "interrupted"
+	broadcastErrorWARestricted broadcastSendErrorAction = "wa_restricted"
+)
+
+func classifyBroadcastSendError(err error) (broadcastSendErrorAction, int) {
+	if code, ok := services.WAServerErrorCode(err); ok && code == 463 {
+		return broadcastErrorWARestricted, code
+	}
+	if err != nil && strings.Contains(err.Error(), "tidak terhubung") {
+		return broadcastErrorInterrupted, 0
+	}
+	return broadcastErrorFailed, 0
+}
 
 // CheckNumbers memeriksa daftar nomor apakah terdaftar di WhatsApp sebelum broadcast.
 func CheckNumbers(c *gin.Context) {
@@ -88,7 +100,7 @@ func CheckNumbers(c *gin.Context) {
 		"data": data,
 		"summary": gin.H{
 			"sent_today": dailySentCount(id),
-			"daily_cap":  effectiveDailyCap(id),
+			"daily_cap":  0, // 0 = aplikasi tidak membatasi jumlah harian
 		},
 	})
 }
@@ -113,6 +125,13 @@ func CreateBroadcast(c *gin.Context) {
 	}
 	if !services.WA(id).IsConnected() {
 		c.JSON(400, gin.H{"error": "WhatsApp belum tersambung"})
+		return
+	}
+	var paused int64
+	database.DB.Model(&models.Broadcast{}).
+		Where("agent_id = ? AND status = ?", id, models.BroadcastWARestricted).Count(&paused)
+	if paused > 0 {
+		c.JSON(409, gin.H{"error": "Ada broadcast yang dijeda oleh WhatsApp. Lanjutkan atau batalkan broadcast tersebut terlebih dahulu."})
 		return
 	}
 	if len(reqRecipients) > 1000 {
@@ -262,14 +281,14 @@ func CancelBroadcast(c *gin.Context) {
 		return
 	}
 	// Kalau tidak ada worker aktif, finalize langsung.
-	if b.Status == models.BroadcastPending || b.Status == models.BroadcastInterrupted {
+	if b.Status == models.BroadcastPending || b.Status == models.BroadcastInterrupted || b.Status == models.BroadcastWARestricted {
 		finalizeCancelledBroadcast(b.ID)
 		c.JSON(200, gin.H{"message": "Broadcast dibatalkan", "status": models.BroadcastCancelled})
 		return
 	}
 	// Kalau running, minta worker berhenti di checkpoint.
 	res := database.DB.Model(&models.Broadcast{}).
-		Where("id = ? AND agent_id = ? AND status = ?", b.ID, id, models.BroadcastRunning).
+		Where("id = ? AND agent_id = ? AND status IN ?", b.ID, id, []string{models.BroadcastRunning, models.BroadcastResuming}).
 		Update("status", models.BroadcastCancelRequested)
 	if res.Error != nil {
 		c.JSON(500, gin.H{"error": "Gagal membatalkan broadcast"})
@@ -282,6 +301,61 @@ func CancelBroadcast(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"message": "Permintaan cancel diterima. Broadcast akan berhenti setelah proses saat ini selesai.",
 		"status":  models.BroadcastCancelRequested,
+	})
+}
+
+// ResumeBroadcast melanjutkan broadcast yang dijeda WhatsApp. Transisi atomik mencegah
+// dua klik menjalankan dua worker. Worker mencoba penerima pending pertama; jika berhasil,
+// antrean berikutnya otomatis diteruskan, jika 463 muncul lagi broadcast kembali dijeda.
+func ResumeBroadcast(c *gin.Context) {
+	id, ok := resolveAgent(c)
+	if !ok {
+		return
+	}
+	bid, err := strconv.Atoi(c.Param("bid"))
+	if err != nil || bid <= 0 {
+		c.JSON(400, gin.H{"error": "ID broadcast tidak valid"})
+		return
+	}
+	if !services.WA(id).IsConnected() {
+		c.JSON(409, gin.H{"error": "WhatsApp belum tersambung"})
+		return
+	}
+	var b models.Broadcast
+	if database.DB.Where("id = ? AND agent_id = ?", bid, id).First(&b).Error != nil {
+		c.JSON(404, gin.H{"error": "Broadcast tidak ditemukan"})
+		return
+	}
+	if b.Status != models.BroadcastWARestricted {
+		c.JSON(409, gin.H{"error": "Broadcast ini tidak sedang dijeda oleh WhatsApp"})
+		return
+	}
+	var pending int64
+	database.DB.Model(&models.BroadcastRecipient{}).
+		Where("broadcast_id = ? AND status = ?", b.ID, "pending").Count(&pending)
+	if pending == 0 {
+		c.JSON(409, gin.H{"error": "Tidak ada penerima yang menunggu"})
+		return
+	}
+	res := database.DB.Model(&models.Broadcast{}).
+		Where("id = ? AND agent_id = ? AND status = ?", b.ID, id, models.BroadcastWARestricted).
+		Updates(map[string]any{
+			"status": models.BroadcastResuming, "pause_reason": "", "pause_code": 0, "paused_at": nil,
+		})
+	if res.Error != nil {
+		c.JSON(500, gin.H{"error": "Broadcast belum bisa dilanjutkan"})
+		return
+	}
+	if res.RowsAffected == 0 {
+		c.JSON(409, gin.H{"error": "Broadcast sedang diproses. Silakan refresh."})
+		return
+	}
+	_ = database.DB.Model(&models.ScheduledMessage{}).Where("broadcast_id = ?", b.ID).
+		Update("status", models.BroadcastResuming).Error
+	minD, maxD := normalizeBroadcastDelay(b.MinDelay, b.MaxDelay)
+	go runBroadcast(b.ID, id, minD, maxD)
+	c.JSON(200, gin.H{
+		"message": "Mencoba melanjutkan broadcast", "status": models.BroadcastResuming, "pending": pending,
 	})
 }
 
@@ -332,12 +406,18 @@ func ResumeBroadcasts() {
 	}
 
 	var bs []models.Broadcast
-	database.DB.Where("status IN ?", []string{models.BroadcastRunning, models.BroadcastInterrupted, models.BroadcastPending}).Find(&bs)
+	database.DB.Where("status IN ?", []string{models.BroadcastRunning, models.BroadcastInterrupted, models.BroadcastPending, models.BroadcastResuming}).Find(&bs)
 	for _, b := range bs {
 		var pending int64
 		database.DB.Model(&models.BroadcastRecipient{}).Where("broadcast_id = ? AND status = ?", b.ID, "pending").Count(&pending)
 		if pending == 0 {
 			_ = database.DB.Model(&models.Broadcast{}).Where("id = ?", b.ID).Update("status", "done").Error
+			continue
+		}
+		res := database.DB.Model(&models.Broadcast{}).
+			Where("id = ? AND status IN ?", b.ID, []string{models.BroadcastRunning, models.BroadcastInterrupted, models.BroadcastPending, models.BroadcastResuming}).
+			Update("status", models.BroadcastResuming)
+		if res.Error != nil || res.RowsAffected == 0 {
 			continue
 		}
 		go resumeBroadcast(b.ID, b.AgentID)
@@ -347,6 +427,10 @@ func ResumeBroadcasts() {
 // resumeBroadcast menunggu WA agent tersambung (maks ~90 detik) lalu melanjutkan pengiriman.
 func resumeBroadcast(broadcastID, agentID uint) {
 	for i := 0; i < 18; i++ {
+		if isBroadcastCancelRequested(broadcastID) {
+			finalizeCancelledBroadcast(broadcastID)
+			return
+		}
 		if services.WA(agentID).IsConnected() {
 			minD, maxD := resumeBroadcastDelay(broadcastID)
 			log.Printf("Melanjutkan broadcast %d (agent %d), jeda %d-%d dtk", broadcastID, agentID, minD, maxD)
@@ -355,18 +439,34 @@ func resumeBroadcast(broadcastID, agentID uint) {
 		}
 		time.Sleep(5 * time.Second)
 	}
-	_ = database.DB.Model(&models.Broadcast{}).Where("id = ?", broadcastID).Update("status", "interrupted").Error
+	_ = database.DB.Model(&models.Broadcast{}).
+		Where("id = ? AND status = ?", broadcastID, models.BroadcastResuming).
+		Update("status", models.BroadcastInterrupted).Error
 	log.Printf("Broadcast %d belum dilanjutkan: WA agent %d tidak tersambung", broadcastID, agentID)
 }
 
 // runBroadcast mengirim pesan satu per satu dengan jeda ritme yang dipilih pengguna.
 func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
-	_ = database.DB.Model(&models.Broadcast{}).Where("id = ?", broadcastID).Update("status", "running").Error
+	claim := database.DB.Model(&models.Broadcast{}).
+		Where("id = ? AND status IN ?", broadcastID, []string{models.BroadcastPending, models.BroadcastResuming}).
+		Updates(map[string]any{"status": models.BroadcastRunning, "pause_reason": "", "pause_code": 0, "paused_at": nil})
+	if claim.Error != nil {
+		log.Printf("Broadcast %d gagal mengambil antrean: %v", broadcastID, claim.Error)
+		return
+	}
+	if claim.RowsAffected == 0 {
+		if isBroadcastCancelRequested(broadcastID) {
+			finalizeCancelledBroadcast(broadcastID)
+		}
+		return
+	}
+	_ = database.DB.Model(&models.ScheduledMessage{}).Where("broadcast_id = ?", broadcastID).
+		Update("status", models.BroadcastRunning).Error
 
 	var b models.Broadcast
 	database.DB.First(&b, broadcastID)
 	var recipients []models.BroadcastRecipient
-	database.DB.Where("broadcast_id = ? AND status = ?", broadcastID, "pending").Find(&recipients)
+	database.DB.Where("broadcast_id = ? AND status = ?", broadcastID, "pending").Order("id asc").Find(&recipients)
 
 	// Baca lampiran sekali saja (kalau ada), dipakai untuk semua penerima.
 	var mediaBytes []byte
@@ -384,7 +484,6 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 		}
 	}
 
-	dailyCap := effectiveDailyCap(agentID)
 	restEvery, restDuration := normalizeBroadcastRest(b.RestEvery, b.RestDuration)
 	sentSinceRest := 0
 	var sentCount, failedCount, skippedCount int64
@@ -400,7 +499,6 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 	}
 	optedOut := optedOutSet(agentID)
 	consented := activeConsentSet(agentID, b.ConsentCategory, recipientNumbers)
-	daily := int(dailySentCount(agentID))
 	// Kuota broadcast bulanan dari paket (0 = tanpa batas).
 	bcLimit := broadcastMonthlyLimit(b.TenantID)
 	bcUsed := broadcastMonthlyUsed(b.TenantID)
@@ -440,13 +538,6 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 			updateBroadcastCounters(broadcastID, sent, failed, skipped)
 			continue
 		}
-		// Hormati batas operasional harian milik aplikasi.
-		if daily >= dailyCap {
-			markRecipient(r.ID, "skipped", "batas harian tercapai")
-			skipped++
-			updateBroadcastCounters(broadcastID, sent, failed, skipped)
-			continue
-		}
 		// Hormati kuota broadcast bulanan dari paket langganan.
 		if bcLimit > 0 && bcUsed >= bcLimit {
 			markRecipient(r.ID, "skipped", "kuota broadcast bulanan habis")
@@ -477,9 +568,16 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 			sendErr = services.WA(agentID).SendText(r.Number, msg)
 		}
 		if sendErr != nil {
+			action, code := classifyBroadcastSendError(sendErr)
+			if action == broadcastErrorWARestricted {
+				markRecipient(r.ID, "pending", "Pengiriman dijeda oleh WhatsApp")
+				pauseBroadcastByWhatsApp(broadcastID, code, sent, failed, skipped)
+				log.Printf("Broadcast %d dijeda: WhatsApp menolak pengiriman (kode %d), %d penerima masih menunggu", broadcastID, code, len(recipients)-i)
+				return
+			}
 			// Error karena koneksi putus saat kirim -> jeda broadcast, JANGAN tandai gagal
 			// (penerima tetap pending agar bisa dilanjutkan saat WA tersambung lagi).
-			if strings.Contains(sendErr.Error(), "tidak terhubung") {
+			if action == broadcastErrorInterrupted {
 				finishBroadcast(broadcastID, "interrupted", sent, failed, skipped)
 				log.Printf("Broadcast %d dijeda saat kirim ke %s: WA terputus", broadcastID, r.Number)
 				return
@@ -491,7 +589,6 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 			database.DB.Model(&models.BroadcastRecipient{}).Where("id = ?", r.ID).
 				Updates(map[string]any{"status": "sent", "sent_at": &now, "error": ""})
 			sent++
-			daily++  // hitung pemakaian jatah harian secara in-memory
 			bcUsed++ // hitung menuju kuota broadcast bulanan
 			incrementBroadcastUsage(b.TenantID, 1)
 			sentSinceRest++ // hitung menuju istirahat berkala
@@ -529,6 +626,16 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 	}
 	finishBroadcast(broadcastID, finalStatus, sent, failed, skipped)
 	log.Printf("Broadcast %d %s: %d terkirim, %d gagal, %d dilewati", broadcastID, finalStatus, sent, failed, skipped)
+}
+
+func pauseBroadcastByWhatsApp(broadcastID uint, code, sent, failed, skipped int) {
+	now := time.Now()
+	database.DB.Model(&models.Broadcast{}).Where("id = ?", broadcastID).Updates(map[string]any{
+		"status": models.BroadcastWARestricted, "pause_reason": "wa_restriction", "pause_code": code,
+		"paused_at": &now, "sent": sent, "failed": failed, "skipped": skipped,
+	})
+	_ = database.DB.Model(&models.ScheduledMessage{}).Where("broadcast_id = ?", broadcastID).
+		Update("status", models.BroadcastWARestricted).Error
 }
 
 // finishBroadcast menyetel status akhir broadcast sekaligus menyinkronkan jadwal pemicunya
@@ -595,42 +702,6 @@ func resumeBroadcastDelay(broadcastID uint) (int, int) {
 		return minBroadcastDelay, 30
 	}
 	return normalizeBroadcastDelay(b.MinDelay, b.MaxDelay)
-}
-
-// configuredDailyCap = batas harian penuh dari konfigurasi (target akhir setelah warm-up).
-func configuredDailyCap() int {
-	return config.EnvInt("BROADCAST_DAILY_CAP", 200)
-}
-
-// effectiveDailyCap = batas harian setelah memperhitungkan masa pemanasan (warm-up) nomor.
-// Nomor baru mulai dari batas kecil lalu naik bertahap tiap hari aktif broadcast hingga
-// mencapai batas penuh. Bisa dimatikan dengan BROADCAST_WARMUP=off.
-func effectiveDailyCap(agentID uint) int {
-	full := configuredDailyCap()
-	if strings.EqualFold(config.Env("BROADCAST_WARMUP", "on"), "off") {
-		return full
-	}
-	day := broadcastActiveDayIndex(agentID) // 1 = hari aktif broadcast pertama
-	if day >= 1 && day <= len(broadcastWarmupSchedule) {
-		if cap := broadcastWarmupSchedule[day-1]; cap < full {
-			return cap
-		}
-	}
-	return full
-}
-
-// broadcastActiveDayIndex = nomor urut hari aktif broadcast agent ini, termasuk hari ini.
-// Dihitung dari jumlah tanggal berbeda dengan pengiriman SEBELUM hari ini, lalu +1 untuk hari ini,
-// agar nilainya stabil sepanjang hari berjalan (tidak naik di tengah broadcast).
-func broadcastActiveDayIndex(agentID uint) int {
-	now := time.Now()
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	var prior int64
-	database.DB.Model(&models.BroadcastRecipient{}).
-		Joins("JOIN broadcasts ON broadcasts.id = broadcast_recipients.broadcast_id").
-		Where("broadcasts.agent_id = ? AND broadcast_recipients.status = ? AND broadcast_recipients.sent_at < ?", agentID, "sent", startOfDay).
-		Select("COUNT(DISTINCT DATE(broadcast_recipients.sent_at))").Scan(&prior)
-	return int(prior) + 1
 }
 
 func dailySentCount(agentID uint) int64 {

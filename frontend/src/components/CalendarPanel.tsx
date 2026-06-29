@@ -15,7 +15,7 @@ import EventAvailableIcon from '@mui/icons-material/EventAvailableOutlined';
 import AccessTimeIcon from '@mui/icons-material/AccessTimeOutlined';
 import PeopleAltIcon from '@mui/icons-material/PeopleAltOutlined';
 import InfoIcon from '@mui/icons-material/InfoOutlined';
-import { useSchedules, useCreateSchedule, useCancelSchedule, useBroadcastDetail, useBroadcastPreflight } from '../hooks';
+import { useSchedules, useCreateSchedule, useCancelSchedule, useBroadcastDetail, useBroadcastPreflight, useResumeBroadcast } from '../hooks';
 import RecipientField from './RecipientField';
 import WhatsAppEditor from './WhatsAppEditor';
 import TemplatePicker from './TemplatePicker';
@@ -29,16 +29,16 @@ import type { BroadcastAssessment, BroadcastSafetyForm, ScheduledMessage } from 
 const DOW = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 const STATUS_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
-  scheduled: 'warning', running: 'warning', done: 'success', failed: 'error', cancelled: 'default', interrupted: 'error',
+  scheduled: 'warning', running: 'warning', resuming: 'warning', wa_restricted: 'warning', done: 'success', failed: 'error', cancelled: 'default', interrupted: 'error',
 };
 const STATUS_LABEL: Record<string, string> = {
-  scheduled: 'Terjadwal', running: 'Sedang kirim', done: 'Selesai', failed: 'Gagal', interrupted: 'Tertunda', cancelled: 'Dibatalkan',
+  scheduled: 'Terjadwal', running: 'Sedang kirim', resuming: 'Mencoba lanjut', wa_restricted: 'Dijeda WhatsApp', done: 'Selesai', failed: 'Gagal', interrupted: 'Tertunda', cancelled: 'Dibatalkan',
 };
 const RCP_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
   sent: 'success', failed: 'error', skipped: 'default', pending: 'warning',
 };
 const RCP_LABEL: Record<string, string> = {
-  sent: 'Terkirim', failed: 'Gagal', skipped: 'Dilewati', pending: 'Antre',
+  sent: 'Terkirim', failed: 'Gagal', skipped: 'Dilewati', pending: 'Menunggu',
 };
 const RISK_LABEL: Record<string, string> = {
   low: 'Risiko lebih rendah', medium: 'Sudah ditinjau', high: 'Override risiko',
@@ -65,6 +65,7 @@ function SectionHeader({ icon, title, subtitle }: { icon: ReactNode; title: stri
 function statusTone(status: string) {
   if (status === 'done') return 'success.main';
   if (status === 'failed' || status === 'interrupted') return 'error.main';
+  if (status === 'wa_restricted') return 'warning.main';
   if (status === 'cancelled') return 'text.disabled';
   return 'warning.main';
 }
@@ -105,6 +106,18 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
   const preflight = useBroadcastPreflight(agentId);
   const cancelSchedule = useCancelSchedule(agentId);
   const { data: detail } = useBroadcastDetail(agentId, detailId);
+  const resumeBroadcast = useResumeBroadcast(agentId);
+
+  const resume = async () => {
+    if (!detail?.broadcast) return;
+    try {
+      await resumeBroadcast.mutateAsync(detail.broadcast.id);
+      swalToast('Mencoba melanjutkan broadcast.');
+    } catch (error) {
+      const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      swalToast(message || 'Broadcast belum bisa dilanjutkan.', 'error');
+    }
+  };
 
   const [time, setTime] = useState('09:00');
   const [message, setMessage] = useState('');
@@ -135,14 +148,14 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
   const dateKey = (day: number) => `${year}-${pad(month + 1)}-${pad(day)}`;
   const isToday = (day: number) => dateKey(day) === dateKeyFromDate(today);
   const daySchedules = byDate[selDate] || [];
-  const activeCount = daySchedules.filter(s => s.status === 'scheduled' || s.status === 'running').length;
+  const activeCount = daySchedules.filter(s => s.status === 'scheduled' || s.status === 'running' || s.status === 'resuming').length;
   const monthSchedules = (schedules || []).filter(s => {
     const d = new Date(s.run_at);
     return d.getFullYear() === year && d.getMonth() === month;
   });
-  const monthActive = monthSchedules.filter(s => s.status === 'scheduled' || s.status === 'running').length;
+  const monthActive = monthSchedules.filter(s => s.status === 'scheduled' || s.status === 'running' || s.status === 'resuming').length;
   const monthDone = monthSchedules.filter(s => s.status === 'done').length;
-  const monthIssues = monthSchedules.filter(s => s.status === 'failed' || s.status === 'interrupted').length;
+  const monthIssues = monthSchedules.filter(s => s.status === 'failed' || s.status === 'interrupted' || s.status === 'wa_restricted').length;
   const formRecipients = recipients.split('\n').map(l => l.trim()).filter(Boolean);
   const formRecipientCount = formRecipients.length;
   const delayProblem = minDelay < 1 || maxDelay < 1
@@ -323,7 +336,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
                 const key = dateKey(day);
                 const items = byDate[key] || [];
                 const selected = key === selDate;
-                const failed = items.some(s => s.status === 'failed' || s.status === 'interrupted');
+                const failed = items.some(s => s.status === 'failed' || s.status === 'interrupted' || s.status === 'wa_restricted');
                 const done = items.some(s => s.status === 'done');
                 return (
                   <Box key={i} onClick={() => setSelDate(key)}
@@ -372,7 +385,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
               <Chip size="small" label={`${daySchedules.length} total`} />
               <Chip size="small" label={`${activeCount} aktif`} color={activeCount ? 'warning' : 'default'} />
               <Chip size="small" label={`${daySchedules.filter(s => s.status === 'done').length} selesai`} color={daySchedules.some(s => s.status === 'done') ? 'success' : 'default'} variant="outlined" />
-              {daySchedules.some(s => s.status === 'failed' || s.status === 'interrupted') && (
+              {daySchedules.some(s => s.status === 'failed' || s.status === 'interrupted' || s.status === 'wa_restricted') && (
                 <Chip size="small" label="Ada yang perlu dicek" color="error" />
               )}
             </Stack>
@@ -524,6 +537,15 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
                 </Stack>
                 <LinearProgress variant="determinate" value={pct} sx={{ height: 7, borderRadius: 5, mb: 1.5 }} />
                 <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 1.5 }}>{b.message}</Typography>
+                {b.status === 'wa_restricted' && (
+                  <Alert severity="warning" icon={false} sx={{ mb: 1.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 800 }}>Pengiriman dijeda oleh WhatsApp</Typography>
+                    <Typography variant="caption" sx={{ display: 'block' }}>
+                      {Math.max(0, b.total - b.sent - b.failed - b.skipped)} penerima masih menunggu.
+                    </Typography>
+                    {b.pause_code ? <Typography variant="caption" color="text.secondary">Detail teknis: kode {b.pause_code}</Typography> : null}
+                  </Alert>
+                )}
                 <Box sx={{ maxHeight: 360, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
                   <Table size="small" stickyHeader>
                     <TableHead>
@@ -540,7 +562,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
                           <TableCell>{r.name || '-'}</TableCell>
                           <TableCell align="right">
                             <Chip size="small" label={RCP_LABEL[r.status] ?? r.status} color={RCP_COLOR[r.status] ?? 'default'} />
-                            {r.error && <Typography variant="caption" color="error" sx={{ display: 'block' }}>{r.error}</Typography>}
+                            {r.error && <Typography variant="caption" color={r.status === 'pending' ? 'warning.main' : 'error'} sx={{ display: 'block' }}>{r.error}</Typography>}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -554,6 +576,11 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
           )}
         </DialogContent>
         <DialogActions>
+          {detail?.broadcast.status === 'wa_restricted' && (
+            <Button variant="contained" disabled={resumeBroadcast.isPending} onClick={resume}>
+              Coba lanjutkan ({Math.max(0, detail.broadcast.total - detail.broadcast.sent - detail.broadcast.failed - detail.broadcast.skipped)})
+            </Button>
+          )}
           <Button onClick={closeDetail}>Tutup</Button>
         </DialogActions>
       </Dialog>

@@ -2,10 +2,12 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -486,6 +488,20 @@ func (w *waInstance) RevokeMessage(toNumber string, msgID types.MessageID) error
 // SendText mengirim pesan ke nomor bare (mis "628123") tanpa pemanggil perlu menyusun JID.
 func (w *waInstance) SendText(toNumber, message string) error {
 	return w.SendMessage(types.NewJID(toNumber, types.DefaultUserServer), message)
+}
+
+// WAServerErrorCode mengambil kode penolakan yang dikirim server WhatsApp dari error
+// SendMessage. Contoh: "server returned error 463" -> 463.
+func WAServerErrorCode(err error) (int, bool) {
+	if err == nil || !errors.Is(err, whatsmeow.ErrServerReturnedError) {
+		return 0, false
+	}
+	parts := strings.Fields(err.Error())
+	if len(parts) == 0 {
+		return 0, false
+	}
+	code, parseErr := strconv.Atoi(parts[len(parts)-1])
+	return code, parseErr == nil
 }
 
 // NormalizePhone membersihkan nomor jadi format digit internasional (mis. "08.." -> "628..").

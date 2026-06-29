@@ -623,6 +623,19 @@ export function useCancelBroadcast(agentId: number) {
   });
 }
 
+export function useResumeBroadcast(agentId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (bid: number) =>
+      (await api.post(`/agents/${agentId}/broadcasts/${bid}/resume`)).data,
+    onSuccess: (_data, bid) => {
+      qc.invalidateQueries({ queryKey: ['broadcasts', agentId] });
+      qc.invalidateQueries({ queryKey: ['broadcast', agentId, bid] });
+      qc.invalidateQueries({ queryKey: ['schedules', agentId] });
+    },
+  });
+}
+
 // ---- Agent list & detail (Dashboard) ----
 
 export function useAgents() {

@@ -13,7 +13,7 @@ import PeopleAltIcon from '@mui/icons-material/PeopleAltOutlined';
 import ScheduleIcon from '@mui/icons-material/ScheduleOutlined';
 import HistoryIcon from '@mui/icons-material/HistoryOutlined';
 import InfoIcon from '@mui/icons-material/InfoOutlined';
-import { useCheckNumbers, useBroadcastPreflight, useCreateBroadcast, useBroadcasts, useBroadcastDetail, useCancelBroadcast } from '../hooks';
+import { useCheckNumbers, useBroadcastPreflight, useCreateBroadcast, useBroadcasts, useBroadcastDetail, useCancelBroadcast, useResumeBroadcast } from '../hooks';
 import { swalToast, swalConfirm } from '../services/swal';
 import RecipientField from './RecipientField';
 import WhatsAppEditor from './WhatsAppEditor';
@@ -22,7 +22,7 @@ import PageHeader from './PageHeader';
 import BroadcastSafetyReview from './BroadcastSafetyReview';
 import DelayFields from './broadcast/DelayFields';
 import { defaultBroadcastSafetyForm } from '../services/broadcastSafety';
-import type { NumberCheck, CheckResult, BroadcastAssessment, BroadcastSafetyForm } from '../types';
+import type { NumberCheck, Broadcast, BroadcastAssessment, BroadcastSafetyForm } from '../types';
 
 function normalizePhone(s: string): string {
   const d = (s.match(/\d/g) || []).join('');
@@ -34,17 +34,17 @@ function normalizePhone(s: string): string {
 
 const STATUS_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
   done: 'success', running: 'warning', pending: 'default', failed: 'error', interrupted: 'error',
-  cancel_requested: 'warning', cancelled: 'default',
+  resuming: 'warning', wa_restricted: 'warning', cancel_requested: 'warning', cancelled: 'default',
 };
 const STATUS_LABEL: Record<string, string> = {
   done: 'Selesai', running: 'Berjalan', pending: 'Antre', failed: 'Gagal', interrupted: 'Terhenti',
-  cancel_requested: 'Membatalkan', cancelled: 'Dibatalkan',
+  resuming: 'Mencoba lanjut', wa_restricted: 'Dijeda WhatsApp', cancel_requested: 'Membatalkan', cancelled: 'Dibatalkan',
 };
 const RCP_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
   sent: 'success', failed: 'error', skipped: 'default', pending: 'warning',
 };
 const RCP_LABEL: Record<string, string> = {
-  sent: 'Terkirim', failed: 'Gagal', skipped: 'Dilewati', pending: 'Antre',
+  sent: 'Terkirim', failed: 'Gagal', skipped: 'Dilewati', pending: 'Menunggu',
 };
 const RISK_LABEL: Record<string, string> = {
   low: 'Risiko lebih rendah', medium: 'Sudah ditinjau', high: 'Override risiko',
@@ -99,7 +99,6 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [checked, setChecked] = useState<NumberCheck[] | null>(null);
-  const [summary, setSummary] = useState<CheckResult['summary'] | null>(null);
   const [safety, setSafety] = useState<BroadcastSafetyForm>(() => defaultBroadcastSafetyForm());
   const [assessment, setAssessment] = useState<BroadcastAssessment | null>(null);
   const [assessmentStale, setAssessmentStale] = useState(false);
@@ -109,7 +108,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   const historyRef = useRef<HTMLDivElement | null>(null);
 
   const [detailId, setDetailId] = useState<number | null>(null);
-  const [detailFilter, setDetailFilter] = useState<'all' | 'sent' | 'failed' | 'skipped'>('all');
+  const [detailFilter, setDetailFilter] = useState<'all' | 'sent' | 'failed' | 'skipped' | 'pending'>('all');
   const [detailSearch, setDetailSearch] = useState('');
   const closeDetail = () => { setDetailId(null); setDetailFilter('all'); setDetailSearch(''); };
 
@@ -117,6 +116,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   const preflight = useBroadcastPreflight(agentId);
   const createBroadcast = useCreateBroadcast(agentId);
   const cancelBroadcast = useCancelBroadcast(agentId);
+  const resumeBroadcast = useResumeBroadcast(agentId);
   const { data: bpage } = useBroadcasts(agentId, page);
   const { data: detail } = useBroadcastDetail(agentId, detailId);
   const broadcasts = bpage?.data || [];
@@ -169,7 +169,6 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
     setErrors(e);
     if (Object.keys(e).length > 0) return;
     setChecked(null);
-    setSummary(null);
     const initialSafety = defaultBroadcastSafetyForm();
     setSafety(initialSafety);
     setAssessment(null);
@@ -178,10 +177,9 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
     checkNumbers.mutateAsync(parsed.map(p => p.number))
       .then(async res => {
         setChecked(res.data);
-        setSummary(res.summary);
         await runPreflight(res.data, initialSafety);
       })
-      .catch(() => { setChecked([]); setSummary(null); });
+      .catch(() => { setChecked([]); });
   };
 
   // Buang nomor tak terdaftar dari daftar & hasil cek (user yang putuskan, bukan otomatis).
@@ -208,7 +206,6 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
       setRecipientsText('');
       setFile(null);
       setChecked(null);
-      setSummary(null);
       setSafety(defaultBroadcastSafetyForm());
       setAssessment(null);
       setAssessmentStale(false);
@@ -232,6 +229,16 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
     }
   };
 
+  const resume = async (broadcast: Broadcast) => {
+    try {
+      await resumeBroadcast.mutateAsync(broadcast.id);
+      swalToast('Mencoba melanjutkan broadcast.');
+    } catch (error) {
+      const detail = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      swalToast(detail || 'Broadcast belum bisa dilanjutkan.', 'error');
+    }
+  };
+
   const checking = checkNumbers.isPending || preflight.isPending || checked === null;
 
   // Statistik pemeriksaan nomor. Keputusan risiko final selalu berasal dari backend.
@@ -239,8 +246,6 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   const unreg = total - registered.length;
   const warmCount = registered.filter(c => c.warm).length;
   const coldCount = registered.length - warmCount;
-  const cap = summary?.daily_cap ?? 200;
-  const sentToday = summary?.sent_today ?? 0;
   const confirmationIncomplete = !assessment || assessmentStale || !assessment.can_proceed
     || (assessment.level === 'medium' && !safety.risk_acknowledged)
     || (assessment.level === 'high' && (
@@ -261,7 +266,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
         sx={{ mb: 2, alignItems: 'flex-start', '& .MuiAlert-icon': { py: '2px' } }}
       >
         <Typography variant="body2">
-          Tidak ada pola kirim yang menjamin nomor bebas pembatasan. Sistem akan memeriksa izin penerima, riwayat interaksi, dan batas internal sebelum kampanye dimulai.
+          Kontak baru tetap dapat dikirimi. Pastikan penerima memberi izin dan pahami risiko pembatasan WhatsApp.
         </Typography>
       </Alert>
 
@@ -389,14 +394,15 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                   <TableCell>Pesan</TableCell>
                   <TableCell align="center">Status</TableCell>
                   <TableCell sx={{ width: 210 }}>Progres</TableCell>
-                  <TableCell align="right">Aksi</TableCell>
+                  <TableCell align="right" sx={{ minWidth: 250 }}>Aksi</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {broadcasts.map(b => {
                   const done = b.sent + b.failed + b.skipped;
                   const pct = b.total ? Math.round((done / b.total) * 100) : 0;
-                  const canCancel = ['pending', 'running', 'interrupted', 'cancel_requested'].includes(b.status);
+                  const canCancel = ['pending', 'running', 'resuming', 'interrupted', 'wa_restricted', 'cancel_requested'].includes(b.status);
+                  const remaining = Math.max(0, b.total - b.sent - b.failed - b.skipped);
                   return (
                     <TableRow key={b.id} hover sx={{ cursor: 'pointer', bgcolor: b.id === lastStartedId ? 'action.hover' : 'inherit' }} onClick={() => setDetailId(b.id)}>
                       <TableCell>
@@ -417,6 +423,12 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                         </Typography>
                       </TableCell>
                       <TableCell align="right" onClick={e => e.stopPropagation()}>
+                        {b.status === 'wa_restricted' && (
+                          <Button size="small" variant="contained" sx={{ mr: 0.75 }}
+                            disabled={resumeBroadcast.isPending} onClick={() => resume(b)}>
+                            Coba lanjutkan ({remaining})
+                          </Button>
+                        )}
                         {canCancel && (
                           <Button size="small" color="error" variant="outlined"
                             disabled={cancelBroadcast.isPending}
@@ -459,6 +471,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
               { k: 'sent' as const, label: `Terkirim ${detail.broadcast.sent}` },
               { k: 'failed' as const, label: `Gagal ${detail.broadcast.failed}` },
               { k: 'skipped' as const, label: `Dilewati ${detail.broadcast.skipped}` },
+              { k: 'pending' as const, label: `Menunggu ${Math.max(0, detail.broadcast.total - detail.broadcast.sent - detail.broadcast.failed - detail.broadcast.skipped)}` },
             ];
             return (
               <>
@@ -470,6 +483,17 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                   <Alert severity={detail.broadcast.risk_level === 'high' ? 'warning' : 'info'} icon={false} sx={{ mb: 1.5 }}>
                     <Typography variant="body2" sx={{ fontWeight: 700 }}>{RISK_LABEL[detail.broadcast.risk_level]}</Typography>
                     {detail.broadcast.override_reason && <Typography variant="caption">Alasan pengguna: {detail.broadcast.override_reason}</Typography>}
+                  </Alert>
+                )}
+                {detail.broadcast.status === 'wa_restricted' && (
+                  <Alert severity="warning" icon={false} sx={{ mb: 1.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 800 }}>Pengiriman dijeda oleh WhatsApp</Typography>
+                    <Typography variant="caption" sx={{ display: 'block' }}>
+                      {Math.max(0, detail.broadcast.total - detail.broadcast.sent - detail.broadcast.failed - detail.broadcast.skipped)} penerima masih menunggu.
+                    </Typography>
+                    {detail.broadcast.pause_code ? (
+                      <Typography variant="caption" color="text.secondary">Detail teknis: kode {detail.broadcast.pause_code}</Typography>
+                    ) : null}
                   </Alert>
                 )}
                 <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
@@ -496,7 +520,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                           <TableCell>{r.name || '-'}</TableCell>
                           <TableCell align="right">
                             <Chip size="small" label={RCP_LABEL[r.status] ?? r.status} color={RCP_COLOR[r.status] ?? 'default'} />
-                            {r.error && <Typography variant="caption" color="error" sx={{ display: 'block' }}>{r.error}</Typography>}
+                            {r.error && <Typography variant="caption" color={r.status === 'pending' ? 'warning.main' : 'error'} sx={{ display: 'block' }}>{r.error}</Typography>}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -513,6 +537,11 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
           )}
         </DialogContent>
         <DialogActions>
+          {detail?.broadcast.status === 'wa_restricted' && (
+            <Button variant="contained" disabled={resumeBroadcast.isPending} onClick={() => resume(detail.broadcast)}>
+              Coba lanjutkan ({Math.max(0, detail.broadcast.total - detail.broadcast.sent - detail.broadcast.failed - detail.broadcast.skipped)})
+            </Button>
+          )}
           <Button onClick={closeDetail}>Tutup</Button>
         </DialogActions>
       </Dialog>
@@ -533,7 +562,6 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                 {unreg > 0 && <Chip size="small" label={`${unreg} tak terdaftar`} color="default" variant="outlined" />}
                 <Chip size="small" label={`${warmCount} pernah berinteraksi`} color="success" variant="outlined" />
                 <Chip size="small" label={`${coldCount} tanpa riwayat chat`} color={coldCount ? 'warning' : 'default'} variant="outlined" />
-                <Chip size="small" label={`Batas internal ${sentToday}/${cap}`} variant="outlined" color={sentToday >= cap ? 'warning' : 'default'} />
               </Stack>
 
               {unreg > 0 && (
