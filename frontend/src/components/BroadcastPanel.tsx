@@ -230,6 +230,11 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
   };
 
   const resume = async (broadcast: Broadcast) => {
+    const ok = await swalConfirm(
+      'Tetap lanjutkan broadcast?',
+      'WhatsApp kemungkinan besar masih akan menolak pengiriman ini. Melanjutkan tidak menembus pembatasan WhatsApp, jadi pesan bisa tetap gagal terkirim. Sebaiknya istirahatkan nomor dulu beberapa hari, lalu mulai dari kontak yang pernah membalas Anda.',
+    );
+    if (!ok) return;
     try {
       await resumeBroadcast.mutateAsync(broadcast.id);
       swalToast('Mencoba melanjutkan broadcast.');
@@ -485,17 +490,37 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                     {detail.broadcast.override_reason && <Typography variant="caption">Alasan pengguna: {detail.broadcast.override_reason}</Typography>}
                   </Alert>
                 )}
-                {detail.broadcast.status === 'wa_restricted' && (
-                  <Alert severity="warning" icon={false} sx={{ mb: 1.5 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 800 }}>Pengiriman dijeda oleh WhatsApp</Typography>
-                    <Typography variant="caption" sx={{ display: 'block' }}>
-                      {Math.max(0, detail.broadcast.total - detail.broadcast.sent - detail.broadcast.failed - detail.broadcast.skipped)} penerima masih menunggu.
-                    </Typography>
-                    {detail.broadcast.pause_code ? (
-                      <Typography variant="caption" color="text.secondary">Detail teknis: kode {detail.broadcast.pause_code}</Typography>
-                    ) : null}
-                  </Alert>
-                )}
+                {detail.broadcast.status === 'wa_restricted' && (() => {
+                  const waiting = Math.max(0, detail.broadcast.total - detail.broadcast.sent - detail.broadcast.failed - detail.broadcast.skipped);
+                  const at = detail.broadcast.paused_at
+                    ? new Date(detail.broadcast.paused_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+                    : null;
+                  return (
+                    <Alert severity="warning" icon={false} sx={{ mb: 1.5 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 800, mb: 0.5 }}>Dijeda oleh WhatsApp</Typography>
+                      <Typography variant="body2" sx={{ mb: 0.5 }}>
+                        Pengiriman broadcast ini dihentikan sementara oleh WhatsApp, bukan oleh Wai. Saat Wai mengirim pesan Anda, WhatsApp menolaknya dan meminta pengiriman dihentikan, lalu Wai langsung menjeda broadcast agar nomor Anda tetap aman. Nomor Anda tidak terblokir permanen.
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                        {at ? `Keputusan ini diberikan langsung oleh WhatsApp pada ${at}. ` : ''}Wai tidak memblokir pesan Anda.
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>Kenapa ini terjadi?</Typography>
+                      <Box component="ul" sx={{ pl: 2.5, m: 0, mb: 1 }}>
+                        <li><Typography variant="caption">Mengirim ke nomor yang belum pernah membalas atau menyimpan kontak Anda.</Typography></li>
+                        <li><Typography variant="caption">Nomor WhatsApp Anda masih baru atau jarang dipakai mengobrol dua arah.</Typography></li>
+                        <li><Typography variant="caption">Terlalu banyak pesan dikirim dalam waktu berdekatan.</Typography></li>
+                      </Box>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>Agar nomor bisa broadcast lagi:</Typography>
+                      <Box component="ol" sx={{ pl: 2.5, m: 0, mb: 1 }}>
+                        <li><Typography variant="caption">Istirahatkan nomor ini dulu, 1 sampai 3 hari.</Typography></li>
+                        <li><Typography variant="caption">Hangatkan nomor: pakai untuk mengobrol normal, minta beberapa orang mengirim pesan ke Anda lalu balas.</Typography></li>
+                        <li><Typography variant="caption">Saat mulai lagi, kirim dulu hanya ke kontak yang pernah membalas Anda, dalam jumlah kecil.</Typography></li>
+                        <li><Typography variant="caption">Naikkan jumlah penerima sedikit demi sedikit setiap hari.</Typography></li>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary">{waiting} penerima masih menunggu.</Typography>
+                    </Alert>
+                  );
+                })()}
                 <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
                   {FILTERS.map(f => (
                     <Chip key={f.k} size="small" label={f.label} onClick={() => setDetailFilter(f.k)}
@@ -537,12 +562,16 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
           )}
         </DialogContent>
         <DialogActions>
-          {detail?.broadcast.status === 'wa_restricted' && (
-            <Button variant="contained" disabled={resumeBroadcast.isPending} onClick={() => resume(detail.broadcast)}>
-              Coba lanjutkan ({Math.max(0, detail.broadcast.total - detail.broadcast.sent - detail.broadcast.failed - detail.broadcast.skipped)})
-            </Button>
+          {detail?.broadcast.status === 'wa_restricted' ? (
+            <>
+              <Button color="inherit" disabled={resumeBroadcast.isPending} onClick={() => resume(detail.broadcast)}>
+                Saya mengerti, tetap lanjutkan
+              </Button>
+              <Button variant="contained" onClick={closeDetail}>Istirahatkan dulu</Button>
+            </>
+          ) : (
+            <Button onClick={closeDetail}>Tutup</Button>
           )}
-          <Button onClick={closeDetail}>Tutup</Button>
         </DialogActions>
       </Dialog>
 
