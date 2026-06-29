@@ -188,7 +188,6 @@ func main() {
 			auth.PUT("/agents/:id/follow-ups/:fid", handlers.UpdateFollowUp)
 			auth.DELETE("/agents/:id/follow-ups/:fid", handlers.DeleteFollowUp)
 			auth.POST("/agents/:id/follow-ups/:fid/enroll", handlers.EnrollFollowUp)
-			auth.POST("/agents/:id/check-numbers", handlers.CheckNumbers)
 			auth.GET("/agents/:id/broadcast/consent-summary", handlers.BroadcastConsentSummary)
 			auth.POST("/agents/:id/broadcast/preflight", handlers.BroadcastPreflight)
 			auth.POST("/agents/:id/broadcast", handlers.CreateBroadcast)
