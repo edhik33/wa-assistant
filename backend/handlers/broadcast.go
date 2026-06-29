@@ -152,11 +152,6 @@ func CreateBroadcast(c *gin.Context) {
 	restDuration, _ := strconv.Atoi(c.PostForm("rest_duration"))
 	restEvery, restDuration = normalizeBroadcastRest(restEvery, restDuration)
 
-	consent := parseConsentAttestation(
-		c.PostForm("consent_category"), c.PostForm("consent_source"),
-		c.PostForm("consent_granted_at"), c.PostForm("consent_note"),
-		c.PostForm("consent_confirmed") == "true",
-	)
 	b := models.Broadcast{}
 
 	guardRecipients := normalizeGuardRecipients(reqRecipients)
@@ -165,46 +160,20 @@ func CreateBroadcast(c *gin.Context) {
 		return
 	}
 
-	assessment := assessBroadcast(id, message, guardRecipients, consent, nil)
-	if assessment.Level == "high" && !canOverrideBroadcastRisk(c) {
-		c.JSON(403, gin.H{"error": "Hanya owner yang dapat melanjutkan broadcast dengan risiko tinggi", "assessment": assessment})
-		return
-	}
-	acknowledged := c.PostForm("risk_acknowledged") == "true"
-	overridePhrase := c.PostForm("override_phrase")
-	overrideReason := strings.TrimSpace(c.PostForm("override_reason"))
-	if confirmationError := validateRiskConfirmation(assessment, acknowledged, overridePhrase, overrideReason); confirmationError != "" {
-		c.JSON(422, gin.H{"error": confirmationError, "assessment": assessment})
-		return
-	}
-
-	var overrideBy *uint
-	var overrideAt *time.Time
-	if assessment.Level == "high" {
-		uid := c.GetUint("user_id")
-		now := time.Now()
-		overrideBy = &uid
-		overrideAt = &now
-	}
+	// Broadcast murni: kirim langsung ke daftar tanpa pengecekan nomor ke WhatsApp
+	// maupun gating consent/risiko. Pengaman tetap berjalan di worker runBroadcast:
+	// opt-out (STOP) dilewati, kuota bulanan & jeda/istirahat dihormati.
 	b.TenantID = tid
 	b.AgentID = id
 	b.Message = message
 	b.Status = "pending"
-	b.ConsentCategory = consent.Category
-	b.ConsentSource = consent.Source
-	b.RiskLevel = assessment.Level
-	b.RiskReasons = assessmentReasonsJSON(assessment)
-	b.RiskAcknowledged = acknowledged || assessment.Level == "high"
-	b.OverrideReason = overrideReason
-	b.OverrideBy = overrideBy
-	b.OverrideAt = overrideAt
 	b.Total = len(guardRecipients)
 	b.MinDelay = minD
 	b.MaxDelay = maxD
 	b.RestEvery = restEvery
 	b.RestDuration = restDuration
 
-	// Simpan lampiran setelah guard lolos agar request yang diblokir tidak meninggalkan file yatim.
+	// Simpan lampiran kalau ada.
 	if fh, err := c.FormFile("file"); err == nil {
 		if f, ferr := fh.Open(); ferr == nil {
 			defer f.Close()
@@ -224,22 +193,12 @@ func CreateBroadcast(c *gin.Context) {
 		}
 	}
 
-	var recipients []models.BroadcastRecipient
+	recipients := make([]models.BroadcastRecipient, 0, len(guardRecipients))
 	for _, r := range guardRecipients {
-		status := "pending"
-		reason := ""
-		if !assessment.eligibleNumbers[r.Number] {
-			status = "skipped"
-			reason = assessment.excludedReasons[r.Number]
-			b.Skipped++
-		}
-		recipients = append(recipients, models.BroadcastRecipient{Number: r.Number, Name: r.Name, Status: status, Error: reason})
+		recipients = append(recipients, models.BroadcastRecipient{Number: r.Number, Name: r.Name, Status: "pending"})
 	}
 
 	if err := database.DB.Transaction(func(tx *gorm.DB) error {
-		if err := recordAttestedConsents(tx, id, c.GetUint("user_id"), guardRecipients, consent, assessment.eligibleNumbers); err != nil {
-			return err
-		}
 		if err := tx.Create(&b).Error; err != nil {
 			return err
 		}
@@ -254,7 +213,7 @@ func CreateBroadcast(c *gin.Context) {
 	}
 
 	go runBroadcast(b.ID, id, minD, maxD)
-	c.JSON(200, gin.H{"data": b, "assessment": assessment})
+	c.JSON(200, gin.H{"data": b})
 }
 
 // CancelBroadcast membatalkan broadcast yang belum selesai.
