@@ -76,7 +76,7 @@ export default function BillingPanel() {
               </Typography>
             )}
             <Typography variant="caption" color="text.secondary">
-              Bulan ini: Balasan AI {usage.ai_replies_used}/{usage.ai_replies_max || '∞'} · Broadcast {usage.broadcast_used}/{usage.broadcast_max || '∞'}
+              Bulan ini: Balasan AI {usage.ai_replies_used}/{usage.ai_replies_max || '∞'} · Blast {usage.broadcast_used}/{usage.broadcast_max || '∞'}
             </Typography>
           </Box>
         </Paper>

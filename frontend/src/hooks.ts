@@ -281,6 +281,8 @@ export function useResumeBot(agentId: number) {
 
 // ---- Broadcast ----
 
+const LIVE_BROADCAST_STATUSES = new Set(['pending', 'running', 'resuming', 'cancel_requested']);
+
 export function useBroadcastConsentSummary(agentId: number) {
   return useQuery<BroadcastConsentSummary>({
     queryKey: ['broadcast-consent-summary', agentId],
@@ -295,7 +297,9 @@ export function useBroadcasts(agentId: number, page: number) {
     queryKey: ['broadcasts', agentId, page],
     queryFn: async () => (await api.get(`/agents/${agentId}/broadcasts`, { params: { page } })).data,
     enabled: !!agentId,
-    refetchInterval: 4000,
+    // Respons cepat ketika ada worker aktif, lebih hemat request saat riwayat diam.
+    refetchInterval: query => query.state.data?.data.some(b => LIVE_BROADCAST_STATUSES.has(b.status)) ? 2000 : 10000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -571,7 +575,8 @@ export function useBroadcastDetail(agentId: number, bid: number | null) {
     queryKey: ['broadcast', agentId, bid],
     queryFn: async () => (await api.get(`/agents/${agentId}/broadcasts/${bid}`)).data.data,
     enabled: !!agentId && !!bid,
-    refetchInterval: 4000,
+    refetchInterval: query => LIVE_BROADCAST_STATUSES.has(query.state.data?.broadcast.status || '') ? 1500 : false,
+    refetchIntervalInBackground: false,
   });
 }
 

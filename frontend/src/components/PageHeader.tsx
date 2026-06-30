@@ -7,7 +7,7 @@ export default function PageHeader({ title, subtitle, action }: {
   action?: React.ReactNode;
 }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.5, mb: 2 }}>
+    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: 'flex-start', justifyContent: 'space-between', gap: { xs: 1, sm: 1.5 }, mb: 2 }}>
       <Box sx={{ minWidth: 0 }}>
         <Typography variant="h5">{title}</Typography>
         {subtitle && (
@@ -16,7 +16,7 @@ export default function PageHeader({ title, subtitle, action }: {
           </Typography>
         )}
       </Box>
-      {action && <Box sx={{ flexShrink: 0 }}>{action}</Box>}
+      {action && <Box sx={{ flexShrink: 0, width: { xs: '100%', sm: 'auto' } }}>{action}</Box>}
     </Box>
   );
 }

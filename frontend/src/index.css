@@ -174,3 +174,61 @@ code {
   border-color: var(--color-wa-green) !important;
   box-shadow: 0 0 0 3px var(--color-wa-green-soft) !important;
 }
+
+/* Progress Blast: perubahan nilai tetap halus dan garis bergerak hanya saat worker aktif. */
+@keyframes blast-progress-stripes {
+  from { background-position: 0 0; }
+  to { background-position: 24px 0; }
+}
+
+.blast-progress .MuiLinearProgress-bar {
+  transition: transform 600ms ease;
+}
+
+.blast-progress--active .MuiLinearProgress-bar {
+  background-image: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.22) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.22) 50%,
+    rgba(255, 255, 255, 0.22) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 24px 24px;
+  animation: blast-progress-stripes 850ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blast-progress .MuiLinearProgress-bar {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Micro-animation Asisten AI: cukup sebagai indikator hidup, bukan dekorasi dominan. */
+@keyframes ai-agent-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes ai-agent-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(31, 138, 80, 0.35); }
+  50% { box-shadow: 0 0 0 5px rgba(31, 138, 80, 0); }
+}
+
+.ai-agent-avatar--active {
+  animation: ai-agent-breathe 2.8s ease-in-out infinite;
+}
+
+.ai-agent-status--active {
+  animation: ai-agent-pulse 1.8s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-agent-avatar--active,
+  .ai-agent-status--active {
+    animation: none;
+  }
+}

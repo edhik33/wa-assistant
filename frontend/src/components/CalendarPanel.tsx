@@ -2,8 +2,9 @@ import { useState, type ReactNode } from 'react';
 import {
   Box, Typography, Card, CardContent, Button, Stack, IconButton, Chip, TextField,
   Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Divider, Alert,
-  LinearProgress, Table, TableBody, TableCell, TableHead, TableRow,
+  Table, TableBody, TableCell, TableHead, TableRow, useMediaQuery,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
@@ -15,12 +16,14 @@ import EventAvailableIcon from '@mui/icons-material/EventAvailableOutlined';
 import AccessTimeIcon from '@mui/icons-material/AccessTimeOutlined';
 import PeopleAltIcon from '@mui/icons-material/PeopleAltOutlined';
 import InfoIcon from '@mui/icons-material/InfoOutlined';
+import TodayIcon from '@mui/icons-material/TodayOutlined';
 import { useSchedules, useCreateSchedule, useCancelSchedule, useBroadcastDetail, useResumeBroadcast } from '../hooks';
 import RecipientField from './RecipientField';
 import WhatsAppEditor from './WhatsAppEditor';
 import TemplatePicker from './TemplatePicker';
 import PageHeader from './PageHeader';
 import DelayFields from './broadcast/DelayFields';
+import BroadcastProgress from './broadcast/BroadcastProgress';
 import { swalConfirm, swalToast } from '../services/swal';
 import type { ScheduledMessage } from '../types';
 
@@ -37,9 +40,6 @@ const RCP_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
 };
 const RCP_LABEL: Record<string, string> = {
   sent: 'Terkirim', failed: 'Gagal', skipped: 'Dilewati', pending: 'Menunggu',
-};
-const RISK_LABEL: Record<string, string> = {
-  low: 'Risiko lebih rendah', medium: 'Sudah ditinjau', high: 'Override risiko',
 };
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -92,6 +92,8 @@ function scheduledTime(s: ScheduledMessage) {
 }
 
 export default function CalendarPanel({ agentId }: { agentId: number }) {
+  const theme = useTheme();
+  const mobileDialog = useMediaQuery(theme.breakpoints.down('sm'));
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -109,10 +111,10 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
     if (!detail?.broadcast) return;
     try {
       await resumeBroadcast.mutateAsync(detail.broadcast.id);
-      swalToast('Mencoba melanjutkan broadcast.');
+      swalToast('Mencoba melanjutkan Blast.');
     } catch (error) {
       const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      swalToast(message || 'Broadcast belum bisa dilanjutkan.', 'error');
+      swalToast(message || 'Blast belum bisa dilanjutkan.', 'error');
     }
   };
 
@@ -140,7 +142,8 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const cells: (number | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
   const dateKey = (day: number) => `${year}-${pad(month + 1)}-${pad(day)}`;
-  const isToday = (day: number) => dateKey(day) === dateKeyFromDate(today);
+  const todayKey = dateKeyFromDate(today);
+  const isToday = (day: number) => dateKey(day) === todayKey;
   const daySchedules = byDate[selDate] || [];
   const activeCount = daySchedules.filter(s => s.status === 'scheduled' || s.status === 'running' || s.status === 'resuming').length;
   const monthSchedules = (schedules || []).filter(s => {
@@ -179,6 +182,13 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
   const openCreate = (key = selDate) => {
     setSelDate(key);
     resetForm();
+    // Untuk hari ini, hindari default 09:00 yang mungkin sudah lewat.
+    if (key === todayKey) {
+      const suggested = new Date(today.getTime() + 10 * 60 * 1000);
+      if (dateKeyFromDate(suggested) === todayKey) {
+        setTime(`${pad(suggested.getHours())}:${pad(suggested.getMinutes())}`);
+      }
+    }
     setFormOpen(true);
   };
 
@@ -236,12 +246,12 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
 
   return (
     <Box>
-      <PageHeader title="Jadwal"
-        subtitle="Atur broadcast yang akan dikirim nanti, pantau statusnya, dan buka hasil pengiriman dari satu tempat." />
+      <PageHeader title="Jadwal Blast"
+        subtitle="Atur Blast yang akan dikirim nanti, pantau statusnya, dan buka hasil pengiriman dari satu tempat." />
 
       <Alert severity="info" icon={<InfoIcon fontSize="small" />} sx={{ mb: 2 }}>
         <Typography variant="body2">
-          Pilih tanggal, lalu buat jadwal. Jika jadwal sudah berjalan, tombol hasil akan membuka detail broadcast per penerima.
+          Pilih tanggal, lalu buat jadwal. Jika jadwal sudah berjalan, tombol hasil akan membuka detail Blast per penerima.
         </Typography>
       </Alert>
 
@@ -251,29 +261,43 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
             <SectionHeader
               icon={<EventAvailableIcon fontSize="small" />}
               title="Pilih Tanggal"
-              subtitle="Klik tanggal untuk melihat daftar jadwal di sisi kanan."
+              subtitle="Klik tanggal hari ini atau berikutnya untuk langsung membuat jadwal."
             />
-            <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ justifyContent: 'space-between', alignItems: { xs: 'stretch', sm: 'center' }, gap: 1, mb: 1.25 }}>
-              <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+            <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', gap: 1, mb: 0.75 }}>
+              <Stack direction="row" sx={{ alignItems: 'center', gap: { xs: 0.25, sm: 1 } }}>
                 <IconButton onClick={prevMonth} aria-label="Bulan sebelumnya"><ChevronLeftIcon /></IconButton>
-                <Typography sx={{ fontWeight: 800, minWidth: 160, textAlign: 'center' }}>{MONTHS[month]} {year}</Typography>
+                <Typography sx={{ fontWeight: 800, minWidth: { xs: 128, sm: 160 }, textAlign: 'center' }}>{MONTHS[month]} {year}</Typography>
                 <IconButton onClick={nextMonth} aria-label="Bulan berikutnya"><ChevronRightIcon /></IconButton>
               </Stack>
-              <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75, justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
-                <Chip size="small" label={`${monthSchedules.length} jadwal bulan ini`} />
-                <Chip size="small" label={`${monthActive} aktif`} color={monthActive ? 'warning' : 'default'} />
-                <Chip size="small" label={`${monthDone} selesai`} color={monthDone ? 'success' : 'default'} variant="outlined" />
-                {monthIssues > 0 && <Chip size="small" label={`${monthIssues} perlu dicek`} color="error" />}
-                <Button size="small" variant="outlined" onClick={() => {
-                  const now = new Date();
-                  setYear(now.getFullYear());
-                  setMonth(now.getMonth());
-                  setSelDate(dateKeyFromDate(now));
-                }}>
-                  Hari ini
-                </Button>
-              </Stack>
+              <Button size="small" variant="outlined" startIcon={<TodayIcon />} onClick={() => {
+                const now = new Date();
+                setYear(now.getFullYear());
+                setMonth(now.getMonth());
+                setSelDate(dateKeyFromDate(now));
+              }} sx={{ flexShrink: 0 }}>
+                Hari ini
+              </Button>
             </Stack>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', mb: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover', overflow: 'hidden' }}>
+              <Box sx={{ px: 1, py: 0.75, textAlign: 'center' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{monthSchedules.length} jadwal</Typography>
+                <Typography variant="caption" color="text.secondary">Bulan ini</Typography>
+              </Box>
+              <Box sx={{ px: 1, py: 0.75, textAlign: 'center', borderLeft: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, color: monthActive ? 'warning.main' : 'text.primary' }}>{monthActive}</Typography>
+                <Typography variant="caption" color="text.secondary">Aktif</Typography>
+              </Box>
+              <Box sx={{ px: 1, py: 0.75, textAlign: 'center', borderLeft: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, color: monthDone ? 'success.main' : 'text.primary' }}>{monthDone}</Typography>
+                <Typography variant="caption" color="text.secondary">Selesai</Typography>
+              </Box>
+            </Box>
+            {monthIssues > 0 && (
+              <Alert severity="warning" icon={false} sx={{ mb: 1.25 }}>
+                {monthIssues} jadwal perlu diperiksa.
+              </Alert>
+            )}
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 0.5, mb: 0.5 }}>
               {DOW.map(d => <Typography key={d} variant="caption" sx={{ textAlign: 'center', fontWeight: 700, color: 'text.secondary' }}>{d}</Typography>)}
             </Box>
@@ -282,10 +306,12 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
                 const key = dateKey(day);
                 const items = byDate[key] || [];
                 const selected = key === selDate;
+                const canSchedule = key >= todayKey;
                 const failed = items.some(s => s.status === 'failed' || s.status === 'interrupted' || s.status === 'wa_restricted');
                 const done = items.some(s => s.status === 'done');
                 return (
-                  <Box key={i} onClick={() => setSelDate(key)}
+                  <Box key={i} onClick={() => canSchedule ? openCreate(key) : setSelDate(key)}
+                    title={canSchedule ? 'Buat jadwal Blast' : 'Lihat agenda tanggal ini'}
                     sx={{
                       cursor: 'pointer', border: '1px solid', borderColor: selected ? 'primary.main' : 'divider', borderRadius: 1,
                       minHeight: { xs: 58, sm: 72 }, p: 0.75, bgcolor: selected ? 'rgba(31,138,80,0.10)' : isToday(day) ? 'success.light' : 'background.paper',
@@ -342,7 +368,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
                 <EventAvailableIcon sx={{ fontSize: 34, color: 'text.disabled', mb: 1 }} />
                 <Typography variant="body2" sx={{ fontWeight: 700, color: 'text.primary' }}>Belum ada jadwal.</Typography>
                 <Typography variant="caption" sx={{ display: 'block', mt: 0.25 }}>
-                  Buat jadwal broadcast untuk tanggal ini agar terkirim otomatis nanti.
+                  Buat jadwal Blast untuk tanggal ini agar terkirim otomatis nanti.
                 </Typography>
                 <Button sx={{ mt: 1.25 }} variant="outlined" startIcon={<AddIcon />} onClick={() => openCreate()}>Buat Jadwal</Button>
               </Box>
@@ -356,7 +382,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
                           <Chip size="small" icon={<AccessTimeIcon />} label={scheduledTime(s)} variant="outlined" />
                           <Chip size="small" icon={<PeopleAltIcon />} label={`${s.recipient_count} nomor`} variant="outlined" />
                           {s.media_type && <Chip size="small" icon={<AttachFileIcon />} label={s.file_name || 'Lampiran'} variant="outlined" />}
-                          {s.risk_level && <Chip size="small" label={RISK_LABEL[s.risk_level] ?? s.risk_level} color={s.risk_level === 'high' ? 'error' : s.risk_level === 'medium' ? 'warning' : 'success'} variant="outlined" />}
+                          {s.risk_level === 'high' && <Chip size="small" label="Perlu perhatian" color="warning" variant="outlined" />}
                         </Stack>
                         <Typography variant="body2" sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {s.message}
@@ -384,8 +410,8 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
         </Card>
       </Box>
 
-      <Dialog open={formOpen} onClose={() => setFormOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Buat Jadwal Broadcast</DialogTitle>
+      <Dialog open={formOpen} onClose={() => setFormOpen(false)} fullWidth maxWidth="md" fullScreen={mobileDialog}>
+        <DialogTitle>Buat Jadwal Blast</DialogTitle>
         <DialogContent dividers>
           {err && <Alert severity="error" sx={{ mb: 1.5 }}>{err}</Alert>}
           <Alert severity="info" icon={false} sx={{ mb: 1.5 }}>
@@ -394,59 +420,60 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
             </Typography>
           </Alert>
 
-          <Box sx={{ mb: 1.75 }}>
-            <SectionHeader icon={<AccessTimeIcon fontSize="small" />} title="Waktu Kirim" subtitle="Pilih jam mulai pengiriman." />
-            <TextField type="time" label="Jam mulai" size="small" value={time} onChange={e => setTime(e.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }} sx={{ width: { xs: '100%', sm: 180 } }} />
-          </Box>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 0.9fr) minmax(0, 1.1fr)' }, gap: 1.5, alignItems: 'start' }}>
+            <Box sx={{ minWidth: 0, p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+              <SectionHeader icon={<AccessTimeIcon fontSize="small" />} title="Waktu Kirim" subtitle="Pilih jam mulai pengiriman." />
+              <TextField type="time" label="Jam mulai" size="small" value={time} onChange={e => setTime(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }} fullWidth />
 
-          <Divider sx={{ my: 1.5 }} />
+              <Divider sx={{ my: 1.5 }} />
 
-          <Box sx={{ mb: 1.5 }}>
-            <SectionHeader
-              icon={<EventAvailableIcon fontSize="small" />}
-              title="Pesan"
-              subtitle={`${message.length}/2000 karakter`}
-            />
-            <Box sx={{ mb: 0.75 }}>
-              <TemplatePicker agentId={agentId} onPick={b => { setMessage(m => m ? m + '\n' + b : b); if (errors.message) setErrors(p => ({ ...p, message: '' })); }} />
+              <SectionHeader
+                icon={<EventAvailableIcon fontSize="small" />}
+                title="Pesan"
+                subtitle={`${message.length}/2000 karakter`}
+              />
+              <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between', gap: 0.5, mb: 0.75 }}>
+                <Typography variant="caption" color="text.secondary">Isi kolom pesan dari pesan yang sudah disimpan.</Typography>
+                <TemplatePicker label="Pakai template pesan" agentId={agentId} onPick={b => { setMessage(m => m ? m + '\n' + b : b); if (errors.message) setErrors(p => ({ ...p, message: '' })); }} />
+              </Stack>
+              <WhatsAppEditor value={message} onChange={v => { setMessage(v); if (errors.message) setErrors(p => ({...p, message: ''})); }}
+                placeholder="Halo {nama}, ..." rows={4} error={!!errors.message} helperText={errors.message} />
+              <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: 'center', flexWrap: 'wrap', gap: 0.75 }}>
+                <Button component="label" size="small" variant="outlined" startIcon={<AttachFileIcon />}>
+                  {file ? 'Ganti lampiran' : 'Tambah lampiran'}
+                  <input type="file" hidden onChange={e => setFile(e.target.files?.[0] || null)} />
+                </Button>
+                {file && <Chip label={file.name} size="small" onDelete={() => setFile(null)} deleteIcon={<CloseIcon />} />}
+              </Stack>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Tambahkan gambar, video, PDF, atau dokumen. Untuk video, gunakan ukuran maksimal 16 MB agar pengiriman lebih stabil.
+              </Typography>
             </Box>
-            <WhatsAppEditor value={message} onChange={v => { setMessage(v); if (errors.message) setErrors(p => ({...p, message: ''})); }}
-              placeholder="Halo {nama}, ..." rows={3} error={!!errors.message} helperText={errors.message} />
+
+            <Box sx={{ minWidth: 0, p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+              <SectionHeader
+                icon={<PeopleAltIcon fontSize="small" />}
+                title="Penerima"
+                subtitle={`${formRecipientCount} baris penerima siap diproses.`}
+              />
+              <RecipientField agentId={agentId} value={recipients} onChange={v => { setRecipients(v); if (errors.recipients) setErrors(p => ({...p, recipients: ''})); }} error={errors.recipients} />
+
+              <Divider sx={{ my: 1.5 }} />
+
+              <SectionHeader
+                icon={<AccessTimeIcon fontSize="small" />}
+                title="Jeda Kirim"
+                subtitle="Mengatur ritme kirim, bukan jaminan nomor bebas pembatasan."
+              />
+              <DelayFields
+                minDelay={minDelay} maxDelay={maxDelay} restEvery={restEvery} restDuration={restDuration}
+                setMinDelay={setMinDelay} setMaxDelay={setMaxDelay} setRestEvery={setRestEvery} setRestDuration={setRestDuration}
+                error={errors.delay || delayProblem || undefined}
+                onEditDelay={() => { if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
+              />
+            </Box>
           </Box>
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 0.75 }}>
-            <Button component="label" size="small" variant="outlined" startIcon={<AttachFileIcon />}>
-              {file ? 'Ganti lampiran' : 'Tambah lampiran'}
-              <input type="file" hidden onChange={e => setFile(e.target.files?.[0] || null)} />
-            </Button>
-            {file && <Chip label={file.name} size="small" onDelete={() => setFile(null)} deleteIcon={<CloseIcon />} />}
-          </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, mb: 1.5 }}>
-            Bisa gambar atau video (maks video 16MB). File lebih besar kirim sebagai dokumen.
-          </Typography>
-
-          <Divider sx={{ my: 1.5 }} />
-
-          <SectionHeader
-            icon={<PeopleAltIcon fontSize="small" />}
-            title="Penerima"
-            subtitle={`${formRecipientCount} baris penerima siap diproses.`}
-          />
-          <RecipientField agentId={agentId} value={recipients} onChange={v => { setRecipients(v); if (errors.recipients) setErrors(p => ({...p, recipients: ''})); }} error={errors.recipients} />
-
-          <Divider sx={{ my: 1.5 }} />
-
-          <SectionHeader
-            icon={<AccessTimeIcon fontSize="small" />}
-            title="Jeda Kirim"
-            subtitle="Mengatur ritme kirim, bukan jaminan nomor bebas pembatasan."
-          />
-          <DelayFields
-            minDelay={minDelay} maxDelay={maxDelay} restEvery={restEvery} restDuration={restDuration}
-            setMinDelay={setMinDelay} setMaxDelay={setMaxDelay} setRestEvery={setRestEvery} setRestDuration={setRestDuration}
-            error={errors.delay || delayProblem || undefined}
-            onEditDelay={() => { if (errors.delay) setErrors(p => ({ ...p, delay: '' })); }}
-          />
 
         </DialogContent>
         <DialogActions>
@@ -458,22 +485,19 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={!!detailId} onClose={closeDetail} fullWidth maxWidth="sm">
-        <DialogTitle>Hasil Broadcast Terjadwal</DialogTitle>
+      <Dialog open={!!detailId} onClose={closeDetail} fullWidth maxWidth="sm" fullScreen={mobileDialog}>
+        <DialogTitle>Hasil Blast Terjadwal</DialogTitle>
         <DialogContent dividers>
           {detail ? (() => {
             const b = detail.broadcast;
-            const done = b.sent + b.failed + b.skipped;
-            const pct = b.total ? Math.round((done / b.total) * 100) : 0;
             return (
               <>
                 <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}>
                   <Chip label={STATUS_LABEL[b.status] ?? b.status} color={STATUS_COLOR[b.status] ?? 'default'} />
-                  <Typography variant="caption" color="text.secondary">
-                    {b.sent} terkirim · {b.failed} gagal · {b.skipped} dilewati / {b.total}
-                  </Typography>
                 </Stack>
-                <LinearProgress variant="determinate" value={pct} sx={{ height: 7, borderRadius: 5, mb: 1.5 }} />
+                <Box sx={{ p: 1.25, bgcolor: 'action.hover', borderRadius: 1, mb: 1.5 }}>
+                  <BroadcastProgress broadcast={b} />
+                </Box>
                 <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 1.5 }}>{b.message}</Typography>
                 {b.status === 'wa_restricted' && (
                   <Alert severity="warning" icon={false} sx={{ mb: 1.5 }}>

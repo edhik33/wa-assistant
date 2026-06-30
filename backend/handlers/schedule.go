@@ -237,7 +237,7 @@ func fireScheduled(s models.ScheduledMessage) {
 		log.Printf("Scheduler gagal link broadcast jadwal %d: %v", s.ID, err)
 	}
 
-	go runBroadcast(b.ID, s.AgentID, s.MinDelay, s.MaxDelay)
+	startBroadcastWorker(b.ID, s.AgentID, s.MinDelay, s.MaxDelay)
 }
 
 // CleanupStuckSchedules menandai jadwal yang "running" saat server mati sebagai interrupted.

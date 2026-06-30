@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { TextField, Button, Stack, Typography, Menu, MenuItem, CircularProgress, Box, IconButton, InputAdornment } from '@mui/material';
+import { TextField, Button, Stack, Typography, Menu, MenuItem, CircularProgress, Box, IconButton, InputAdornment, Chip } from '@mui/material';
 import ForumIcon from '@mui/icons-material/ForumOutlined';
 import ContactsIcon from '@mui/icons-material/ContactsOutlined';
 import GroupsIcon from '@mui/icons-material/GroupsOutlined';
 import LabelIcon from '@mui/icons-material/LabelOutlined';
 import CloseIcon from '@mui/icons-material/Close';
 import SearchIcon from '@mui/icons-material/Search';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHighOutlined';
 import { useChatContacts, useWAContacts, useGroups, useGroupMembers, useLabels, useLabelContacts } from '../hooks';
 import { normalizePhone } from '../types';
 import type { WAGroup, LabelInfo } from '../types';
@@ -13,6 +14,28 @@ import type { WAGroup, LabelInfo } from '../types';
 type Contact = { number: string; name: string };
 
 const PREVIEW_CAP = 300; // batas baris yang dirender agar daftar besar tetap ringan
+
+function parseRecipientLine(line: string): Contact {
+  // Terima format bebas seperti "Jojo 62812...", "62812... Jojo",
+  // "Jojo,62812...", serta nomor yang memakai spasi atau tanda hubung.
+  const phoneMatch = line.match(/(?:\+?\d[\d\s().-]{6,}\d)/);
+  if (phoneMatch?.index !== undefined) {
+    const number = normalizePhone(phoneMatch[0]);
+    const name = `${line.slice(0, phoneMatch.index)} ${line.slice(phoneMatch.index + phoneMatch[0].length)}`
+      .replace(/[\t,;|]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (number) return { number, name };
+  }
+
+  const parts = line.split(/[\t,]/).map(part => part.trim()).filter(Boolean);
+  const numberIndex = parts.findIndex(part => /\d/.test(part));
+  if (numberIndex < 0) return { number: '', name: '' };
+  return {
+    number: normalizePhone(parts[numberIndex]),
+    name: parts.filter((_, index) => index !== numberIndex).join(' ').trim(),
+  };
+}
 
 export default function RecipientField({ agentId, value, onChange, error }: {
   agentId: number; value: string; onChange: (v: string) => void; error?: string;
@@ -38,10 +61,9 @@ export default function RecipientField({ agentId, value, onChange, error }: {
   const dedup = new Map<string, string>();
   let invalid = 0;
   for (const line of rawLines) {
-    const [num, ...rest] = line.split(',');
-    const number = normalizePhone(num);
+    const { number, name } = parseRecipientLine(line);
     if (!number) { invalid++; continue; }
-    if (!dedup.has(number)) dedup.set(number, rest.join(',').trim());
+    if (!dedup.has(number)) dedup.set(number, name);
   }
   const recipients: Contact[] = Array.from(dedup.entries()).map(([number, name]) => ({ number, name }));
   const dupCount = rawLines.length - invalid - recipients.length;
@@ -52,16 +74,27 @@ export default function RecipientField({ agentId, value, onChange, error }: {
   const capped = filtered.length - shown.length;
 
   const removeNumber = (num: string) => {
-    const kept = rawLines.filter(line => normalizePhone(line.split(',')[0]) !== num);
+    const kept = rawLines.filter(line => parseRecipientLine(line).number !== num);
     onChange(kept.join('\n'));
   };
   const clearAll = () => { onChange(''); setNote(''); setFilter(''); };
 
+  const formatRecipients = () => {
+    if (recipients.length === 0) return;
+    onChange(recipients.map(recipient => recipient.name
+      ? `${recipient.number},${recipient.name}`
+      : recipient.number).join('\n'));
+    setNoteWarn(invalid > 0);
+    setNote([
+      `${recipients.length} nomor dirapikan`,
+      dupCount > 0 ? `${dupCount} duplikat digabung` : '',
+      invalid > 0 ? `${invalid} baris tidak valid dibuang` : '',
+    ].filter(Boolean).join(' · ') + '.');
+  };
+
   const merge = (list: Contact[], label: string, warm = false) => {
-    const parsed = value.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
-      const [num, ...rest] = line.split(',');
-      return { number: normalizePhone(num), name: rest.join(',').trim() };
-    }).filter(r => r.number);
+    const parsed = value.split('\n').map(l => l.trim()).filter(Boolean)
+      .map(parseRecipientLine).filter(r => r.number);
     const map = new Map<string, string>();
     [...parsed, ...list.map(c => ({ number: normalizePhone(c.number), name: c.name || '' }))]
       .forEach(c => { if (c.number && !map.has(c.number)) map.set(c.number, c.name); });
@@ -86,34 +119,54 @@ export default function RecipientField({ agentId, value, onChange, error }: {
   return (
     <Box>
       <TextField fullWidth multiline rows={4} value={value} onChange={e => onChange(e.target.value)}
-        placeholder={'08123456789,Budi\n08987654321,Sinta'} error={!!error} helperText={error} sx={{ mb: 1 }} />
-      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.75, mb: 0.5, alignItems: 'center' }}>
-        <Button size="small" variant="contained" color="success" disabled={chatContacts.isPending}
-          startIcon={chatContacts.isPending ? <CircularProgress size={14} color="inherit" /> : <ForumIcon />}
-          onClick={async () => merge(await chatContacts.mutateAsync(), 'pernah chat', true)}>
-          Pernah chat
-        </Button>
-        <Typography variant="caption" color="success.main" sx={{ fontWeight: 600 }}>← paling aman</Typography>
-        <Box sx={{ flexBasis: '100%', height: 0 }} />
-        <Button size="small" variant="outlined" color="warning" disabled={waContacts.isPending}
-          startIcon={waContacts.isPending ? <CircularProgress size={14} /> : <ContactsIcon />}
-          onClick={async () => merge(await waContacts.mutateAsync(), 'kontak WhatsApp')}>
-          Sinkron WA
-        </Button>
-        <Button size="small" variant="outlined" color="warning" disabled={groups.isPending}
-          startIcon={groups.isPending ? <CircularProgress size={14} /> : <GroupsIcon />}
-          onClick={openGroups}>
-          Dari grup
-        </Button>
-        <Button size="small" variant="outlined" color="warning" disabled={labels.isPending}
-          startIcon={labels.isPending ? <CircularProgress size={14} /> : <LabelIcon />}
-          onClick={openLabels}>
-          Dari label
-        </Button>
-      </Stack>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-        Sumber kuning belum tentu pernah berinteraksi, jadi risiko pembatasan lebih tinggi.
-      </Typography>
+        placeholder={'08123456789,Budi\n08987654321,Sinta'} error={!!error} helperText={error} sx={{ mb: 1 }}
+        slotProps={{
+          input: {
+            endAdornment: (
+              <InputAdornment position="end" sx={{ alignSelf: 'flex-start', mt: -0.25, mr: -0.75 }}>
+                <Button size="small" variant="outlined" startIcon={<AutoFixHighIcon fontSize="small" />}
+                  disabled={recipients.length === 0} onClick={formatRecipients}
+                  sx={{
+                    whiteSpace: 'nowrap', minHeight: 28, bgcolor: 'grey.100', borderColor: 'grey.300', color: 'text.primary',
+                    '&:hover': { bgcolor: 'grey.200', borderColor: 'grey.400' },
+                  }}>
+                  Format otomatis
+                </Button>
+              </InputAdornment>
+            ),
+          },
+        }} />
+      <Box sx={{ p: 1, mb: 0.5, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover' }}>
+        <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 0.75 }}>
+          <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.primary' }}>Ambil penerima dari</Typography>
+          <Chip size="small" label="Pernah chat disarankan" color="success" variant="outlined" />
+        </Stack>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 0.75 }}>
+          <Button size="small" variant="contained" color="success" disabled={chatContacts.isPending}
+            startIcon={chatContacts.isPending ? <CircularProgress size={14} color="inherit" /> : <ForumIcon />}
+            onClick={async () => merge(await chatContacts.mutateAsync(), 'pernah chat', true)} sx={{ minWidth: 0 }}>
+            Pernah chat
+          </Button>
+          <Button size="small" variant="outlined" color="inherit" disabled={waContacts.isPending}
+            startIcon={waContacts.isPending ? <CircularProgress size={14} /> : <ContactsIcon />}
+            onClick={async () => merge(await waContacts.mutateAsync(), 'kontak WhatsApp')} sx={{ minWidth: 0, bgcolor: 'background.paper' }}>
+            Kontak WA
+          </Button>
+          <Button size="small" variant="outlined" color="inherit" disabled={groups.isPending}
+            startIcon={groups.isPending ? <CircularProgress size={14} /> : <GroupsIcon />}
+            onClick={openGroups} sx={{ minWidth: 0, bgcolor: 'background.paper' }}>
+            Grup WA
+          </Button>
+          <Button size="small" variant="outlined" color="inherit" disabled={labels.isPending}
+            startIcon={labels.isPending ? <CircularProgress size={14} /> : <LabelIcon />}
+            onClick={openLabels} sx={{ minWidth: 0, bgcolor: 'background.paper' }}>
+            Label WA
+          </Button>
+        </Box>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+          Sumber lain mungkin berisi kontak yang belum pernah berinteraksi dengan nomor Anda.
+        </Typography>
+      </Box>
       {note && <Typography variant="caption" color={noteWarn ? 'warning.main' : 'success.main'} sx={{ display: 'block' }}>{note}</Typography>}
 
       {/* Pratinjau daftar target */}

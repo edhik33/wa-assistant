@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useRef, type ReactNode } from 'react';
 import {
   Box, Typography, Card, CardContent, TextField, Button, Stack, Alert, Chip,
-  Table, TableBody, TableCell, TableHead, TableRow, LinearProgress, CircularProgress,
-  Dialog, DialogTitle, DialogContent, DialogActions, Divider,
+  Table, TableBody, TableCell, TableHead, TableRow, CircularProgress,
+  Dialog, DialogTitle, DialogContent, DialogActions, Divider, useMediaQuery,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import SendIcon from '@mui/icons-material/Send';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import CloseIcon from '@mui/icons-material/Close';
@@ -20,6 +21,7 @@ import WhatsAppEditor from './WhatsAppEditor';
 import TemplatePicker from './TemplatePicker';
 import PageHeader from './PageHeader';
 import DelayFields from './broadcast/DelayFields';
+import BroadcastProgress from './broadcast/BroadcastProgress';
 import { defaultBroadcastSafetyForm } from '../services/broadcastSafety';
 import type { Broadcast } from '../types';
 
@@ -45,13 +47,6 @@ const RCP_COLOR: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
 const RCP_LABEL: Record<string, string> = {
   sent: 'Terkirim', failed: 'Gagal', skipped: 'Dilewati', pending: 'Menunggu',
 };
-const RISK_LABEL: Record<string, string> = {
-  low: 'Risiko lebih rendah', medium: 'Sudah ditinjau', high: 'Override risiko',
-};
-const RISK_COLOR: Record<string, 'success' | 'warning' | 'error'> = {
-  low: 'success', medium: 'warning', high: 'error',
-};
-
 function SectionTitle({ icon, title, subtitle, action }: { icon: ReactNode; title: string; subtitle?: string; action?: ReactNode }) {
   return (
     <Stack direction="row" sx={{ alignItems: 'center', gap: 1, mb: 1 }}>
@@ -85,10 +80,11 @@ function ReviewRow({ label, value, good, warning }: { label: string; value: stri
 }
 
 export default function BroadcastPanel({ agentId, seed }: { agentId: number; seed?: { value: string; n: number } | null }) {
+  const theme = useTheme();
+  const mobileDetail = useMediaQuery(theme.breakpoints.down('sm'));
   const [message, setMessage] = useState('');
-  const [recipientsText, setRecipientsText] = useState('');
-  // Prefill penerima saat datang dari menu Kontak ("Broadcast ke tag ini").
-  useEffect(() => { if (seed?.value) setRecipientsText(seed.value); }, [seed?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Panel di-mount ulang ketika tab dibuka, jadi seed dari Kontak cukup dijadikan nilai awal.
+  const [recipientsText, setRecipientsText] = useState(seed?.value || '');
   const [minDelay, setMinDelay] = useState(10);
   const [maxDelay, setMaxDelay] = useState(30);
   // Istirahat berkala (default pintar): jeda restDuration dtk tiap restEvery pesan. restEvery=0 = mati.
@@ -139,7 +135,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
 
     const recipients = parsed.map(p => ({ number: p.number, name: p.name }));
     const ok = await swalConfirm(
-      `Kirim broadcast ke ${uniqueParsedCount} nomor?`,
+      `Mulai Blast ke ${uniqueParsedCount} nomor?`,
       'Pesan dikirim langsung ke daftar penerima dengan jeda yang kamu atur. Kontak yang pernah membalas STOP otomatis dilewati.',
     );
     if (!ok) return;
@@ -147,13 +143,13 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
       const res = await createBroadcast.mutateAsync({ message, recipients, min_delay: minDelay, max_delay: maxDelay, rest_every: restEvery, rest_duration: restDuration, file, safety: defaultBroadcastSafetyForm() });
       const started = res.data;
 
-      // Bersihkan form agar user tahu broadcast sudah masuk proses
+      // Bersihkan form agar user tahu Blast sudah masuk proses
       setMessage('');
       setRecipientsText('');
       setFile(null);
       setErrors({});
 
-      // Balik ke halaman 1 — broadcast terbaru di paling atas
+      // Balik ke halaman 1 — Blast terbaru di paling atas
       setPage(1);
       setLastStartedId(started?.id || null);
 
@@ -162,34 +158,62 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
         historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
 
-      swalToast(`Broadcast dimulai untuk ${recipients.length} penerima.`);
+      swalToast(`Blast dimulai untuk ${recipients.length} penerima.`);
     } catch (error) {
       const detail = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      swalToast(detail || 'Broadcast belum bisa dimulai. Periksa pesan, penerima, dan koneksi WhatsApp.', 'error');
+      swalToast(detail || 'Blast belum bisa dimulai. Periksa pesan, penerima, dan koneksi WhatsApp.', 'error');
     }
   };
 
   const resume = async (broadcast: Broadcast) => {
     const ok = await swalConfirm(
-      'Tetap lanjutkan broadcast?',
+      'Tetap lanjutkan Blast?',
       'WhatsApp kemungkinan besar masih akan menolak pengiriman ini. Melanjutkan tidak menembus pembatasan WhatsApp, jadi pesan bisa tetap gagal terkirim. Sebaiknya istirahatkan nomor dulu beberapa hari, lalu mulai dari kontak yang pernah membalas Anda.',
     );
     if (!ok) return;
     try {
       await resumeBroadcast.mutateAsync(broadcast.id);
-      swalToast('Mencoba melanjutkan broadcast.');
+      swalToast('Mencoba melanjutkan Blast.');
     } catch (error) {
       const detail = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      swalToast(detail || 'Broadcast belum bisa dilanjutkan.', 'error');
+      swalToast(detail || 'Blast belum bisa dilanjutkan.', 'error');
     }
   };
 
   const formIssueCount = (message.trim() ? 0 : 1) + (parsed.length ? 0 : 1) + (delayProblem ? 1 : 0);
 
+  const cancel = async (broadcast: Broadcast) => {
+    if (!await swalConfirm('Batalkan Blast ini?', 'Pesan yang sudah terkirim tidak bisa ditarik.')) return;
+    if (broadcast.id === lastStartedId) setLastStartedId(null);
+    cancelBroadcast.mutate(broadcast.id);
+  };
+
+  const broadcastActions = (broadcast: Broadcast, fullWidth = false) => {
+    const remaining = Math.max(0, broadcast.total - broadcast.sent - broadcast.failed - broadcast.skipped);
+    const canCancel = ['pending', 'running', 'resuming', 'interrupted', 'wa_restricted', 'cancel_requested'].includes(broadcast.status);
+    if (!canCancel) return null;
+    return (
+      <Stack direction={{ xs: fullWidth ? 'column' : 'row', sm: 'row' }} spacing={0.75} sx={{ justifyContent: 'flex-end' }}>
+        {broadcast.status === 'wa_restricted' && (
+          <Button size="small" variant="contained" fullWidth={fullWidth}
+            disabled={resumeBroadcast.isPending} onClick={() => resume(broadcast)}>
+            Coba lanjutkan ({remaining})
+          </Button>
+        )}
+        {canCancel && (
+          <Button size="small" color="error" variant="outlined" fullWidth={fullWidth}
+            disabled={cancelBroadcast.isPending} onClick={() => cancel(broadcast)}>
+            Batalkan
+          </Button>
+        )}
+      </Stack>
+    );
+  };
+
   return (
     <Box>
-      <PageHeader title="Broadcast"
-        subtitle="Susun pesan dan daftar penerima, atur jeda, lalu kirim." />
+      <PageHeader title="WhatsApp Blast"
+        subtitle="Susun pesan, pilih penerima, lalu pantau pengirimannya secara langsung." />
 
       <Alert
         severity="info"
@@ -215,8 +239,11 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                   icon={<EditNoteIcon fontSize="small" />}
                   title="Pesan"
                   subtitle={`${message.length}/2000 karakter`}
-                  action={<TemplatePicker agentId={agentId} onPick={b => { setMessage(m => m ? m + '\n' + b : b); if (errors.message) setErrors(p => ({ ...p, message: '' })); }} />}
                 />
+                <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between', gap: 0.5, mb: 0.75 }}>
+                  <Typography variant="caption" color="text.secondary">Isi kolom pesan dari pesan yang sudah disimpan.</Typography>
+                  <TemplatePicker label="Pakai template pesan" agentId={agentId} onPick={b => { setMessage(m => m ? m + '\n' + b : b); if (errors.message) setErrors(p => ({ ...p, message: '' })); }} />
+                </Stack>
                 <WhatsAppEditor value={message} onChange={v => { setMessage(v); if (errors.message) setErrors(p => ({ ...p, message: '' })); }}
                   placeholder="Halo {nama}, ada promo spesial untuk kamu hari ini…" error={!!errors.message} helperText={errors.message} />
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 1, flexWrap: 'wrap', gap: 0.75 }}>
@@ -227,7 +254,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                   {file && <Chip label={file.name} size="small" onDelete={() => setFile(null)} deleteIcon={<CloseIcon />} />}
                 </Stack>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                  Bisa gambar atau video (maks video 16MB). File lebih besar kirim sebagai dokumen.
+                  Tambahkan gambar, video, PDF, atau dokumen. Untuk video, gunakan ukuran maksimal 16 MB agar pengiriman lebih stabil.
                 </Typography>
               </Box>
 
@@ -240,20 +267,6 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
                   subtitle={`${uniqueParsedCount} nomor unik${duplicateCount > 0 ? `, ${duplicateCount} duplikat terdeteksi` : ''}`}
                 />
                 <RecipientField agentId={agentId} value={recipientsText} onChange={v => { setRecipientsText(v); if (errors.recipients) setErrors(p => ({ ...p, recipients: '' })); }} error={errors.recipients} />
-                <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: 'center', flexWrap: 'wrap', gap: 0.75 }}>
-                  <Button size="small" variant="outlined" onClick={() => {
-                    const formatted = recipientsText.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
-                      const parts = line.split(/[\t,]/);
-                      const num = parts.find(p => /\d/.test(p)) || parts[0];
-                      const name = parts.filter(p => p !== num && p.trim()).join(' ').trim();
-                      const n = normalizePhone(num);
-                      return n ? `${n},${name}` : line;
-                    }).join('\n');
-                    setRecipientsText(formatted);
-                  }}>Format otomatis</Button>
-                  <Chip size="small" label="Utamakan kontak yang pernah chat" color="info" variant="outlined" />
-                  <Chip size="small" label="Hindari banyak nomor asing sekaligus" color="warning" variant="outlined" />
-                </Stack>
               </Box>
 
               <Divider />
@@ -299,7 +312,7 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
               <Button fullWidth variant="contained"
                 startIcon={createBroadcast.isPending ? <CircularProgress size={16} /> : <SendIcon />}
                 onClick={doSend} disabled={createBroadcast.isPending || formIssueCount > 0}>
-                {createBroadcast.isPending ? 'Memulai broadcast…' : `Kirim broadcast (${uniqueParsedCount})`}
+                {createBroadcast.isPending ? 'Memulai Blast…' : `Mulai Blast (${uniqueParsedCount})`}
               </Button>
               <Typography variant="caption" color="text.secondary">
                 Pesan dikirim langsung ke daftar penerima dengan jeda yang kamu atur.
@@ -310,76 +323,77 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
       </Box>
 
       <Card ref={historyRef} sx={{ mt: 2 }}>
-        <CardContent sx={{ overflowX: 'auto' }}>
+        <CardContent>
           <SectionTitle
             icon={<HistoryIcon fontSize="small" />}
-            title="Riwayat Broadcast"
-            subtitle={broadcasts.length ? 'Klik baris untuk melihat status per penerima.' : 'Broadcast yang sudah dimulai akan muncul di sini.'}
+            title="Riwayat Blast"
+            subtitle={broadcasts.length ? 'Progres diperbarui otomatis. Buka item untuk melihat setiap penerima.' : 'Blast yang sudah dimulai akan muncul di sini.'}
           />
           {broadcasts.length === 0 ? (
-            <Alert severity="info" icon={false}>Belum ada broadcast yang tercatat untuk agent ini.</Alert>
+            <Alert severity="info" icon={false}>Belum ada Blast yang tercatat untuk nomor ini.</Alert>
           ) : (
             <>
-              <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Waktu</TableCell>
-                  <TableCell>Pesan</TableCell>
-                  <TableCell align="center">Status</TableCell>
-                  <TableCell sx={{ width: 210 }}>Progres</TableCell>
-                  <TableCell align="right" sx={{ minWidth: 250 }}>Aksi</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {broadcasts.map(b => {
-                  const done = b.sent + b.failed + b.skipped;
-                  const pct = b.total ? Math.round((done / b.total) * 100) : 0;
-                  const canCancel = ['pending', 'running', 'resuming', 'interrupted', 'wa_restricted', 'cancel_requested'].includes(b.status);
-                  const remaining = Math.max(0, b.total - b.sent - b.failed - b.skipped);
-                  return (
-                    <TableRow key={b.id} hover sx={{ cursor: 'pointer', bgcolor: b.id === lastStartedId ? 'action.hover' : 'inherit' }} onClick={() => setDetailId(b.id)}>
-                      <TableCell>
-                        {new Date(b.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                        {b.id === lastStartedId && <Chip label="Baru dimulai" size="small" color="primary" sx={{ ml: 1 }} />}
-                      </TableCell>
-                      <TableCell sx={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.message}</TableCell>
-                      <TableCell align="center">
-                        <Stack spacing={0.5} sx={{ alignItems: 'center' }}>
-                          <Chip label={STATUS_LABEL[b.status] ?? b.status} size="small" color={STATUS_COLOR[b.status] ?? 'default'} />
-                          {b.risk_level && <Chip label={RISK_LABEL[b.risk_level] ?? b.risk_level} size="small" color={RISK_COLOR[b.risk_level] ?? 'warning'} variant="outlined" />}
-                        </Stack>
-                      </TableCell>
-                      <TableCell>
-                        <LinearProgress variant="determinate" value={pct} color={b.status === 'done' ? 'success' : 'primary'} sx={{ height: 6, borderRadius: 3, mb: 0.5 }} />
-                        <Typography variant="caption" color="text.secondary">
-                          {b.sent} terkirim · {b.failed} gagal · {b.skipped} dilewati / {b.total}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right" onClick={e => e.stopPropagation()}>
-                        {b.status === 'wa_restricted' && (
-                          <Button size="small" variant="contained" sx={{ mr: 0.75 }}
-                            disabled={resumeBroadcast.isPending} onClick={() => resume(b)}>
-                            Coba lanjutkan ({remaining})
-                          </Button>
-                        )}
-                        {canCancel && (
-                          <Button size="small" color="error" variant="outlined"
-                            disabled={cancelBroadcast.isPending}
-                            onClick={async () => {
-                              if (await swalConfirm('Batalkan broadcast ini?', 'Pesan yang sudah terkirim tidak bisa ditarik.')) {
-                                if (b.id === lastStartedId) setLastStartedId(null);
-                                cancelBroadcast.mutate(b.id);
-                              }
-                            }}>
-                            Batalkan
-                          </Button>
-                        )}
-                      </TableCell>
+              <Box sx={{ display: { xs: 'none', md: 'block' }, overflowX: 'auto' }}>
+                <Table size="small" sx={{ minWidth: 820 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ width: 145 }}>Waktu</TableCell>
+                      <TableCell>Pesan</TableCell>
+                      <TableCell align="center" sx={{ width: 130 }}>Status</TableCell>
+                      <TableCell sx={{ width: 280 }}>Progres</TableCell>
+                      <TableCell align="right" sx={{ width: 230 }}>Aksi</TableCell>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                  </TableHead>
+                  <TableBody>
+                    {broadcasts.map(b => (
+                      <TableRow key={b.id} hover sx={{ cursor: 'pointer', bgcolor: b.id === lastStartedId && b.status === 'pending' ? 'action.hover' : 'inherit' }} onClick={() => setDetailId(b.id)}>
+                        <TableCell>
+                          <Typography variant="caption" sx={{ display: 'block', fontWeight: 700 }}>
+                            {new Date(b.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {new Date(b.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                          </Typography>
+                          {b.id === lastStartedId && b.status === 'pending' && <Chip label="Baru dibuat" size="small" color="primary" sx={{ mt: 0.5 }} />}
+                        </TableCell>
+                        <TableCell sx={{ maxWidth: 260 }}>
+                          <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{b.message}</Typography>
+                          <Typography variant="caption" color="text.secondary">{b.total} penerima</Typography>
+                        </TableCell>
+                        <TableCell align="center">
+                          <Chip label={STATUS_LABEL[b.status] ?? b.status} size="small" color={STATUS_COLOR[b.status] ?? 'default'} />
+                        </TableCell>
+                        <TableCell><BroadcastProgress broadcast={b} /></TableCell>
+                        <TableCell align="right" onClick={e => e.stopPropagation()}>{broadcastActions(b)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+
+              <Stack spacing={1} sx={{ display: { xs: 'flex', md: 'none' } }}>
+                {broadcasts.map(b => (
+                  <Box key={b.id} role="button" tabIndex={0} onClick={() => setDetailId(b.id)}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setDetailId(b.id); }}
+                    sx={{ p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1, cursor: 'pointer', bgcolor: b.id === lastStartedId && b.status === 'pending' ? 'action.hover' : 'background.paper' }}>
+                    <Stack direction="row" sx={{ alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, mb: 0.75 }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {new Date(b.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </Typography>
+                        <Typography variant="body2" sx={{ mt: 0.2, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.message}</Typography>
+                      </Box>
+                      <Chip label={STATUS_LABEL[b.status] ?? b.status} size="small" color={STATUS_COLOR[b.status] ?? 'default'} sx={{ flexShrink: 0 }} />
+                    </Stack>
+                    {b.id === lastStartedId && b.status === 'pending' && <Chip label="Baru dibuat" size="small" color="primary" sx={{ mb: 0.75 }} />}
+                    <BroadcastProgress broadcast={b} />
+                    {broadcastActions(b, true) && (
+                      <Box onClick={e => e.stopPropagation()} sx={{ mt: 1 }}>{broadcastActions(b, true)}</Box>
+                    )}
+                  </Box>
+                ))}
+              </Stack>
+
             <Stack direction="row" sx={{ justifyContent: 'flex-end', alignItems: 'center', mt: 1, gap: 1 }}>
               <Button size="small" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Sebelumnya</Button>
               <Typography variant="caption">Hal {page} / {totalPages}</Typography>
@@ -390,9 +404,9 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
         </CardContent>
       </Card>
 
-      {/* Detail broadcast: status per penerima */}
-      <Dialog open={!!detailId} onClose={closeDetail} fullWidth maxWidth="sm">
-        <DialogTitle>Detail Broadcast</DialogTitle>
+      {/* Detail Blast: status per penerima */}
+      <Dialog open={!!detailId} onClose={closeDetail} fullWidth maxWidth="md" fullScreen={mobileDetail}>
+        <DialogTitle>Detail Blast</DialogTitle>
         <DialogContent dividers>
           {detail ? (() => {
             const recs = detail.recipients;
@@ -408,81 +422,113 @@ export default function BroadcastPanel({ agentId, seed }: { agentId: number; see
             ];
             return (
               <>
-                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>{detail.broadcast.message}</Typography>
-                {detail.broadcast.media_type && (
-                  <Chip size="small" icon={<AttachFileIcon />} label={detail.broadcast.file_name || detail.broadcast.media_type} sx={{ mb: 1.5 }} />
-                )}
-                {detail.broadcast.risk_level && (
-                  <Alert severity={detail.broadcast.risk_level === 'high' ? 'warning' : 'info'} icon={false} sx={{ mb: 1.5 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 700 }}>{RISK_LABEL[detail.broadcast.risk_level]}</Typography>
-                    {detail.broadcast.override_reason && <Typography variant="caption">Alasan pengguna: {detail.broadcast.override_reason}</Typography>}
-                  </Alert>
-                )}
-                {detail.broadcast.status === 'wa_restricted' && (() => {
-                  const waiting = Math.max(0, detail.broadcast.total - detail.broadcast.sent - detail.broadcast.failed - detail.broadcast.skipped);
-                  const at = detail.broadcast.paused_at
-                    ? new Date(detail.broadcast.paused_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-                    : null;
-                  return (
-                    <Alert severity="warning" icon={false} sx={{ mb: 1.5 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 800, mb: 0.5 }}>Dijeda oleh WhatsApp</Typography>
-                      <Typography variant="body2" sx={{ mb: 0.5 }}>
-                        Pengiriman broadcast ini dihentikan sementara oleh WhatsApp, bukan oleh ChatLoop. Saat ChatLoop mengirim pesan Anda, WhatsApp menolaknya dan meminta pengiriman dihentikan, lalu ChatLoop langsung menjeda broadcast agar nomor Anda tetap aman. Nomor Anda tidak terblokir permanen.
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                        {at ? `Keputusan ini diberikan langsung oleh WhatsApp pada ${at}. ` : ''}ChatLoop tidak memblokir pesan Anda.
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 700 }}>Kenapa ini terjadi?</Typography>
-                      <Box component="ul" sx={{ pl: 2.5, m: 0, mb: 1 }}>
-                        <li><Typography variant="caption">Mengirim ke nomor yang belum pernah membalas atau menyimpan kontak Anda.</Typography></li>
-                        <li><Typography variant="caption">Nomor WhatsApp Anda masih baru atau jarang dipakai mengobrol dua arah.</Typography></li>
-                        <li><Typography variant="caption">Terlalu banyak pesan dikirim dalam waktu berdekatan.</Typography></li>
-                      </Box>
-                      <Typography variant="body2" sx={{ fontWeight: 700 }}>Agar nomor bisa broadcast lagi:</Typography>
-                      <Box component="ol" sx={{ pl: 2.5, m: 0, mb: 1 }}>
-                        <li><Typography variant="caption">Istirahatkan nomor ini dulu, 1 sampai 3 hari.</Typography></li>
-                        <li><Typography variant="caption">Hangatkan nomor: pakai untuk mengobrol normal, minta beberapa orang mengirim pesan ke Anda lalu balas.</Typography></li>
-                        <li><Typography variant="caption">Saat mulai lagi, kirim dulu hanya ke kontak yang pernah membalas Anda, dalam jumlah kecil.</Typography></li>
-                        <li><Typography variant="caption">Naikkan jumlah penerima sedikit demi sedikit setiap hari.</Typography></li>
-                      </Box>
-                      <Typography variant="caption" color="text.secondary">{waiting} penerima masih menunggu.</Typography>
-                    </Alert>
-                  );
-                })()}
-                <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
-                  {FILTERS.map(f => (
-                    <Chip key={f.k} size="small" label={f.label} onClick={() => setDetailFilter(f.k)}
-                      color={detailFilter === f.k ? 'primary' : 'default'} variant={detailFilter === f.k ? 'filled' : 'outlined'} />
-                  ))}
-                </Stack>
-                <TextField size="small" fullWidth placeholder="Cari nomor…" value={detailSearch}
-                  onChange={e => setDetailSearch(e.target.value)} sx={{ mb: 1 }} />
-                <Box sx={{ maxHeight: 360, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                  <Table size="small" stickyHeader>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Nomor</TableCell>
-                        <TableCell>Nama</TableCell>
-                        <TableCell align="right">Status</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {shown.map(r => (
-                        <TableRow key={r.id}>
-                          <TableCell>+{r.number}</TableCell>
-                          <TableCell>{r.name || '-'}</TableCell>
-                          <TableCell align="right">
-                            <Chip size="small" label={RCP_LABEL[r.status] ?? r.status} color={RCP_COLOR[r.status] ?? 'default'} />
-                            {r.error && <Typography variant="caption" color={r.status === 'pending' ? 'warning.main' : 'error'} sx={{ display: 'block' }}>{r.error}</Typography>}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                <Box sx={{ p: 1.25, mb: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+                  <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Progres pengiriman</Typography>
+                    <Chip label={STATUS_LABEL[detail.broadcast.status] ?? detail.broadcast.status} size="small" color={STATUS_COLOR[detail.broadcast.status] ?? 'default'} />
+                  </Stack>
+                  <BroadcastProgress broadcast={detail.broadcast} />
                 </Box>
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                  Menampilkan {shown.length} dari {recs.length} penerima
-                </Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(260px, 0.8fr) minmax(0, 1.2fr)' }, gap: 1.5, alignItems: 'start' }}>
+                  <Box sx={{ minWidth: 0, p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Konten Blast</Typography>
+                    <Typography variant="caption" color="text.secondary">Pesan yang dikirim ke penerima.</Typography>
+                    <Divider sx={{ my: 1 }} />
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{detail.broadcast.message}</Typography>
+                    {detail.broadcast.media_type && (
+                      <Chip size="small" icon={<AttachFileIcon />} label={detail.broadcast.file_name || detail.broadcast.media_type} sx={{ mt: 1.25 }} />
+                    )}
+                    {detail.broadcast.risk_level === 'high' && (
+                      <Alert severity="warning" icon={false} sx={{ mt: 1.25 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>Blast ini perlu perhatian</Typography>
+                        {detail.broadcast.override_reason && <Typography variant="caption">Alasan pengguna: {detail.broadcast.override_reason}</Typography>}
+                      </Alert>
+                    )}
+                    {detail.broadcast.status === 'wa_restricted' && (() => {
+                      const waiting = Math.max(0, detail.broadcast.total - detail.broadcast.sent - detail.broadcast.failed - detail.broadcast.skipped);
+                      const at = detail.broadcast.paused_at
+                        ? new Date(detail.broadcast.paused_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+                        : null;
+                      return (
+                        <Alert severity="warning" icon={false} sx={{ mt: 1.25 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 800, mb: 0.5 }}>Dijeda oleh WhatsApp</Typography>
+                          <Typography variant="body2" sx={{ mb: 0.5 }}>
+                            Pengiriman Blast ini dihentikan sementara oleh WhatsApp, bukan oleh ChatLoop. Saat ChatLoop mengirim pesan Anda, WhatsApp menolaknya dan meminta pengiriman dihentikan, lalu ChatLoop langsung menjeda Blast agar nomor Anda tetap aman. Nomor Anda tidak terblokir permanen.
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                            {at ? `Keputusan ini diberikan langsung oleh WhatsApp pada ${at}. ` : ''}ChatLoop tidak memblokir pesan Anda.
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>Kenapa ini terjadi?</Typography>
+                          <Box component="ul" sx={{ pl: 2.5, m: 0, mb: 1 }}>
+                            <li><Typography variant="caption">Mengirim ke nomor yang belum pernah membalas atau menyimpan kontak Anda.</Typography></li>
+                            <li><Typography variant="caption">Nomor WhatsApp Anda masih baru atau jarang dipakai mengobrol dua arah.</Typography></li>
+                            <li><Typography variant="caption">Terlalu banyak pesan dikirim dalam waktu berdekatan.</Typography></li>
+                          </Box>
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>Agar nomor bisa melakukan Blast lagi:</Typography>
+                          <Box component="ol" sx={{ pl: 2.5, m: 0, mb: 1 }}>
+                            <li><Typography variant="caption">Istirahatkan nomor ini dulu, 1 sampai 3 hari.</Typography></li>
+                            <li><Typography variant="caption">Hangatkan nomor: pakai untuk mengobrol normal, minta beberapa orang mengirim pesan ke Anda lalu balas.</Typography></li>
+                            <li><Typography variant="caption">Saat mulai lagi, kirim dulu hanya ke kontak yang pernah membalas Anda, dalam jumlah kecil.</Typography></li>
+                            <li><Typography variant="caption">Naikkan jumlah penerima sedikit demi sedikit setiap hari.</Typography></li>
+                          </Box>
+                          <Typography variant="caption" color="text.secondary">{waiting} penerima masih menunggu.</Typography>
+                        </Alert>
+                      );
+                    })()}
+                  </Box>
+
+                  <Box sx={{ minWidth: 0, p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Daftar Penerima</Typography>
+                    <Typography variant="caption" color="text.secondary">Cari atau filter berdasarkan hasil pengiriman.</Typography>
+                    <Stack direction="row" spacing={0.75} sx={{ my: 1, flexWrap: 'wrap', gap: 0.75 }}>
+                      {FILTERS.map(f => (
+                        <Chip key={f.k} size="small" label={f.label} onClick={() => setDetailFilter(f.k)}
+                          color={detailFilter === f.k ? 'primary' : 'default'} variant={detailFilter === f.k ? 'filled' : 'outlined'} />
+                      ))}
+                    </Stack>
+                    <TextField size="small" fullWidth placeholder="Cari nomor…" value={detailSearch}
+                      onChange={e => setDetailSearch(e.target.value)} sx={{ mb: 1 }} />
+                    <Box sx={{ display: { xs: 'none', sm: 'block' }, maxHeight: { sm: 420, md: 'min(48vh, 460px)' }, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                      <Table size="small" stickyHeader>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Nomor</TableCell>
+                            <TableCell>Nama</TableCell>
+                            <TableCell align="right">Status</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {shown.map(r => (
+                            <TableRow key={r.id}>
+                              <TableCell>+{r.number}</TableCell>
+                              <TableCell>{r.name || '-'}</TableCell>
+                              <TableCell align="right">
+                                <Chip size="small" label={RCP_LABEL[r.status] ?? r.status} color={RCP_COLOR[r.status] ?? 'default'} />
+                                {r.error && <Typography variant="caption" color={r.status === 'pending' ? 'warning.main' : 'error'} sx={{ display: 'block' }}>{r.error}</Typography>}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </Box>
+                    <Stack spacing={0.75} sx={{ display: { xs: 'flex', sm: 'none' }, maxHeight: '44svh', overflowY: 'auto', pr: 0.25 }}>
+                      {shown.map(r => (
+                        <Stack key={r.id} direction="row" sx={{ alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }}>+{r.number}</Typography>
+                            <Typography variant="caption" color="text.secondary">{r.name || 'Tanpa nama'}</Typography>
+                            {r.error && <Typography variant="caption" color={r.status === 'pending' ? 'warning.main' : 'error'} sx={{ display: 'block' }}>{r.error}</Typography>}
+                          </Box>
+                          <Chip size="small" label={RCP_LABEL[r.status] ?? r.status} color={RCP_COLOR[r.status] ?? 'default'} sx={{ flexShrink: 0 }} />
+                        </Stack>
+                      ))}
+                    </Stack>
+                    {shown.length === 0 && <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>Tidak ada penerima yang cocok.</Typography>}
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      Menampilkan {shown.length} dari {recs.length} penerima
+                    </Typography>
+                  </Box>
+                </Box>
               </>
             );
           })() : (

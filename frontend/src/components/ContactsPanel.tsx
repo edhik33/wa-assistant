@@ -122,9 +122,9 @@ export default function ContactsPanel({ agentId, onBroadcast, onOpenChat }: {
       const list = selectedContacts.length > 0 ? selectedContacts : await crmExport.mutateAsync({ q, tag });
       const lines = list.map(c => `${c.number},${c.name || ''}`);
       onBroadcast(lines.join('\n'));
-      swalToast(`${list.length} kontak dikirim ke Broadcast`);
+      swalToast(`${list.length} kontak dikirim ke Blast`);
     } catch {
-      swalToast('Kontak belum bisa dikirim ke Broadcast', 'error');
+      swalToast('Kontak belum bisa dikirim ke Blast', 'error');
     }
   };
 
@@ -198,15 +198,11 @@ export default function ContactsPanel({ agentId, onBroadcast, onOpenChat }: {
     <Box>
       <PageHeader
         title="Kontak"
-        subtitle="Buku kontak pelanggan. Masuk otomatis saat ada yang chat, atau impor manual / dari nomor terkoneksi / CSV. Pakai filter, pilih kontak, lalu lanjut ke Inbox atau Broadcast."
+        subtitle="Kelola kontak pelanggan untuk Chat dan Blast. Kontak dari percakapan tersimpan otomatis; kontak lainnya dapat diimpor."
         action={
-          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
-            <Button variant="outlined" startIcon={<CampaignIcon />} onClick={handleBroadcast}
-              disabled={(selectedContacts.length === 0 && totalContacts === 0) || crmExport.isPending}>
-              {selectedContacts.length > 0 ? `Broadcast ${selectedContacts.length}` : hasFilter ? 'Broadcast hasil filter' : 'Broadcast semua'}
-            </Button>
-            <Button variant="outlined" startIcon={<UploadFileIcon />} onClick={() => setImportOpen(true)}>Impor</Button>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd}>Tambah Kontak</Button>
+          <Stack direction="row" spacing={0.75} sx={{ width: '100%' }}>
+            <Button variant="outlined" startIcon={<UploadFileIcon />} onClick={() => setImportOpen(true)} sx={{ flex: { xs: 1, sm: 'initial' } }}>Impor</Button>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd} sx={{ flex: { xs: 1, sm: 'initial' } }}>Tambah Kontak</Button>
           </Stack>
         }
       />
@@ -217,7 +213,7 @@ export default function ContactsPanel({ agentId, onBroadcast, onOpenChat }: {
         <Paper variant="outlined" sx={{ px: 1.25, py: 1, mb: 1.5 }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'flex-start', sm: 'center' } }}>
             <Box sx={{ flex: 1 }}>
-              <Typography variant="body2" sx={{ fontWeight: 750 }}>Kesiapan broadcast</Typography>
+              <Typography variant="body2" sx={{ fontWeight: 750 }}>Kesiapan Blast</Typography>
               <Typography variant="caption" color="text.secondary">Ringkasan aktivitas yang tercatat di ChatLoop, bukan status resmi dari WhatsApp.</Typography>
             </Box>
             <Stack direction="row" sx={{ gap: 0.5, flexWrap: 'wrap' }}>
@@ -249,7 +245,7 @@ export default function ContactsPanel({ agentId, onBroadcast, onOpenChat }: {
             <Button variant="outlined" startIcon={<CampaignIcon />} onClick={handleBroadcast}
               disabled={(selectedContacts.length === 0 && totalContacts === 0) || crmExport.isPending}
               sx={{ minWidth: { md: 190 } }}>
-              Kirim ke Broadcast
+              Kirim ke Blast
             </Button>
           </Stack>
 
@@ -291,7 +287,7 @@ export default function ContactsPanel({ agentId, onBroadcast, onOpenChat }: {
                 <Chip label={`${selected.size} kontak dipilih`} size="small" color="primary" onDelete={() => setSelected(new Set())} />
                 <Box sx={{ flex: 1 }} />
                 <Button variant="outlined" size="small" startIcon={<CampaignIcon />} onClick={handleBroadcast}>
-                  Broadcast terpilih
+                  Blast terpilih
                 </Button>
                 <Button variant="contained" size="small" startIcon={<LocalOfferIcon />} onClick={() => setTagModalOpen(true)}>
                   Tambah Tag

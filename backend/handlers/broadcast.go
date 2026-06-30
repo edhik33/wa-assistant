@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"wa-assistant/backend/database"
@@ -22,6 +23,29 @@ import (
 // minBroadcastDelay = jeda minimum antar pesan (detik) yang dipaksakan demi keamanan nomor,
 // berapa pun yang dikirim pengguna.
 const minBroadcastDelay = 8
+
+// Satu koneksi WhatsApp hanya boleh menjalankan satu worker Blast pada satu waktu.
+// Broadcast berbeda tetap bisa berjalan paralel untuk agent/nomor yang berbeda,
+// sementara antrean pada agent yang sama diproses serial agar jeda tidak saling
+// menimpa dan urutan status penerima tetap deterministik.
+var broadcastAgentLocks sync.Map // map[uint]*sync.Mutex
+
+func broadcastAgentLock(agentID uint) *sync.Mutex {
+	lock, _ := broadcastAgentLocks.LoadOrStore(agentID, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
+
+func startBroadcastWorker(broadcastID, agentID uint, minD, maxD int) {
+	services.Go("runBroadcast", func() {
+		runBroadcast(broadcastID, agentID, minD, maxD)
+	})
+}
+
+func startResumeBroadcastWorker(broadcastID, agentID uint) {
+	services.Go("resumeBroadcast", func() {
+		resumeBroadcast(broadcastID, agentID)
+	})
+}
 
 type broadcastSendErrorAction string
 
@@ -148,7 +172,7 @@ func CreateBroadcast(c *gin.Context) {
 		return
 	}
 
-	go runBroadcast(b.ID, id, minD, maxD)
+	startBroadcastWorker(b.ID, id, minD, maxD)
 	c.JSON(200, gin.H{"data": b})
 }
 
@@ -248,7 +272,7 @@ func ResumeBroadcast(c *gin.Context) {
 	_ = database.DB.Model(&models.ScheduledMessage{}).Where("broadcast_id = ?", b.ID).
 		Update("status", models.BroadcastResuming).Error
 	minD, maxD := normalizeBroadcastDelay(b.MinDelay, b.MaxDelay)
-	go runBroadcast(b.ID, id, minD, maxD)
+	startBroadcastWorker(b.ID, id, minD, maxD)
 	c.JSON(200, gin.H{
 		"message": "Mencoba melanjutkan broadcast", "status": models.BroadcastResuming, "pending": pending,
 	})
@@ -315,7 +339,7 @@ func ResumeBroadcasts() {
 		if res.Error != nil || res.RowsAffected == 0 {
 			continue
 		}
-		go resumeBroadcast(b.ID, b.AgentID)
+		startResumeBroadcastWorker(b.ID, b.AgentID)
 	}
 }
 
@@ -360,6 +384,10 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 				Update("status", models.BroadcastInterrupted).Error
 		}
 	}()
+	agentLock := broadcastAgentLock(agentID)
+	agentLock.Lock()
+	defer agentLock.Unlock()
+
 	claim := database.DB.Model(&models.Broadcast{}).
 		Where("id = ? AND status IN ?", broadcastID, []string{models.BroadcastPending, models.BroadcastResuming}).
 		Updates(map[string]any{"status": models.BroadcastRunning, "pause_reason": "", "pause_code": 0, "paused_at": nil})

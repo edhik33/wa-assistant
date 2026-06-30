@@ -8,11 +8,12 @@ interface Props {
   onPick: (body: string) => void;
   size?: 'small' | 'medium';
   variant?: 'text' | 'outlined' | 'contained';
+  label?: string;
 }
 
 // TemplatePicker = tombol kecil untuk menyisipkan isi template ke composer pesan.
 // Dipakai di Inbox, Broadcast, dan Jadwal.
-export default function TemplatePicker({ agentId, onPick, size = 'small', variant = 'outlined' }: Props) {
+export default function TemplatePicker({ agentId, onPick, size = 'small', variant = 'outlined', label = 'Template' }: Props) {
   const { data: templates } = useTemplates(agentId);
   const [anchor, setAnchor] = useState<null | HTMLElement>(null);
 
@@ -22,7 +23,7 @@ export default function TemplatePicker({ agentId, onPick, size = 'small', varian
     <>
       <Button size={size} variant={variant} startIcon={<TextSnippetIcon fontSize="small" />}
         onClick={e => setAnchor(e.currentTarget)} sx={{ flexShrink: 0 }}>
-        Template
+        {label}
       </Button>
       <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)}
         slotProps={{ paper: { sx: { maxWidth: 360, maxHeight: 360 } } }}>
