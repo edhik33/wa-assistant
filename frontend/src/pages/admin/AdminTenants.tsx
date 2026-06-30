@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableHead, TableRow,
-  Chip, Select, MenuItem, CircularProgress, Button,
+  Chip, Select, MenuItem, CircularProgress, Button, Link,
   Dialog, DialogTitle, DialogContent, DialogActions, Stack, Alert,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircleOutlined';
@@ -51,6 +51,7 @@ export default function AdminTenants() {
             <TableHead>
               <TableRow>
                 <TableCell>Bisnis</TableCell>
+                <TableCell>Kontak</TableCell>
                 <TableCell align="center">Nomor</TableCell>
                 <TableCell align="center">Balasan AI (bln ini)</TableCell>
                 <TableCell>Plan</TableCell>
@@ -63,7 +64,23 @@ export default function AdminTenants() {
                 <TableRow key={t.id} hover>
                   <TableCell>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>{t.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">#{t.id}</Typography>
+                    <Typography variant="caption" color="text.secondary">#{t.id}{t.owner_name ? ` · ${t.owner_name}` : ''}</Typography>
+                  </TableCell>
+                  <TableCell>
+                    {(t.owner_email || t.owner_phone) ? (
+                      <>
+                        {t.owner_email && (
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            <Link href={`mailto:${t.owner_email}`} underline="hover">{t.owner_email}</Link>
+                          </Typography>
+                        )}
+                        {t.owner_phone && (
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            <Link href={`https://wa.me/${t.owner_phone.replace(/\D/g, '')}`} target="_blank" rel="noopener" underline="hover" color="text.secondary">{t.owner_phone}</Link>
+                          </Typography>
+                        )}
+                      </>
+                    ) : <Typography variant="caption" color="text.secondary">—</Typography>}
                   </TableCell>
                   <TableCell align="center">{t.numbers_used}</TableCell>
                   <TableCell align="center">{t.ai_replies_used}</TableCell>

@@ -64,9 +64,33 @@ func AdminTenants(c *gin.Context) {
 
 	type tenantRow struct {
 		models.Tenant
-		NumbersUsed   int64 `json:"numbers_used"`
-		AIRepliesUsed int   `json:"ai_replies_used"`
+		NumbersUsed   int64  `json:"numbers_used"`
+		AIRepliesUsed int    `json:"ai_replies_used"`
+		OwnerName     string `json:"owner_name"`
+		OwnerEmail    string `json:"owner_email"`
+		OwnerPhone    string `json:"owner_phone"`
 	}
+
+	// Ambil pemilik (user) tiap tenant sekali jalan, lalu prioritaskan role "owner".
+	ids := make([]uint, 0, len(tenants))
+	for _, t := range tenants {
+		ids = append(ids, t.ID)
+	}
+	owners := map[uint]models.User{}
+	if len(ids) > 0 {
+		var users []models.User
+		database.DB.Where("tenant_id IN ?", ids).Order("id asc").Find(&users)
+		for _, u := range users {
+			if u.TenantID == nil {
+				continue
+			}
+			tid := *u.TenantID
+			if existing, ok := owners[tid]; !ok || (u.Role == "owner" && existing.Role != "owner") {
+				owners[tid] = u
+			}
+		}
+	}
+
 	period := currentPeriod()
 	out := make([]tenantRow, 0, len(tenants))
 	for _, t := range tenants {
@@ -74,7 +98,11 @@ func AdminTenants(c *gin.Context) {
 		database.DB.Model(&models.Agent{}).Where("tenant_id = ?", t.ID).Count(&n)
 		var u models.AIUsage
 		database.DB.Where("tenant_id = ? AND period = ?", t.ID, period).First(&u)
-		out = append(out, tenantRow{Tenant: t, NumbersUsed: n, AIRepliesUsed: u.Replies})
+		o := owners[t.ID]
+		out = append(out, tenantRow{
+			Tenant: t, NumbersUsed: n, AIRepliesUsed: u.Replies,
+			OwnerName: o.Name, OwnerEmail: o.Email, OwnerPhone: o.Phone,
+		})
 	}
 	c.JSON(200, gin.H{"data": out})
 }

@@ -34,6 +34,9 @@ export interface Tenant {
 export interface TenantRow extends Tenant {
   numbers_used: number;
   ai_replies_used: number;
+  owner_name?: string;
+  owner_email?: string;
+  owner_phone?: string;
 }
 
 export interface Usage {
