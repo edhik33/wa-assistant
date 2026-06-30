@@ -526,6 +526,35 @@ func NormalizePhone(s string) string {
 	}
 }
 
+// ValidatePhoneForWA menilai apakah nomor (setelah dinormalisasi) laik untuk dikirimi
+// pesan WhatsApp. Aturannya:
+//   - Tidak boleh kosong.
+//   - Digit pertama harus 1–9 (bukan '0' atau '+', karena NormalizePhone sudah membuang non-digit).
+//   - Untuk awalan '62' (kode negara Indonesia): panjang 11–13 digit.
+//     Tujuannya menolak nomor yang terlalu panjang (mis. 15 digit) yang lolos dari
+//     filter WA tapi jelas salah ketik atau karakter tercampur.
+//   - Untuk negara lain (awalan 1–9 selain '62'): panjang 10–15 digit (range generik E.164).
+//
+// Mengembalikan (true, "") jika lolos; sebaliknya (false, alasan) untuk ditampilkan
+// ke UI / log sebagai pesan gagal yang manusiawi.
+func ValidatePhoneForWA(normalized string) (bool, string) {
+	if normalized == "" {
+		return false, "nomor kosong"
+	}
+	first := normalized[0]
+	if first < '1' || first > '9' {
+		return false, "awalan harus 1–9"
+	}
+	if strings.HasPrefix(normalized, "62") {
+		if len(normalized) < 11 || len(normalized) > 13 {
+			return false, "panjang nomor Indonesia harus 11–13 digit"
+		}
+	} else if len(normalized) < 10 || len(normalized) > 15 {
+		return false, "panjang nomor harus 10–15 digit"
+	}
+	return true, ""
+}
+
 // WAGroup = grup yang diikuti akun WhatsApp tertaut.
 type WAGroup struct {
 	JID          string `json:"jid"`

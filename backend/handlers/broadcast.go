@@ -494,19 +494,30 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 			log.Printf("Broadcast %d dibatalkan user sebelum pengiriman ke %s", broadcastID, r.Number)
 			return
 		}
+		// Normalisasi + validasi nomor sebelum panggil WA. Tujuannya agar nomor
+		// yang jelas salah (15 digit, awalan 0, dsb.) tidak lolos sebagai 'sent'
+		// hanya karena server WA menerima antrian pesan.
+		sendTo := services.NormalizePhone(r.Number)
+		if ok, reason := services.ValidatePhoneForWA(sendTo); !ok {
+			markRecipient(r.ID, "failed", "nomor tidak valid: "+reason+" (asal: "+r.Number+")")
+			failed++
+			updateBroadcastCounters(broadcastID, sent, failed, skipped)
+			log.Printf("Broadcast %d lewati %s: nomor tidak valid (%s)", broadcastID, r.Number, reason)
+			continue
+		}
 		var sendErr error
 		switch {
 		case prepared != nil:
 			// Jalur cepat: media sudah di-upload sekali, tinggal kirim ke penerima ini.
-			sendErr = services.WA(agentID).SendPreparedMedia(r.Number, msg, prepared)
+			sendErr = services.WA(agentID).SendPreparedMedia(sendTo, msg, prepared)
 		case b.MediaType == "image" && len(mediaBytes) > 0:
-			sendErr = services.WA(agentID).SendImage(r.Number, msg, b.Mimetype, mediaBytes)
+			sendErr = services.WA(agentID).SendImage(sendTo, msg, b.Mimetype, mediaBytes)
 		case b.MediaType == "video" && len(mediaBytes) > 0:
-			sendErr = services.WA(agentID).SendVideo(r.Number, msg, b.Mimetype, mediaBytes)
+			sendErr = services.WA(agentID).SendVideo(sendTo, msg, b.Mimetype, mediaBytes)
 		case b.MediaType == "document" && len(mediaBytes) > 0:
-			sendErr = services.WA(agentID).SendDocument(r.Number, b.FileName, b.Mimetype, msg, mediaBytes)
+			sendErr = services.WA(agentID).SendDocument(sendTo, b.FileName, b.Mimetype, msg, mediaBytes)
 		default:
-			sendErr = services.WA(agentID).SendText(r.Number, msg)
+			sendErr = services.WA(agentID).SendText(sendTo, msg)
 		}
 		if sendErr != nil {
 			action, code := classifyBroadcastSendError(sendErr)
