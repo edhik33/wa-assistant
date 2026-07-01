@@ -60,7 +60,11 @@ func CreateSchedule(c *gin.Context) {
 	seen := map[string]bool{}
 	clean := make([]scheduleRecipient, 0, len(reqRecipients))
 	for _, r := range reqRecipients {
-		num := services.NormalizePhone(r.Number)
+		// Target grup ("...@g.us") disimpan apa adanya; hanya nomor telepon yang dinormalisasi.
+		num := r.Number
+		if !services.IsGroupJID(num) {
+			num = services.NormalizePhone(num)
+		}
 		if num == "" || seen[num] {
 			continue
 		}

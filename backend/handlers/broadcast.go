@@ -494,16 +494,20 @@ func runBroadcast(broadcastID, agentID uint, minD, maxD int) {
 			log.Printf("Broadcast %d dibatalkan user sebelum pengiriman ke %s", broadcastID, r.Number)
 			return
 		}
-		// Normalisasi + validasi nomor sebelum panggil WA. Tujuannya agar nomor
-		// yang jelas salah (15 digit, awalan 0, dsb.) tidak lolos sebagai 'sent'
-		// hanya karena server WA menerima antrian pesan.
-		sendTo := services.NormalizePhone(r.Number)
-		if ok, reason := services.ValidatePhoneForWA(sendTo); !ok {
-			markRecipient(r.ID, "failed", "nomor tidak valid: "+reason+" (asal: "+r.Number+")")
-			failed++
-			updateBroadcastCounters(broadcastID, sent, failed, skipped)
-			log.Printf("Broadcast %d lewati %s: nomor tidak valid (%s)", broadcastID, r.Number, reason)
-			continue
+		// Target grup ("...@g.us") dikirim apa adanya: bukan nomor telepon, jadi lewati
+		// normalisasi & validasi nomor. Untuk nomor biasa, normalisasi + validasi sebelum
+		// panggil WA agar nomor yang jelas salah (15 digit, awalan 0, dsb.) tidak lolos
+		// sebagai 'sent' hanya karena server WA menerima antrian pesan.
+		sendTo := r.Number
+		if !services.IsGroupJID(r.Number) {
+			sendTo = services.NormalizePhone(r.Number)
+			if ok, reason := services.ValidatePhoneForWA(sendTo); !ok {
+				markRecipient(r.ID, "failed", "nomor tidak valid: "+reason+" (asal: "+r.Number+")")
+				failed++
+				updateBroadcastCounters(broadcastID, sent, failed, skipped)
+				log.Printf("Broadcast %d lewati %s: nomor tidak valid (%s)", broadcastID, r.Number, reason)
+				continue
+			}
 		}
 		var sendErr error
 		switch {

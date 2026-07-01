@@ -46,11 +46,15 @@ func BroadcastConsentSummary(c *gin.Context) {
 }
 
 // normalizeGuardRecipients merapikan daftar penerima: normalisasi nomor + buang duplikat/kosong.
+// Target grup ("...@g.us") disimpan apa adanya (bukan nomor telepon, tak perlu dinormalisasi).
 func normalizeGuardRecipients(in []broadcastGuardRecipient) []broadcastGuardRecipient {
 	seen := map[string]bool{}
 	out := make([]broadcastGuardRecipient, 0, len(in))
 	for _, r := range in {
-		number := services.NormalizePhone(r.Number)
+		number := r.Number
+		if !services.IsGroupJID(number) {
+			number = services.NormalizePhone(number)
+		}
 		if number == "" || seen[number] {
 			continue
 		}

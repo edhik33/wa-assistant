@@ -3,6 +3,7 @@ import {
   Box, Typography, Card, CardContent, Button, Stack, IconButton, Chip, TextField,
   Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, Divider, Alert,
   Table, TableBody, TableCell, TableHead, TableRow, useMediaQuery,
+  ToggleButton, ToggleButtonGroup, Checkbox, InputAdornment,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
@@ -17,7 +18,11 @@ import AccessTimeIcon from '@mui/icons-material/AccessTimeOutlined';
 import PeopleAltIcon from '@mui/icons-material/PeopleAltOutlined';
 import InfoIcon from '@mui/icons-material/InfoOutlined';
 import TodayIcon from '@mui/icons-material/TodayOutlined';
-import { useSchedules, useCreateSchedule, useCancelSchedule, useBroadcastDetail, useResumeBroadcast } from '../hooks';
+import GroupsIcon from '@mui/icons-material/GroupsOutlined';
+import DialpadIcon from '@mui/icons-material/DialpadOutlined';
+import SearchIcon from '@mui/icons-material/SearchOutlined';
+import RefreshIcon from '@mui/icons-material/RefreshOutlined';
+import { useSchedules, useCreateSchedule, useCancelSchedule, useBroadcastDetail, useResumeBroadcast, useManagedGroups } from '../hooks';
 import RecipientField from './RecipientField';
 import WhatsAppEditor from './WhatsAppEditor';
 import TemplatePicker from './TemplatePicker';
@@ -42,6 +47,9 @@ const RCP_LABEL: Record<string, string> = {
   sent: 'Terkirim', failed: 'Gagal', skipped: 'Dilewati', pending: 'Menunggu',
 };
 const pad = (n: number) => String(n).padStart(2, '0');
+
+// Target grup disimpan sebagai JID "...@g.us" (bukan nomor telepon).
+const isGroupTarget = (number: string) => number.endsWith('@g.us');
 
 function SectionHeader({ icon, title, subtitle }: { icon: ReactNode; title: string; subtitle?: string }) {
   return (
@@ -121,6 +129,10 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
   const [time, setTime] = useState('09:00');
   const [message, setMessage] = useState('');
   const [recipients, setRecipients] = useState('');
+  // Mode penerima: nomor telepon (default) atau grup WhatsApp yang diikuti nomor terhubung.
+  const [targetMode, setTargetMode] = useState<'number' | 'group'>('number');
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [groupSearch, setGroupSearch] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [minDelay, setMinDelay] = useState(10);
   const [maxDelay, setMaxDelay] = useState(30);
@@ -128,6 +140,15 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
   const [restDuration, setRestDuration] = useState(90);
   const [err, setErr] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Daftar grup dimuat hanya saat form dibuka dalam mode grup (butuh WA tersambung).
+  const groupMode = targetMode === 'group';
+  const { data: groups, isLoading: groupsLoading, error: groupsError, refetch: refetchGroups } =
+    useManagedGroups(agentId, formOpen && groupMode);
+  const filteredGroups = (groups || []).filter(g =>
+    g.name.toLowerCase().includes(groupSearch.trim().toLowerCase()));
+  const toggleGroup = (jid: string) =>
+    setSelectedGroups(prev => prev.includes(jid) ? prev.filter(j => j !== jid) : [...prev, jid]);
 
   const byDate: Record<string, ScheduledMessage[]> = {};
   (schedules || []).forEach(s => {
@@ -155,6 +176,8 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
   const monthIssues = monthSchedules.filter(s => s.status === 'failed' || s.status === 'interrupted' || s.status === 'wa_restricted').length;
   const formRecipients = recipients.split('\n').map(l => l.trim()).filter(Boolean);
   const formRecipientCount = formRecipients.length;
+  // Jumlah tujuan sesuai mode aktif (nomor atau grup terpilih).
+  const targetCount = groupMode ? selectedGroups.length : formRecipientCount;
   const delayProblem = minDelay < 1 || maxDelay < 1
     ? 'Jeda harus minimal 1 detik'
     : maxDelay < minDelay
@@ -172,6 +195,9 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
     setTime('09:00');
     setMessage('');
     setRecipients('');
+    setTargetMode('number');
+    setSelectedGroups([]);
+    setGroupSearch('');
     setFile(null);
     setErr('');
     setErrors({});
@@ -193,7 +219,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
   };
 
   const cancel = async (s: ScheduledMessage) => {
-    const ok = await swalConfirm('Batalkan jadwal ini?', `${scheduledTime(s)} - ${s.recipient_count} nomor`);
+    const ok = await swalConfirm('Batalkan jadwal ini?', `${scheduledTime(s)} - ${s.recipient_count} tujuan`);
     if (!ok) return;
     try {
       await cancelSchedule.mutateAsync(s.id);
@@ -207,11 +233,14 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
     setErr('');
     const e: Record<string, string> = {};
     if (!message.trim()) e.message = 'Pesan wajib diisi';
-    const recList = formRecipients.map(line => {
-      const [num, ...rest] = line.split(',');
-      return { number: num, name: rest.join(',').trim() };
-    });
-    if (recList.length === 0) e.recipients = 'Penerima wajib diisi';
+    // Grup: target = JID grup terpilih. Nomor: satu penerima per baris "nomor,nama".
+    const recList = groupMode
+      ? selectedGroups.map(jid => ({ number: jid, name: (groups || []).find(g => g.jid === jid)?.name || '' }))
+      : formRecipients.map(line => {
+          const [num, ...rest] = line.split(',');
+          return { number: num, name: rest.join(',').trim() };
+        });
+    if (recList.length === 0) e.recipients = groupMode ? 'Pilih minimal satu grup' : 'Penerima wajib diisi';
     if (delayProblem) e.delay = delayProblem;
     setErrors(e);
     if (Object.keys(e).length > 0) return;
@@ -380,7 +409,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
                       <Box sx={{ minWidth: 0 }}>
                         <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', mb: 0.35, flexWrap: 'wrap', gap: 0.5 }}>
                           <Chip size="small" icon={<AccessTimeIcon />} label={scheduledTime(s)} variant="outlined" />
-                          <Chip size="small" icon={<PeopleAltIcon />} label={`${s.recipient_count} nomor`} variant="outlined" />
+                          <Chip size="small" icon={<PeopleAltIcon />} label={`${s.recipient_count} tujuan`} variant="outlined" />
                           {s.media_type && <Chip size="small" icon={<AttachFileIcon />} label={s.file_name || 'Lampiran'} variant="outlined" />}
                           {s.risk_level === 'high' && <Chip size="small" label="Perlu perhatian" color="warning" variant="outlined" />}
                         </Stack>
@@ -455,9 +484,66 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
               <SectionHeader
                 icon={<PeopleAltIcon fontSize="small" />}
                 title="Penerima"
-                subtitle={`${formRecipientCount} baris penerima siap diproses.`}
+                subtitle={groupMode ? `${selectedGroups.length} grup dipilih` : `${formRecipientCount} baris penerima siap diproses.`}
               />
-              <RecipientField agentId={agentId} value={recipients} onChange={v => { setRecipients(v); if (errors.recipients) setErrors(p => ({...p, recipients: ''})); }} error={errors.recipients} />
+
+              <ToggleButtonGroup
+                size="small" exclusive value={targetMode} fullWidth
+                onChange={(_e, v) => { if (v) { setTargetMode(v); setErrors(p => ({ ...p, recipients: '' })); } }}
+                sx={{ mb: 1.25 }}
+              >
+                <ToggleButton value="number"><DialpadIcon fontSize="small" sx={{ mr: 0.5 }} />Nomor</ToggleButton>
+                <ToggleButton value="group"><GroupsIcon fontSize="small" sx={{ mr: 0.5 }} />Grup</ToggleButton>
+              </ToggleButtonGroup>
+
+              {groupMode ? (
+                <Box>
+                  {errors.recipients && <Alert severity="error" icon={false} sx={{ mb: 1 }}>{errors.recipients}</Alert>}
+                  <Alert severity="warning" icon={false} sx={{ mb: 1 }}>
+                    <Typography variant="caption">
+                      Pesan dikirim ke <b>ruang grup</b> — semua anggota melihatnya. Mengirim promo yang sama ke banyak grup berulang bisa dianggap spam dan berisiko untuk nomormu. Kirim seperlunya.
+                    </Typography>
+                  </Alert>
+                  {groupsLoading ? (
+                    <Box sx={{ textAlign: 'center', py: 3 }}><CircularProgress size={22} /></Box>
+                  ) : groupsError ? (
+                    <Alert severity="error" action={<Button size="small" startIcon={<RefreshIcon />} onClick={() => refetchGroups()}>Coba lagi</Button>}>
+                      Gagal memuat grup. Pastikan WhatsApp nomor ini sedang tersambung.
+                    </Alert>
+                  ) : (groups || []).length === 0 ? (
+                    <Alert severity="info" icon={false}>Nomor ini belum tergabung di grup mana pun, atau daftar grup belum tersedia.</Alert>
+                  ) : (
+                    <>
+                      <TextField size="small" fullWidth placeholder="Cari grup…" value={groupSearch}
+                        onChange={e => setGroupSearch(e.target.value)} sx={{ mb: 1 }}
+                        slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }} />
+                      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">{selectedGroups.length} dari {(groups || []).length} grup dipilih</Typography>
+                        <Button size="small" onClick={() => setSelectedGroups(selectedGroups.length === (groups || []).length ? [] : (groups || []).map(g => g.jid))}>
+                          {selectedGroups.length === (groups || []).length ? 'Kosongkan' : 'Pilih semua'}
+                        </Button>
+                      </Stack>
+                      <Box sx={{ maxHeight: 260, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                        {filteredGroups.map(g => (
+                          <Box key={g.jid} onClick={() => toggleGroup(g.jid)}
+                            sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.75, cursor: 'pointer', borderBottom: '1px solid', borderColor: 'divider', '&:last-child': { borderBottom: 'none' }, '&:hover': { bgcolor: 'action.hover' } }}>
+                            <Checkbox size="small" checked={selectedGroups.includes(g.jid)} sx={{ p: 0.25 }} />
+                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name || 'Grup tanpa nama'}</Typography>
+                              <Typography variant="caption" color="text.secondary">{g.participants} anggota</Typography>
+                            </Box>
+                          </Box>
+                        ))}
+                        {filteredGroups.length === 0 && (
+                          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>Tidak ada grup yang cocok.</Typography>
+                        )}
+                      </Box>
+                    </>
+                  )}
+                </Box>
+              ) : (
+                <RecipientField agentId={agentId} value={recipients} onChange={v => { setRecipients(v); if (errors.recipients) setErrors(p => ({...p, recipients: ''})); }} error={errors.recipients} />
+              )}
 
               <Divider sx={{ my: 1.5 }} />
 
@@ -480,7 +566,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
           <Button onClick={() => setFormOpen(false)}>Batal</Button>
           <Button variant="contained" onClick={save} disabled={createSchedule.isPending}
             startIcon={createSchedule.isPending ? <CircularProgress size={16} /> : null}>
-            {createSchedule.isPending ? 'Menyimpan...' : 'Simpan jadwal'}
+            {createSchedule.isPending ? 'Menyimpan...' : `Simpan jadwal${targetCount ? ` (${targetCount})` : ''}`}
           </Button>
         </DialogActions>
       </Dialog>
@@ -512,7 +598,7 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
                   <Table size="small" stickyHeader>
                     <TableHead>
                       <TableRow>
-                        <TableCell>Nomor</TableCell>
+                        <TableCell>Tujuan</TableCell>
                         <TableCell>Nama</TableCell>
                         <TableCell align="right">Status</TableCell>
                       </TableRow>
@@ -520,8 +606,8 @@ export default function CalendarPanel({ agentId }: { agentId: number }) {
                     <TableBody>
                       {detail.recipients.map(r => (
                         <TableRow key={r.id}>
-                          <TableCell>+{r.number}</TableCell>
-                          <TableCell>{r.name || '-'}</TableCell>
+                          <TableCell>{isGroupTarget(r.number) ? (r.name || 'Grup') : '+' + r.number}</TableCell>
+                          <TableCell>{isGroupTarget(r.number) ? 'Grup WhatsApp' : (r.name || '-')}</TableCell>
                           <TableCell align="right">
                             <Chip size="small" label={RCP_LABEL[r.status] ?? r.status} color={RCP_COLOR[r.status] ?? 'default'} />
                             {r.error && <Typography variant="caption" color={r.status === 'pending' ? 'warning.main' : 'error'} sx={{ display: 'block' }}>{r.error}</Typography>}

@@ -486,9 +486,28 @@ func (w *waInstance) RevokeMessage(toNumber string, msgID types.MessageID) error
 	return err
 }
 
-// SendText mengirim pesan ke nomor bare (mis "628123") tanpa pemanggil perlu menyusun JID.
+// IsGroupJID melaporkan apakah string tujuan adalah JID grup WhatsApp ("...@g.us"),
+// bukan nomor telepon biasa. Dipakai agar target grup tidak dinormalisasi/divalidasi
+// sebagai nomor saat broadcast.
+func IsGroupJID(to string) bool {
+	return strings.HasSuffix(to, "@"+types.GroupServer)
+}
+
+// recipientJID mengubah string tujuan menjadi JID WhatsApp. String berakhiran "@g.us"
+// diperlakukan sebagai JID grup; selain itu sebagai nomor pengguna biasa (@s.whatsapp.net).
+// Satu titik resolusi ini membuat semua fungsi kirim broadcast bisa menyasar grup maupun nomor.
+func recipientJID(to string) types.JID {
+	if IsGroupJID(to) {
+		if jid, err := types.ParseJID(to); err == nil {
+			return jid
+		}
+	}
+	return types.NewJID(to, types.DefaultUserServer)
+}
+
+// SendText mengirim pesan ke nomor bare (mis "628123") atau JID grup ("...@g.us").
 func (w *waInstance) SendText(toNumber, message string) error {
-	return w.SendMessage(types.NewJID(toNumber, types.DefaultUserServer), message)
+	return w.SendMessage(recipientJID(toNumber), message)
 }
 
 // WAServerErrorCode mengambil kode penolakan yang dikirim server WhatsApp dari error
@@ -912,7 +931,7 @@ func (w *waInstance) SendImage(toNumber, caption, mimetype string, data []byte) 
 	if err != nil {
 		return fmt.Errorf("gagal upload gambar: %w", err)
 	}
-	_, err = client.SendMessage(ctx, types.NewJID(toNumber, types.DefaultUserServer), &waProto.Message{
+	_, err = client.SendMessage(ctx, recipientJID(toNumber), &waProto.Message{
 		ImageMessage: &waProto.ImageMessage{
 			Caption:       proto.String(caption),
 			Mimetype:      proto.String(mimetype),
@@ -940,7 +959,7 @@ func (w *waInstance) SendDocument(toNumber, fileName, mimetype, caption string, 
 	if err != nil {
 		return fmt.Errorf("gagal upload dokumen: %w", err)
 	}
-	_, err = client.SendMessage(ctx, types.NewJID(toNumber, types.DefaultUserServer), &waProto.Message{
+	_, err = client.SendMessage(ctx, recipientJID(toNumber), &waProto.Message{
 		DocumentMessage: &waProto.DocumentMessage{
 			FileName:      proto.String(fileName),
 			Title:         proto.String(fileName),
@@ -971,7 +990,7 @@ func (w *waInstance) SendVideo(toNumber, caption, mimetype string, data []byte) 
 	if err != nil {
 		return fmt.Errorf("gagal upload video: %w", err)
 	}
-	_, err = client.SendMessage(ctx, types.NewJID(toNumber, types.DefaultUserServer), &waProto.Message{
+	_, err = client.SendMessage(ctx, recipientJID(toNumber), &waProto.Message{
 		VideoMessage: &waProto.VideoMessage{
 			Caption:       proto.String(caption),
 			Mimetype:      proto.String(mimetype),
@@ -1048,7 +1067,7 @@ func (w *waInstance) SendPreparedMedia(toNumber, caption string, pm *PreparedMed
 			FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256, FileLength: proto.Uint64(up.FileLength),
 		}}
 	}
-	_, err := client.SendMessage(context.Background(), types.NewJID(toNumber, types.DefaultUserServer), msg)
+	_, err := client.SendMessage(context.Background(), recipientJID(toNumber), msg)
 	return err
 }
 
